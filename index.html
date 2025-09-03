@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>MOMENTUM</title>
+
+  <!-- Confetti library (keep as a CDN) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+
+  <!-- External CSS -->
+  <link rel="stylesheet" href="styles.css">
+<!-- External JS (loads after DOM is parsed) -->
+  <script defer src="script.js"></script>
+</head>
+<body>
+  <!-- Confetti overlay -->
+  <canvas id="confettiCanvas"></canvas>
+
+  <!-- Toasts + Level banners -->
+  <div id="toastHost"></div>
+  <div id="levelHost"></div>
+
+  <div class="wrap">
+    <h1 style="font-size:64px; margin:0 0 12px;">MOMENTUM</h1>
+    <div class="small" id="status"></div>
+
+    <div class="row" style="margin-top:12px">
+      <div class="grid">
+        <!-- Normal tracks -->
+        <div class="card">
+          <p class="title">Normal Tracks <span class="tag" id="activeCountTag">active: 0</span></p>
+          <div class="small" style="margin-bottom:8px">
+            Run any skill in parallel. Fewer active skills increases each skill efficiency. Honing stacks on top.
+          </div>
+          <div id="skills"></div>
+          <div class="small" style="margin-top:8px">
+            Per track efficiency <span id="effReadout">1.00x</span>
+          </div>
+        </div>
+
+        <!-- Honing -->
+        <div class="card">
+          <p class="title">Honing Slot</p>
+          <div class="small" style="margin-bottom:8px">Pick one skill to supercharge. Honing multiplier = 1.8x.</div>
+          <select id="honeSelect" class="btn"></select>
+          <div class="small" style="margin-top:8px">Honed: <span id="honedLabel">None</span></div>
+          <div class="small" style="margin-top:8px">Global boss buff: <span id="buffLabel">none</span></div>
+        </div>
+
+        <!-- Boss Gate -->
+        <div class="card">
+          <p class="title">Boss Gate</p>
+          <div class="small">Combat generates Boss Keys over time. Spend 3 keys to enter a short fight.</div>
+          <div style="margin:8px 0" class="small">Keys: <span id="keysLabel">0</span> needed: 3</div>
+          <button class="btn" id="giveKeysBtn">Give 3 Keys (test)</button>
+          <div class="small" style="margin-top:6px">Tip. Turn on Combat to generate keys.</div>
+          <button class="btn" id="fightBtn" disabled>Enter Arena</button>
+          <div class="small" style="margin-top:8px">
+            Boss rewards
+            <ul style="margin:6px 0 0 18px">
+              <li>Ore burst equal to about 3 idle hours</li>
+              <li>Rare Gem chance 25 percent</li>
+              <li>Global 1.5x idle for 20 minutes</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Upgrades -->
+        <div class="card">
+          <p class="title">Upgrades</p>
+          <div class="small" style="margin-bottom:8px">Spend resources to boost your account.</div>
+          <button class="btn" id="openBaseUpBtn">Base Upgrades</button>
+          <button class="btn" id="openSkillUpBtn">Skill Upgrades</button>
+        </div>
+      </div>
+
+      <!-- Totals -->
+      <div class="card">
+        <p class="title">Totals</p>
+        <div id="totals"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Arena Modal -->
+  <div id="arenaModal">
+    <div id="arena">
+      <div class="flex" style="margin-bottom:6px">
+        <span class="small">WASD to move. Space to dash. Left click to shoot.</span>
+        <button class="btn" id="closeArena">Give Up</button>
+      </div>
+      <canvas id="cv" width="720" height="420"></canvas>
+      <div class="flex" style="margin-top:6px">
+        <div class="small">You: <span id="hpYou">100</span> Boss: <span id="hpBoss">30</span></div>
+        <div class="small">Tip. Dash through red shockwave</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Result Modal -->
+  <div id="resultModal">
+    <div style="background:#0b0f1c; border:1px solid #222745; border-radius:12px; padding:20px; width:320px; text-align:center">
+      <div class="small" id="resultMsg" style="font-size:18px; margin-bottom:12px">Result</div>
+      <button class="btn" id="resultOk">Continue</button>
+    </div>
+  </div>
+
+  <!-- Base Upgrades Modal -->
+  <div id="baseUpModal">
+    <div style="background:#0b0f1c; border:1px solid #222745; border-radius:12px; padding:16px; width:480px;">
+      <div class="flex" style="margin-bottom:8px">
+        <span class="title" style="font-size:18px; margin:0">Base Upgrades</span>
+        <button class="btn" id="closeBaseUp">Close</button>
+      </div>
+      <div id="baseUpList" class="small"></div>
+    </div>
+  </div>
+
+  <!-- Skill Upgrades Modal -->
+  <div id="skillUpModal">
+    <div style="background:#0b0f1c; border:1px solid #222745; border-radius:12px; padding:16px; width:560px;">
+      <div class="flex" style="margin-bottom:8px">
+        <span class="title" style="font-size:18px; margin:0">Skill Upgrades</span>
+        <button class="btn" id="closeSkillUp">Close</button>
+      </div>
+      <div class="small" style="margin-bottom:8px">
+        <button class="btn" data-tab="Mining">Mining</button>
+        <button class="btn" data-tab="Smithing">Smithing</button>
+        <button class="btn" data-tab="Combat">Combat</button>
+      </div>
+      <div id="skillUpList" class="small"></div>
+    </div>
+  </div>
+
+  
+</body>
+</html>
+

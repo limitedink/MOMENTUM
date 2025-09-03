@@ -1,0 +1,123 @@
+
+  body { font-family: system-ui, sans-serif; margin: 0; background:#0f1220; color:#e6e6f0 }
+  .wrap { max-width: 980px; margin: 24px auto; padding: 0 16px }
+  .row { display: grid; gap: 12px }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px }
+  .card { background:#171a2b; border:1px solid #222745; border-radius:12px; padding:12px }
+  .title { font-weight:700; font-size:20px; margin:0 0 8px }
+  .btn { cursor:pointer; background:#2b3160; border:1px solid #39407a; color:#fff; padding:8px 10px; border-radius:8px }
+  .btn[disabled] { opacity:.5; cursor:not-allowed }
+  .tag { font-size:12px; padding:3px 8px; border-radius:999px; border:1px solid #39407a; color:#b9c0ff; display:inline-block }
+  .meter { height:8px; background:#0d1020; border-radius:6px; overflow:hidden; border:1px solid #222745 }
+  .meter > i { display:block; height:100%; background:#5a66ff; width:0% }
+  .green { color:#9cffb9 }
+  .yellow { color:#ffe89a }
+  .small { font-size:12px; opacity:.9 }
+  .flex { display:flex; gap:8px; align-items:center; justify-content:space-between }
+
+  #status {
+  margin-bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.statLabel {
+  color: #9aa0c6;
+}
+
+.statValue {
+  background: #1c2035;
+  border: 1px solid #2a3155;
+  padding: 2px 8px;
+  border-radius: 6px;
+  color: #e6e6f0;
+  font-weight: 500;
+}
+
+
+  /* arena modal */
+  #arenaModal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.6) }
+  #arena { background:#0b0f1c; border:1px solid #222745; border-radius:12px; padding:10px }
+  canvas { background:#0f1428; border:1px solid #222745; border-radius:12px; display:block }
+
+  /* result modal */
+  #resultModal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.6) }
+
+  /* toast */
+  #toastHost { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 9999 }
+  .toast {
+    background:#12172a; border:1px solid #222745; color:#e6e6f0;
+    padding:10px 12px; border-radius:10px; min-width: 180px;
+    box-shadow: 0 8px 20px rgba(0,0,0,.25); font-size:14px; opacity:0; transform: translateY(8px);
+    transition: opacity .2s ease, transform .2s ease;
+  }
+  .toast.show { opacity:1; transform: translateY(0) }
+
+#confettiCanvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;          /* ensure the element fills the viewport */
+  height: 100vh;
+  display: block;        /* avoid inline gaps */
+  pointer-events: none;  /* clicks pass through */
+  z-index: 99999;        /* above everything */
+  background: transparent;
+}
+#baseUpModal,
+#skillUpModal {
+  position: fixed;
+  inset: 0;
+  display: none;             /* hide by default */
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.6); /* dim backdrop */
+  z-index: 10000;
+}
+#baseUpModal > div,
+#skillUpModal > div {
+  max-height: 80vh;
+  overflow-y: auto;
+}
+#levelHost {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 10000;
+  pointer-events: none;
+}
+.levelNotice {
+  background: linear-gradient(135deg, #222745, #2e3350);
+  border: 3px solid #6cf;
+  color: #fff;
+  padding: 24px 40px;
+  border-radius: 20px;
+  font-size: 36px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  min-width: 420px;
+  text-align: center;
+  opacity: 0;
+  transform: translateY(-20px) scale(0.9);
+  transition: opacity .3s ease, transform .3s ease;
+  box-shadow: 0 12px 40px rgba(0,0,0,.6);
+}
+.levelNotice.show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+/* bigger banner already defined; add themed variants */
+.levelNotice.mining  { border-color:#f6c453; background:linear-gradient(135deg,#2a2530,#4d3c19); }
+.levelNotice.smithing{ border-color:#aeb6c1; background:linear-gradient(135deg,#2a2f36,#3e4957); }
+.levelNotice.combat  { border-color:#ff6b6b; background:linear-gradient(135deg,#2a2230,#5a2630); }
+
+
+
+
+
