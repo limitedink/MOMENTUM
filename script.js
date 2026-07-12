@@ -31,6 +31,10 @@ let hone = null;
 let honingMult = 1.8;
 let keys = 0;
 let rareGems = 0;
+let scrap = 0;
+const SMELT_ORE_COST = 1;
+const SMELT_FAIL_CHANCE = 0.10;
+const SCRAP_RECYCLE_COST = 5;
 let globalBuff = { mult: 1.0, secs: 0 };
 let warmup = { t: 0, targetA: 0, currentA: 0 };
 
@@ -68,6 +72,8 @@ const statusEl = document.getElementById('status');
 const saveStatus = document.getElementById('saveStatus');
 const saveBtn = document.getElementById('saveBtn');
 const resetSaveBtn = document.getElementById('resetSaveBtn');
+const recycleScrapBtn = document.getElementById('recycleScrapBtn');
+const recycleStatus = document.getElementById('recycleStatus');
 
 const baseUpModal = document.getElementById('baseUpModal');
 const skillUpModal = document.getElementById('skillUpModal');
@@ -346,7 +352,7 @@ const ownedSkillUps = new Set();
    SAVE / LOAD
 ===================================== */
 const SAVE_KEY = 'momentum-save';
-const SAVE_VERSION = 1;
+const SAVE_VERSION = 2;
 const AUTO_SAVE_MS = 10_000;
 let resetInProgress = false;
 
@@ -362,6 +368,7 @@ function createSaveData() {
     honingMult,
     keys,
     rareGems,
+    scrap,
     globalBuff: { ...globalBuff },
     baseMult,
     keyRateMult,
@@ -389,7 +396,7 @@ function loadGame() {
 
   try {
     const save = JSON.parse(raw);
-    if (save.version !== SAVE_VERSION) return false;
+    if (save.version !== 1 && save.version !== SAVE_VERSION) return false;
 
     save.skills.forEach(savedSkill => {
       const skill = skills.find(s => s.id === savedSkill.id);
@@ -408,6 +415,7 @@ function loadGame() {
     honingMult = save.honingMult;
     keys = save.keys;
     rareGems = save.rareGems;
+    scrap = save.version >= 2 ? save.scrap ?? 0 : 0;
     globalBuff = { ...save.globalBuff };
     baseMult = save.baseMult;
     keyRateMult = save.keyRateMult;
@@ -510,8 +518,21 @@ function renderSkillUps(skillName) {
 
 // Per skill tuning. All equal by default.
 const SKILL_CFG = {
-  Mining:   { xpPerAction: 20, onAction(s, m){ s.qty += 1; } },
-  Smithing: { xpPerAction: 20, onAction(s, m){ s.qty += 1; } },
+  Mining: { xpPerAction: 20, onAction(s){ s.qty += 1; } },
+  Smithing: {
+    xpPerAction: 20,
+    canAct(){ return skills.find(s=>s.id==='Mining').qty >= SMELT_ORE_COST; },
+    onAction(s){
+      const mining = skills.find(x=>x.id==='Mining');
+      mining.qty -= SMELT_ORE_COST;
+      if (Math.random() < SMELT_FAIL_CHANCE) {
+        scrap += 1;
+        showToast('Smelt failed: +1 Scrap', 1200);
+      } else {
+        s.qty += 1;
+      }
+    }
+  },
   Combat:   { xpPerAction: 20, onAction(s, m){
     const keysPerAction = 0.10 * m * keyRateMult;
     keys += keysPerAction;
@@ -645,18 +666,18 @@ effReadout.textContent = `Efficiency m(a): ${m.toFixed(2)}x  Honed: ${hone || 'N
 // tick based production
 const actives = skills.filter(s => s.active);
 actives.forEach(s => {
+  const cfg = getSkillCfg(s.id);
+  if (cfg.canAct && !cfg.canAct()) return;
   const H = hone === s.id ? honingMult : 1.0;
-  const perSec = s.active ? clampPerSec(s.basePerSec * m * H * baseMult) : 0;
+  const perSec = clampPerSec(s.basePerSec * m * H * baseMult);
 
   s.progress += perSec * dt;
 
   while (s.progress >= 1) {
     s.progress -= 1;
 
-    // unified per-skill effects + XP
-    const cfg = getSkillCfg(s.id);
-    cfg.onAction(s, m);            // resources or keys
-    s.xp += cfg.xpPerAction;       // XP per action
+    cfg.onAction(s, m);
+    s.xp += cfg.xpPerAction;
 
     tryLevelUp(s);
   }
@@ -666,7 +687,9 @@ actives.forEach(s => {
 
 skills.forEach(s=>{
   const H = hone === s.id ? honingMult : 1.0;
-  const perSec = s.active ? clampPerSec(s.basePerSec * m * H * baseMult) : 0;
+  const cfg = getSkillCfg(s.id);
+  const waiting = s.active && cfg.canAct && !cfg.canAct();
+  const perSec = s.active && !waiting ? clampPerSec(s.basePerSec * m * H * baseMult) : 0;
 
   const tickPct = Math.min(100, s.progress * 100);
   s._els.tickFill.style.width = tickPct.toFixed(1) + '%';
@@ -676,7 +699,7 @@ skills.forEach(s=>{
 
   // Lvl / XP / Rate / Total Labels
   s._els.rateEl.textContent =
-    `Lvl: ${s.lvl}/${MAX_SKILL_LEVEL}  XP: ${Math.floor(s.xp)}/${s.next}  Rate: ${perSec.toFixed(2)}/s` + (H>1 ? ' honed' : '');
+    `Lvl: ${s.lvl}/${MAX_SKILL_LEVEL}  XP: ${Math.floor(s.xp)}/${s.next}  Rate: ${perSec.toFixed(2)}/s` + (H>1 ? ' honed' : '') + (waiting ? ' — waiting for Ore' : '');
   s._els.qtyEl.textContent = `Total: ${s.qty.toFixed(1)}`;
   s._els.label.style.color = H>1 ? '#b9ffcd' : '#e6e6f0';
 });
@@ -696,7 +719,10 @@ skills.forEach(s=>{
       <div><div>Combat XP</div><div class="yellow">${combatXP.toFixed(1)}</div></div>
     </div>
     <div style="margin-top:8px">Rare Gems: <span class="yellow" id="gemLbl">${rareGems}</span></div>
+    <div>Scrap: <span class="yellow">${scrap}</span></div>
   `;
+  recycleScrapBtn.disabled = scrap < SCRAP_RECYCLE_COST;
+  recycleStatus.textContent = `${scrap}/${SCRAP_RECYCLE_COST} Scrap — recycle 5 Scrap into 1 Ore.`;
 
  const buffText = globalBuff.secs > 0 
   ? `Active (${Math.ceil(globalBuff.secs/60)}m left)` 
@@ -875,6 +901,12 @@ document.querySelectorAll('#skillUpModal [data-tab]').forEach(btn=>{
 document.getElementById('closeArena').onclick  = ()=> closeArena();
 saveBtn.onclick = () => saveGame(true);
 resetSaveBtn.onclick = resetSave;
+recycleScrapBtn.onclick = () => {
+  if (scrap < SCRAP_RECYCLE_COST) return;
+  scrap -= SCRAP_RECYCLE_COST;
+  skills.find(s=>s.id==='Mining').qty += 1;
+  showToast('Recycled 5 Scrap into 1 Ore');
+};
 
 fightBtn.onclick = ()=>{
   if (Math.floor(keys) >= 3) {
