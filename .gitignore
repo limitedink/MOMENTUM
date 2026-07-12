@@ -144,6 +144,6 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Sass maps
+# Sass generated files
+.sass-cache/
 *.css.map
-

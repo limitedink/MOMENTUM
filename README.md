@@ -55,7 +55,7 @@ Inspired by games like **Old School RuneScape**, **Melvor Idle**, **Warframe**, 
 Clone the repository:
 
 ```bash
-git clone https://github.com/limitedink/momentum.git
+git clone https://github.com/limitedink/MOMENTUM.git
 cd momentum
 python3 -m http.server 8000
 ```
