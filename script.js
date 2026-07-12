@@ -65,6 +65,9 @@ const keysLabel = document.getElementById('keysLabel');
 const fightBtn = document.getElementById('fightBtn');
 const buffLabel = document.getElementById('buffLabel');
 const statusEl = document.getElementById('status');
+const saveStatus = document.getElementById('saveStatus');
+const saveBtn = document.getElementById('saveBtn');
+const resetSaveBtn = document.getElementById('resetSaveBtn');
 
 const baseUpModal = document.getElementById('baseUpModal');
 const skillUpModal = document.getElementById('skillUpModal');
@@ -340,6 +343,98 @@ const SKILL_UPS = {
 const ownedSkillUps = new Set();
 
 /* =====================================
+   SAVE / LOAD
+===================================== */
+const SAVE_KEY = 'momentum-save';
+const SAVE_VERSION = 1;
+const AUTO_SAVE_MS = 10_000;
+let resetInProgress = false;
+
+function createSaveData() {
+  return {
+    version: SAVE_VERSION,
+    savedAt: Date.now(),
+    skills: skills.map(({ id, basePerSec, active, qty, lvl, xp, progress }) => ({
+      id, basePerSec, active, qty, lvl, xp, progress
+    })),
+    unlockedNormalSlots,
+    hone,
+    honingMult,
+    keys,
+    rareGems,
+    globalBuff: { ...globalBuff },
+    baseMult,
+    keyRateMult,
+    bulletDamage: BULLET_DAMAGE,
+    ownedBaseUps: [...ownedBaseUps],
+    ownedSkillUps: [...ownedSkillUps]
+  };
+}
+
+function updateSaveStatus(savedAt) {
+  saveStatus.textContent = `Saved ${new Date(savedAt).toLocaleTimeString()}. Autosaves every 10 seconds.`;
+}
+
+function saveGame(showConfirmation = false) {
+  if (resetInProgress) return;
+  const save = createSaveData();
+  localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+  updateSaveStatus(save.savedAt);
+  if (showConfirmation) showToast('Game saved');
+}
+
+function loadGame() {
+  const raw = localStorage.getItem(SAVE_KEY);
+  if (!raw) return false;
+
+  try {
+    const save = JSON.parse(raw);
+    if (save.version !== SAVE_VERSION) return false;
+
+    save.skills.forEach(savedSkill => {
+      const skill = skills.find(s => s.id === savedSkill.id);
+      if (!skill) return;
+      skill.basePerSec = savedSkill.basePerSec;
+      skill.active = savedSkill.active;
+      skill.qty = savedSkill.qty;
+      skill.lvl = savedSkill.lvl;
+      skill.xp = savedSkill.xp;
+      skill.next = xpToNext(skill.lvl);
+      skill.progress = savedSkill.progress;
+    });
+
+    unlockedNormalSlots = save.unlockedNormalSlots;
+    hone = skills.some(s => s.id === save.hone) ? save.hone : null;
+    honingMult = save.honingMult;
+    keys = save.keys;
+    rareGems = save.rareGems;
+    globalBuff = { ...save.globalBuff };
+    baseMult = save.baseMult;
+    keyRateMult = save.keyRateMult;
+    BULLET_DAMAGE = save.bulletDamage;
+
+    ownedBaseUps.clear();
+    save.ownedBaseUps.forEach(id => ownedBaseUps.add(id));
+    ownedSkillUps.clear();
+    save.ownedSkillUps.forEach(id => ownedSkillUps.add(id));
+
+    updateSaveStatus(save.savedAt);
+    return true;
+  } catch (error) {
+    console.error('Could not load Momentum save:', error);
+    saveStatus.textContent = 'Save could not be loaded. Starting a new game.';
+    return false;
+  }
+}
+
+function resetSave() {
+  if (!confirm('Reset all Momentum progress? This cannot be undone.')) return;
+  resetInProgress = true;
+  localStorage.removeItem(SAVE_KEY);
+  location.reload();
+}
+
+/* =====================================
    SHOP LOGIC
 ===================================== */
 function canAfford(cost) {
@@ -494,7 +589,18 @@ function renderSkills() {
 }
 
 
+const loadedSave = loadGame();
 renderSkills();
+honeSelect.value = hone || '';
+honedLabel.textContent = hone || 'None';
+startWarmup();
+if (loadedSave) showToast('Save loaded');
+
+setInterval(() => saveGame(), AUTO_SAVE_MS);
+window.addEventListener('beforeunload', () => saveGame());
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveGame();
+});
 
 /* =====================================
    MAIN LOOP AND IDLE PRODUCTION
@@ -766,8 +872,9 @@ document.querySelectorAll('#skillUpModal [data-tab]').forEach(btn=>{
   btn.onclick = ()=> renderSkillUps(btn.getAttribute('data-tab'));
 });
 
-document.getElementById('giveKeysBtn').onclick = ()=> { keys += 3; };
 document.getElementById('closeArena').onclick  = ()=> closeArena();
+saveBtn.onclick = () => saveGame(true);
+resetSaveBtn.onclick = resetSave;
 
 fightBtn.onclick = ()=>{
   if (Math.floor(keys) >= 3) {

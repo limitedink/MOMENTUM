@@ -46,7 +46,7 @@ Inspired by games like **Old School RuneScape**, **Melvor Idle**, **Warframe**, 
 - [ ] More skills (Woodcutting, Fishing, Magic, etc.)  
 - [ ] Expanded boss encounters and rewards  
 - [ ] Core multiplayer backend in Go  
-- [ ] Persistence (accounts, saves, progression)  
+- [x] Local persistence (versioned browser saves)  
 
 ---
 
@@ -55,10 +55,14 @@ Inspired by games like **Old School RuneScape**, **Melvor Idle**, **Warframe**, 
 Clone the repository:
 
 ```bash
-git clone https://github.com/your-username/MOMENTUM.git
-cd MOMENTUM
+git clone https://github.com/limitedink/momentum.git
+cd momentum
+python3 -m http.server 8000
+```
 
-🤝 Contributing
+Open `http://localhost:8000` in a browser. No build step is required.
+
+## 🤝 Contributing
 
 Momentum is currently a solo dev project.
 In the future, collaboration and contributions may be welcome.
