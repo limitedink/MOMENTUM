@@ -688,7 +688,7 @@ skills.forEach(s=>{
 
   const ore = skills.find(s=>s.id==='Mining')?.qty ?? 0;
   const bars = skills.find(s=>s.id==='Smithing')?.qty ?? 0;
-  const combatXP = skills.find(s=>s.id==='Combat')?.qty ?? 0;
+  const combatXP = skills.find(s=>s.id==='Combat')?.xp ?? 0;
   totalsDiv.innerHTML = `
     <div class="grid">
       <div><div>Ore</div><div class="yellow">${ore.toFixed(1)}</div></div>
