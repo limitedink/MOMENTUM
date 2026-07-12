@@ -1,5 +1,7 @@
 # MOMENTUM
 
+**[Play the public prototype](https://limitedink.github.io/MOMENTUM/)**
+
 **Momentum** is a hybrid idle + active multiplayer RPG in development.  
 Players train skills, earn resources, and face active boss encounters — blending the strategy of long-term idle progression with the intensity of real-time combat.  
 
