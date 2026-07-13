@@ -51,9 +51,9 @@ let keyRateMult = 1.0;  // multiplies boss keys
 
 
 const ARENA_TIERS = [
-  { id:1, name:'Initiate', keyCost:3, bossHp:30, bossSpeed:40, contactDps:15, waveDamage:28, waveCooldown:4.0, oreGain:600, gemChance:0.25 },
-  { id:2, name:'Vanguard', keyCost:5, bossHp:70, bossSpeed:55, contactDps:20, waveDamage:36, waveCooldown:3.4, oreGain:1000, gemChance:0.50 },
-  { id:3, name:'Apex', keyCost:8, bossHp:120, bossSpeed:70, contactDps:25, waveDamage:44, waveCooldown:2.8, oreGain:1600, gemChance:1.00 }
+  { id:1, name:'Initiate', keyCost:3, bossHp:30, bossSpeed:40, contactDps:15, waveDamage:28, waveCooldown:4.0, projectileCount:0, projectileCooldown:0, projectileSpeed:0, projectileDamage:0, projectileSpread:0, attackLabel:'Shockwave', oreGain:600, gemChance:0.25 },
+  { id:2, name:'Vanguard', keyCost:5, bossHp:70, bossSpeed:55, contactDps:20, waveDamage:36, waveCooldown:3.4, projectileCount:1, projectileCooldown:2.8, projectileSpeed:180, projectileDamage:16, projectileSpread:0, attackLabel:'Aimed shot', oreGain:1000, gemChance:0.50 },
+  { id:3, name:'Apex', keyCost:8, bossHp:120, bossSpeed:70, contactDps:25, waveDamage:44, waveCooldown:2.8, projectileCount:3, projectileCooldown:2.2, projectileSpeed:220, projectileDamage:18, projectileSpread:0.18, attackLabel:'Spread volley', oreGain:1600, gemChance:1.00 }
 ];
 let arenaTierUnlocked = 1;
 let selectedArenaTier = 1;
@@ -100,6 +100,7 @@ const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d');
 const hpYouEl = document.getElementById('hpYou');
 const hpBossEl = document.getElementById('hpBoss');
+const arenaTip = document.getElementById('arenaTip');
 
 // Attach confetti to our overlay canvas
 const confettiCanvas = document.getElementById('confettiCanvas');
@@ -589,7 +590,7 @@ function renderArenaTierOptions() {
 }
 function updateArenaTierUI() {
   const tier = currentArenaTier();
-  arenaTierDetails.textContent = `${tier.bossHp} Boss HP · ${tier.oreGain} Ore · ${Math.round(tier.gemChance * 100)}% Gem · Wins ${arenaWins[tier.id - 1]}`;
+  arenaTierDetails.textContent = `${tier.bossHp} Boss HP · ${tier.attackLabel} · ${tier.oreGain} Ore · ${Math.round(tier.gemChance * 100)}% Gem · Wins ${arenaWins[tier.id - 1]}`;
   fightBtn.textContent = `Enter ${tier.name} Arena (${tier.keyCost} Keys)`;
   fightBtn.disabled = Math.floor(keys) < tier.keyCost;
 }
@@ -827,12 +828,14 @@ function openArena() {
   arena = {
     tier,
     you:  { x:120, y:210, r:14, vx:0, vy:0, hp:playerMaxHp(), dash:0 },
-    boss: { x:560, y:210, r:28, hp:tier.bossHp, cd:2.0, tele:0, phase:0 },
+    boss: { x:560, y:210, r:28, hp:tier.bossHp, cd:2.0, shotCd:tier.projectileCooldown, tele:0, phase:0 },
     shots: [],
+    enemyShots: [],
     t: performance.now(),
     stopped: false
   };
   arena.wave = null;
+  arenaTip.textContent = tier.projectileCount ? 'Dash through shockwaves and incoming volleys' : 'Dash through the red shockwave';
 
   window.addEventListener('keydown', onKey, false);
   window.addEventListener('keyup', onKeyUp, false);
@@ -887,6 +890,16 @@ function applyWinRewards() {
   renderArenaTierOptions();
 }
 
+function fireBossVolley() {
+  const { boss, you, tier } = arena;
+  const aim = Math.atan2(you.y - boss.y, you.x - boss.x);
+  const middle = (tier.projectileCount - 1) / 2;
+  for (let i = 0; i < tier.projectileCount; i++) {
+    const angle = aim + (i - middle) * tier.projectileSpread;
+    arena.enemyShots.push({ x:boss.x, y:boss.y, r:6, vx:Math.cos(angle)*tier.projectileSpeed, vy:Math.sin(angle)*tier.projectileSpeed, damage:tier.projectileDamage, t:0, color:tier.id===2 ? '#ffad42' : '#ff5b3d' });
+  }
+}
+
 function arenaLoop(now) {
   if (!arena || arena.stopped) return;
   const dt = Math.min(0.033, (now - arena.t)/1000); arena.t = now;
@@ -927,6 +940,13 @@ function arenaLoop(now) {
       arena.wave = { r: 28, speed: 140, max: 260, hit: false };
     }
   }
+  if (arena.tier.projectileCount > 0) {
+    boss.shotCd -= dt;
+    if (boss.shotCd <= 0) {
+      fireBossVolley();
+      boss.shotCd = arena.tier.projectileCooldown;
+    }
+  }
 
   const dist = Math.hypot(you.x - boss.x, you.y - boss.y);
   if (arena.wave) {
@@ -949,7 +969,17 @@ function arenaLoop(now) {
     ctx.beginPath(); ctx.arc(boss.x, boss.y, r, 0, Math.PI*2); ctx.stroke();
   }
 
-  // shots
+  // boss projectiles
+  for (const shot of arena.enemyShots) {
+    shot.x += shot.vx * dt; shot.y += shot.vy * dt; shot.t += dt;
+    if (circleHit(shot.x, shot.y, shot.r, you.x, you.y, you.r) && you.dash <= 0) {
+      you.hp -= shot.damage;
+      shot.t = 99;
+    }
+  }
+  arena.enemyShots = arena.enemyShots.filter(shot => shot.x>-20 && shot.x<cv.width+20 && shot.y>-20 && shot.y<cv.height+20 && shot.t<5);
+
+  // player shots
   for (const s of arena.shots) { s.x += s.vx*dt; s.y += s.vy*dt; s.t += dt; }
   arena.shots = arena.shots.filter(s=> s.x>-20 && s.x<cv.width+20 && s.y>-20 && s.y<cv.height+20 && s.t<3 );
   for (const s of arena.shots) {
@@ -957,6 +987,7 @@ function arenaLoop(now) {
   }
 
   // draw actors
+  arena.enemyShots.forEach(shot => { ctx.fillStyle = shot.color; circle(ctx,shot.x,shot.y,shot.r); });
   ctx.fillStyle = '#ff5b5b'; circle(ctx,boss.x,boss.y,boss.r);
   ctx.fillStyle = '#6df2a7'; circle(ctx,you.x,you.y,you.r);
   ctx.fillStyle = '#c7d2ff'; arena.shots.forEach(s=> circle(ctx,s.x,s.y,2));
