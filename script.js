@@ -77,6 +77,8 @@ const recycleStatus = document.getElementById('recycleStatus');
 
 const baseUpModal = document.getElementById('baseUpModal');
 const skillUpModal = document.getElementById('skillUpModal');
+const gearModal = document.getElementById('gearModal');
+const gearList = document.getElementById('gearList');
 const baseUpList  = document.getElementById('baseUpList');
 const skillUpList = document.getElementById('skillUpList');
 
@@ -347,12 +349,25 @@ const SKILL_UPS = {
   ],
 };
 const ownedSkillUps = new Set();
+const GEAR = [
+  { id:'reinforcedPick', name:'Reinforced Pick', desc:'+25% Mining rate while equipped', cost:30, slot:'tool' },
+  { id:'forgeGauntlet', name:'Forge Gauntlet', desc:'+25% Smithing rate while equipped', cost:30, slot:'tool' },
+  { id:'platedVest', name:'Plated Vest', desc:'+25 maximum arena health', cost:40, slot:'armor' }
+];
+const ownedGear = new Set();
+let equippedTool = null;
+function gearRateMult(skillId) {
+  if (skillId === 'Mining' && equippedTool === 'reinforcedPick') return 1.25;
+  if (skillId === 'Smithing' && equippedTool === 'forgeGauntlet') return 1.25;
+  return 1;
+}
+function playerMaxHp() { return ownedGear.has('platedVest') ? 125 : 100; }
 
 /* =====================================
    SAVE / LOAD
 ===================================== */
 const SAVE_KEY = 'momentum-save';
-const SAVE_VERSION = 2;
+const SAVE_VERSION = 3;
 const AUTO_SAVE_MS = 10_000;
 let resetInProgress = false;
 
@@ -374,7 +389,9 @@ function createSaveData() {
     keyRateMult,
     bulletDamage: BULLET_DAMAGE,
     ownedBaseUps: [...ownedBaseUps],
-    ownedSkillUps: [...ownedSkillUps]
+    ownedSkillUps: [...ownedSkillUps],
+    ownedGear: [...ownedGear],
+    equippedTool
   };
 }
 
@@ -396,7 +413,7 @@ function loadGame() {
 
   try {
     const save = JSON.parse(raw);
-    if (save.version !== 1 && save.version !== SAVE_VERSION) return false;
+    if (![1, 2, SAVE_VERSION].includes(save.version)) return false;
 
     save.skills.forEach(savedSkill => {
       const skill = skills.find(s => s.id === savedSkill.id);
@@ -425,6 +442,9 @@ function loadGame() {
     save.ownedBaseUps.forEach(id => ownedBaseUps.add(id));
     ownedSkillUps.clear();
     save.ownedSkillUps.forEach(id => ownedSkillUps.add(id));
+    ownedGear.clear();
+    if (save.version >= 3) save.ownedGear.forEach(id => ownedGear.add(id));
+    equippedTool = save.version >= 3 && ownedGear.has(save.equippedTool) ? save.equippedTool : null;
 
     updateSaveStatus(save.savedAt);
     return true;
@@ -545,6 +565,32 @@ function getSkillCfg(id){
 }
 
 
+
+function renderGear() {
+  gearList.innerHTML = '';
+  const bars = skills.find(s=>s.id==='Smithing').qty;
+  GEAR.forEach(item => {
+    const owned = ownedGear.has(item.id);
+    const equipped = item.slot === 'armor' ? owned : equippedTool === item.id;
+    const row = document.createElement('div');
+    row.style.margin = '10px 0';
+    row.innerHTML = `<div style="font-weight:600">${item.name}</div><div style="opacity:.9; margin:2px 0 6px">${item.desc}</div><div class="flex"><span>${owned ? 'Crafted' : `Cost: ${item.cost} Bars`}</span><button class="btn" ${equipped ? 'disabled' : ''}>${equipped ? 'Equipped' : owned ? 'Equip' : 'Craft'}</button></div>`;
+    row.querySelector('button').onclick = () => {
+      if (!ownedGear.has(item.id)) {
+        const smithing = skills.find(s=>s.id==='Smithing');
+        if (smithing.qty < item.cost) { showToast('Not enough Bars'); return; }
+        smithing.qty -= item.cost;
+        ownedGear.add(item.id);
+        showToast(`Crafted ${item.name}`);
+      }
+      if (item.slot === 'tool') equippedTool = item.id;
+      renderGear();
+    };
+    gearList.appendChild(row);
+  });
+  const equipped = GEAR.find(item=>item.id===equippedTool)?.name || 'None';
+  gearList.insertAdjacentHTML('afterbegin', `<div style="margin-bottom:10px">Bars available: ${bars.toFixed(1)} · Tool equipped: ${equipped}</div>`);
+}
 
 /* =====================================
    UI RENDERERS
@@ -669,7 +715,7 @@ actives.forEach(s => {
   const cfg = getSkillCfg(s.id);
   if (cfg.canAct && !cfg.canAct()) return;
   const H = hone === s.id ? honingMult : 1.0;
-  const perSec = clampPerSec(s.basePerSec * m * H * baseMult);
+  const perSec = clampPerSec(s.basePerSec * m * H * baseMult * gearRateMult(s.id));
 
   s.progress += perSec * dt;
 
@@ -689,7 +735,7 @@ skills.forEach(s=>{
   const H = hone === s.id ? honingMult : 1.0;
   const cfg = getSkillCfg(s.id);
   const waiting = s.active && cfg.canAct && !cfg.canAct();
-  const perSec = s.active && !waiting ? clampPerSec(s.basePerSec * m * H * baseMult) : 0;
+  const perSec = s.active && !waiting ? clampPerSec(s.basePerSec * m * H * baseMult * gearRateMult(s.id)) : 0;
 
   const tickPct = Math.min(100, s.progress * 100);
   s._els.tickFill.style.width = tickPct.toFixed(1) + '%';
@@ -749,7 +795,7 @@ const keysDown = {};
 function openArena() {
   modal.style.display = 'flex';
   arena = {
-    you:  { x:120, y:210, r:14, vx:0, vy:0, hp:100, dash:0 },
+    you:  { x:120, y:210, r:14, vx:0, vy:0, hp:playerMaxHp(), dash:0 },
     boss: { x:560, y:210, r:28, hp:30, cd:2.0, tele:0, phase:0 },
     shots: [],
     t: performance.now(),
@@ -890,6 +936,8 @@ function arenaLoop(now) {
    EVENTS
 ===================================== */
 document.getElementById('openBaseUpBtn').onclick = ()=>{ renderBaseUps(); baseUpModal.style.display='flex'; };
+document.getElementById('openGearBtn').onclick = ()=>{ renderGear(); gearModal.style.display='flex'; };
+document.getElementById('closeGear').onclick = ()=> gearModal.style.display='none';
 document.getElementById('closeBaseUp').onclick   = ()=> baseUpModal.style.display='none';
 
 document.getElementById('openSkillUpBtn').onclick= ()=>{ renderSkillUps('Mining'); skillUpModal.style.display='flex'; };

@@ -66,7 +66,8 @@
   background: transparent;
 }
 #baseUpModal,
-#skillUpModal {
+#skillUpModal,
+#gearModal {
   position: fixed;
   inset: 0;
   display: none;             /* hide by default */
@@ -76,9 +77,14 @@
   z-index: 10000;
 }
 #baseUpModal > div,
-#skillUpModal > div {
+#skillUpModal > div,
+#gearModal > div {
   max-height: 80vh;
   overflow-y: auto;
+}
+#gearModal > div {
+  width: min(520px, calc(100vw - 32px)) !important;
+  box-sizing: border-box;
 }
 #levelHost {
   position: fixed;
