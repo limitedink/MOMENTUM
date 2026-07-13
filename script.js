@@ -24,14 +24,18 @@ const skills = [
   { id:'Mining',   basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
   { id:'Smithing', basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
   { id:'Combat',   basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
+  { id:'Fishing',  basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
 ]
 
-let unlockedNormalSlots = 3;
+let unlockedNormalSlots = 4;
 let hone = null;
 let honingMult = 1.8;
 let keys = 0;
 let rareGems = 0;
 let scrap = 0;
+let basicBait = 0;
+let uncommonFish = 0;
+let fishingBuffSecs = 0;
 const SMELT_ORE_COST = 1;
 const SMELT_FAIL_CHANCE = 0.10;
 const SCRAP_RECYCLE_COST = 5;
@@ -83,6 +87,16 @@ const saveBtn = document.getElementById('saveBtn');
 const resetSaveBtn = document.getElementById('resetSaveBtn');
 const recycleScrapBtn = document.getElementById('recycleScrapBtn');
 const recycleStatus = document.getElementById('recycleStatus');
+const fishingModal = document.getElementById('fishingModal');
+const fishingBaitSelect = document.getElementById('fishingBaitSelect');
+const fishingBaitCount = document.getElementById('fishingBaitCount');
+const fishingStatus = document.getElementById('fishingStatus');
+const fishingPlayfield = document.getElementById('fishingPlayfield');
+const fishingFish = document.getElementById('fishingFish');
+const fishingCatchZone = document.getElementById('fishingCatchZone');
+const fishingCatchFill = document.getElementById('fishingCatchFill');
+const fishingTensionFill = document.getElementById('fishingTensionFill');
+const fishingTime = document.getElementById('fishingTime');
 
 const baseUpModal = document.getElementById('baseUpModal');
 const skillUpModal = document.getElementById('skillUpModal');
@@ -377,7 +391,7 @@ function playerMaxHp() { return ownedGear.has('platedVest') ? 125 : 100; }
    SAVE / LOAD
 ===================================== */
 const SAVE_KEY = 'momentum-save';
-const SAVE_VERSION = 4;
+const SAVE_VERSION = 5;
 const AUTO_SAVE_MS = 10_000;
 let resetInProgress = false;
 
@@ -394,6 +408,9 @@ function createSaveData() {
     keys,
     rareGems,
     scrap,
+    basicBait,
+    uncommonFish,
+    fishingBuffSecs,
     globalBuff: { ...globalBuff },
     baseMult,
     keyRateMult,
@@ -426,7 +443,7 @@ function loadGame() {
 
   try {
     const save = JSON.parse(raw);
-    if (![1, 2, 3, SAVE_VERSION].includes(save.version)) return false;
+    if (![1, 2, 3, 4, SAVE_VERSION].includes(save.version)) return false;
 
     save.skills.forEach(savedSkill => {
       const skill = skills.find(s => s.id === savedSkill.id);
@@ -440,12 +457,15 @@ function loadGame() {
       skill.progress = savedSkill.progress;
     });
 
-    unlockedNormalSlots = save.unlockedNormalSlots;
+    unlockedNormalSlots = Math.max(save.unlockedNormalSlots, skills.length);
     hone = skills.some(s => s.id === save.hone) ? save.hone : null;
     honingMult = save.honingMult;
     keys = save.keys;
     rareGems = save.rareGems;
     scrap = save.version >= 2 ? save.scrap ?? 0 : 0;
+    basicBait = save.version >= 5 ? save.basicBait ?? 0 : 0;
+    uncommonFish = save.version >= 5 ? save.uncommonFish ?? 0 : 0;
+    fishingBuffSecs = save.version >= 5 ? save.fishingBuffSecs ?? 0 : 0;
     globalBuff = { ...save.globalBuff };
     baseMult = save.baseMult;
     keyRateMult = save.keyRateMult;
@@ -569,6 +589,7 @@ const SKILL_CFG = {
       }
     }
   },
+  Fishing: { xpPerAction: 20, onAction(s){ s.qty += 1; } },
   Combat:   { xpPerAction: 20, onAction(s, m){
     const keysPerAction = 0.10 * m * keyRateMult;
     keys += keysPerAction;
@@ -581,6 +602,8 @@ function getSkillCfg(id){
 }
 
 
+
+function fishingRateMult(skillId) { return skillId === 'Fishing' && fishingBuffSecs > 0 ? 1.5 : 1; }
 
 function currentArenaTier() { return ARENA_TIERS[selectedArenaTier - 1]; }
 function renderArenaTierOptions() {
@@ -736,6 +759,7 @@ effReadout.textContent = `Efficiency m(a): ${m.toFixed(2)}x  Honed: ${hone || 'N
     globalBuff.secs -= dt;
     if (globalBuff.secs<0) globalBuff.secs = 0;
   }
+  if (fishingBuffSecs > 0) fishingBuffSecs = Math.max(0, fishingBuffSecs - dt);
   buffLabel.textContent = globalBuff.secs>0 ? `1.5x ${Math.ceil(globalBuff.secs)}s` : 'none';
 
  
@@ -745,7 +769,7 @@ actives.forEach(s => {
   const cfg = getSkillCfg(s.id);
   if (cfg.canAct && !cfg.canAct()) return;
   const H = hone === s.id ? honingMult : 1.0;
-  const perSec = clampPerSec(s.basePerSec * m * H * baseMult * gearRateMult(s.id));
+  const perSec = clampPerSec(s.basePerSec * m * H * baseMult * gearRateMult(s.id) * fishingRateMult(s.id));
 
   s.progress += perSec * dt;
 
@@ -765,7 +789,7 @@ skills.forEach(s=>{
   const H = hone === s.id ? honingMult : 1.0;
   const cfg = getSkillCfg(s.id);
   const waiting = s.active && cfg.canAct && !cfg.canAct();
-  const perSec = s.active && !waiting ? clampPerSec(s.basePerSec * m * H * baseMult * gearRateMult(s.id)) : 0;
+  const perSec = s.active && !waiting ? clampPerSec(s.basePerSec * m * H * baseMult * gearRateMult(s.id) * fishingRateMult(s.id)) : 0;
 
   const tickPct = Math.min(100, s.progress * 100);
   s._els.tickFill.style.width = tickPct.toFixed(1) + '%';
@@ -796,6 +820,9 @@ skills.forEach(s=>{
     </div>
     <div style="margin-top:8px">Rare Gems: <span class="yellow" id="gemLbl">${rareGems}</span></div>
     <div>Scrap: <span class="yellow">${scrap}</span></div>
+    <div>Raw Fish: <span class="yellow">${skills.find(s=>s.id==='Fishing').qty.toFixed(1)}</span></div>
+    <div>Basic Bait: <span class="yellow">${basicBait}</span> · Uncommon Fish: <span class="yellow">${uncommonFish}</span></div>
+    <div>Fishing Boost: <span class="${fishingBuffSecs > 0 ? 'green' : ''}">${fishingBuffSecs > 0 ? `1.5x ${Math.ceil(fishingBuffSecs)}s` : 'None'}</span></div>
   `;
   recycleScrapBtn.disabled = scrap < SCRAP_RECYCLE_COST;
   recycleStatus.textContent = `${scrap}/${SCRAP_RECYCLE_COST} Scrap — recycle 5 Scrap into 1 Ore.`;
@@ -815,6 +842,85 @@ statusEl.innerHTML = `
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
+
+let fishingGame = null;
+let fishingHolding = false;
+let fishingRaf = null;
+
+function updateFishingBaitUI() {
+  fishingBaitCount.textContent = `Basic Bait: ${basicBait}`;
+}
+function openFishing() {
+  fishingModal.style.display = 'flex';
+  updateFishingBaitUI();
+  fishingStatus.textContent = 'Choose bait, then cast.';
+}
+function closeFishing() {
+  if (fishingGame) finishFishingCast(false, 'Cast cancelled', false);
+  fishingModal.style.display = 'none';
+}
+function prepareBasicBait() {
+  const fishing = skills.find(s=>s.id==='Fishing');
+  if (fishing.qty < 3) { showToast('Need 3 Raw Fish'); return; }
+  fishing.qty -= 3;
+  basicBait += 1;
+  updateFishingBaitUI();
+  showToast('Prepared 1 Basic Bait');
+}
+function startFishingCast() {
+  if (fishingGame) return;
+  let usedBait = fishingBaitSelect.value;
+  if (usedBait === 'basic' && basicBait < 1) {
+    usedBait = 'none';
+    fishingBaitSelect.value = 'none';
+    fishingStatus.textContent = 'Out of Basic Bait — casting without bait.';
+  }
+  if (usedBait === 'basic') basicBait -= 1;
+  updateFishingBaitUI();
+  fishingGame = { fishY:60 + Math.random()*160, fishV:90, steer:0.7, zoneY:190, catchProgress:0, tension:0, timeLeft:45, usedBait, last:performance.now() };
+  fishingStatus.textContent = usedBait === 'basic' ? 'Basic Bait used. Keep the fish in the catch zone.' : 'Keep the fish in the catch zone.';
+  fishingRaf = requestAnimationFrame(updateFishingCast);
+}
+function updateFishingCast(now) {
+  if (!fishingGame) return;
+  const g = fishingGame;
+  const dt = Math.min(0.05, (now - g.last) / 1000); g.last = now;
+  g.timeLeft -= dt; g.steer -= dt;
+  if (g.steer <= 0) { g.fishV = (50 + Math.random()*100) * (Math.random()<0.5 ? -1 : 1); g.steer = 0.45 + Math.random()*0.8; }
+  g.fishY += g.fishV * dt;
+  if (g.fishY < 0 || g.fishY > 280) { g.fishY = Math.max(0, Math.min(280, g.fishY)); g.fishV *= -1; }
+  g.zoneY += (fishingHolding ? -150 : 105) * dt;
+  g.zoneY = Math.max(0, Math.min(240, g.zoneY));
+  const overlapping = g.fishY + 20 >= g.zoneY && g.fishY <= g.zoneY + 60;
+  g.catchProgress = Math.max(0, Math.min(100, g.catchProgress + (overlapping ? 28 : -14) * dt));
+  g.tension = Math.max(0, Math.min(100, g.tension + (fishingHolding ? 45 : -55) * dt));
+  fishingFish.style.top = `${g.fishY}px`; fishingCatchZone.style.top = `${g.zoneY}px`;
+  fishingCatchFill.style.width = `${g.catchProgress}%`; fishingTensionFill.style.width = `${g.tension}%`; fishingTime.textContent = `${Math.ceil(g.timeLeft)}s`;
+  if (g.catchProgress >= 100) return finishFishingCast(true, 'Fish caught');
+  if (g.tension >= 100) return finishFishingCast(false, 'The line broke');
+  if (g.timeLeft <= 0) return finishFishingCast(false, 'The fish escaped');
+  fishingRaf = requestAnimationFrame(updateFishingCast);
+}
+function finishFishingCast(success, message, applyRewards = true) {
+  if (!fishingGame) return null;
+  const g = fishingGame; fishingGame = null;
+  if (fishingRaf) cancelAnimationFrame(fishingRaf);
+  const fishing = skills.find(s=>s.id==='Fishing');
+  const rewards = [];
+  if (applyRewards) {
+    if (success) {
+      const fishQty = g.usedBait === 'basic' ? 10 : 8;
+      const xp = g.usedBait === 'basic' ? 100 : 80;
+      fishing.qty += fishQty; fishing.xp += xp; rewards.push({itemId:'rawFish', quantity:fishQty}, {itemId:'fishingXp', quantity:xp});
+      fishingBuffSecs = Math.max(fishingBuffSecs, 300);
+      if (g.usedBait === 'basic' && Math.random() < 0.15) { uncommonFish += 1; rewards.push({itemId:'uncommonFish', quantity:1}); }
+    } else { fishing.xp += 10; rewards.push({itemId:'fishingXp', quantity:10}); }
+    tryLevelUp(fishing);
+  }
+  const result = { activity:'fishing', spot:'shallows', success, score:Math.round(g.catchProgress), rewards, usedBait:g.usedBait, timestamp:Date.now() };
+  fishingStatus.textContent = `${message}. ${success ? 'Cast again for another catch.' : 'You can cast again immediately.'}`;
+  return result;
+}
 
 /* =====================================
    ARENA: STATE AND LOOP
@@ -1016,6 +1122,14 @@ document.querySelectorAll('#skillUpModal [data-tab]').forEach(btn=>{
 });
 
 document.getElementById('closeArena').onclick  = ()=> closeArena();
+document.getElementById('openFishingBtn').onclick = openFishing;
+document.getElementById('closeFishing').onclick = closeFishing;
+document.getElementById('startFishingCast').onclick = startFishingCast;
+document.getElementById('prepareBaitBtn').onclick = prepareBasicBait;
+fishingPlayfield.addEventListener('pointerdown', e => { e.preventDefault(); fishingHolding = true; });
+window.addEventListener('pointerup', () => fishingHolding = false);
+window.addEventListener('keydown', e => { if (e.code === 'Space' && fishingModal.style.display === 'flex') { e.preventDefault(); fishingHolding = true; } });
+window.addEventListener('keyup', e => { if (e.code === 'Space') fishingHolding = false; });
 saveBtn.onclick = () => saveGame(true);
 resetSaveBtn.onclick = resetSave;
 recycleScrapBtn.onclick = () => {

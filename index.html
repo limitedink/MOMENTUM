@@ -74,6 +74,13 @@
           <button class="btn" id="openGearBtn">Craft Equipment</button>
         </div>
 
+        <!-- Fishing Activity -->
+        <div class="card">
+          <p class="title">Active Fishing</p>
+          <div class="small" style="margin-bottom:8px">Optional Shallows fishing for burst rewards and a temporary idle boost.</div>
+          <button class="btn" id="openFishingBtn">Go Fishing</button>
+        </div>
+
         <!-- Save -->
         <div class="card">
           <p class="title">Save</p>
@@ -93,6 +100,24 @@
           <div class="small" id="recycleStatus" style="margin-top:6px">0/5 Scrap — recycle 5 Scrap into 1 Ore.</div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Fishing Modal -->
+  <div id="fishingModal">
+    <div class="fishing-panel">
+      <div class="flex"><span class="title" style="margin:0">Shallows Fishing</span><button class="btn" id="closeFishing">Exit</button></div>
+      <div class="fishing-controls small">
+        <select class="btn" id="fishingBaitSelect"><option value="none">No Bait</option><option value="basic">Basic Bait</option></select>
+        <span id="fishingBaitCount">Basic Bait: 0</span>
+        <button class="btn" id="prepareBaitBtn">Prepare Bait (3 Fish)</button>
+        <button class="btn" id="startFishingCast">Cast</button>
+      </div>
+      <div class="small" id="fishingStatus">Choose bait, then cast.</div>
+      <div id="fishingPlayfield"><div id="fishingFish"></div><div id="fishingCatchZone"></div></div>
+      <div class="small">Catch <span id="fishingTime">45s</span></div><div class="fishing-meter"><i id="fishingCatchFill"></i></div>
+      <div class="small">Tension</div><div class="fishing-meter tension"><i id="fishingTensionFill"></i></div>
+      <div class="small">Hold Space or mouse to raise the catch zone. Release to lower it.</div>
     </div>
   </div>
 

@@ -236,3 +236,13 @@ canvas {
   background: linear-gradient(135deg, #2a2230, #5a2630); }
 
 /*# sourceMappingURL=styles.css.map */
+
+#fishingModal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.7); z-index:10000; }
+.fishing-panel { width:min(520px, calc(100vw - 32px)); max-height:90vh; overflow:auto; box-sizing:border-box; background:#0b0f1c; border:1px solid #222745; border-radius:12px; padding:16px; }
+.fishing-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:12px 0; }
+#fishingPlayfield { position:relative; width:140px; height:300px; margin:12px auto; overflow:hidden; background:linear-gradient(#15385c,#08192d); border:1px solid #4a79a8; border-radius:10px; touch-action:none; }
+#fishingFish { position:absolute; left:54px; top:60px; width:32px; height:20px; border-radius:50% 60% 60% 50%; background:#ffe89a; }
+#fishingCatchZone { position:absolute; left:8px; top:190px; width:122px; height:60px; border:2px solid #6df2a7; background:rgba(109,242,167,.14); border-radius:8px; }
+.fishing-meter { height:10px; background:#0d1020; border:1px solid #222745; border-radius:6px; overflow:hidden; margin:4px 0 10px; }
+.fishing-meter i { display:block; width:0; height:100%; background:#6df2a7; }
+.fishing-meter.tension i { background:#ff6b6b; }
