@@ -22,14 +22,21 @@
   <div id="levelHost"></div>
 
   <div class="wrap">
-    <h1 style="font-size:64px; margin:0 0 12px;">MOMENTUM</h1>
-    <div class="small" id="status"></div>
+    <header class="game-header">
+      <div>
+        <div class="eyebrow">IDLE // ACTIVE RPG PROTOTYPE</div>
+        <h1>MOMENTUM</h1>
+        <p class="game-subtitle">Choose your focus. Build your loadout. Push the frontier.</p>
+      </div>
+      <div class="header-mark" aria-hidden="true">M</div>
+    </header>
+    <div id="status" class="status-bar"></div>
 
-    <div class="row" style="margin-top:12px">
-      <div class="grid">
+    <main class="row">
+      <div class="dashboard-grid">
         <!-- Normal tracks -->
-        <div class="card">
-          <p class="title">Normal Tracks <span class="tag" id="activeCountTag">active: 0</span></p>
+        <section class="card card-skills">
+          <p class="title"><span class="title-icon">◆</span> Skill Matrix <span class="tag" id="activeCountTag">active: 0</span></p>
           <div class="small" style="margin-bottom:8px">
             Run any skill in parallel. Fewer active skills increases each skill efficiency. Honing stacks on top.
           </div>
@@ -37,70 +44,70 @@
           <div class="small" style="margin-top:8px">
             Per track efficiency <span id="effReadout">1.00x</span>
           </div>
-        </div>
+        </section>
 
         <!-- Honing -->
-        <div class="card">
-          <p class="title">Honing Slot</p>
+        <section class="card card-honing">
+          <p class="title"><span class="title-icon">✦</span> Honing Slot</p>
           <div class="small" style="margin-bottom:8px">Pick one skill to supercharge. Honing multiplier = 1.8x.</div>
           <select id="honeSelect" class="btn"></select>
           <div class="small" style="margin-top:8px">Honed: <span id="honedLabel">None</span></div>
           <div class="small" style="margin-top:8px">Global boss buff: <span id="buffLabel">none</span></div>
-        </div>
+        </section>
 
         <!-- Boss Gate -->
-        <div class="card">
-          <p class="title">Boss Gate</p>
+        <section class="card card-arena">
+          <p class="title"><span class="title-icon">⚔</span> Boss Gate</p>
           <div class="small">Combat generates Boss Keys. Defeat each tier to unlock the next challenge.</div>
           <div style="margin:8px 0" class="small">Keys: <span id="keysLabel">0</span></div>
           <select id="arenaTierSelect" class="btn" style="width:100%; margin-bottom:6px"></select>
           <div class="small" id="arenaTierDetails" style="margin-bottom:8px"></div>
           <button class="btn" id="fightBtn" disabled>Enter Arena</button>
           <div class="small" style="margin-top:8px">Higher tiers cost more Keys, attack faster, and grant larger rewards.</div>
-        </div>
+        </section>
 
         <!-- Upgrades -->
-        <div class="card">
-          <p class="title">Upgrades</p>
+        <section class="card card-upgrades">
+          <p class="title"><span class="title-icon">⬆</span> Upgrades</p>
           <div class="small" style="margin-bottom:8px">Spend resources to boost your account.</div>
           <button class="btn" id="openBaseUpBtn">Base Upgrades</button>
           <button class="btn" id="openSkillUpBtn">Skill Upgrades</button>
-        </div>
+        </section>
 
         <!-- Workshop -->
-        <div class="card">
-          <p class="title">Workshop</p>
+        <section class="card card-workshop">
+          <p class="title"><span class="title-icon">⚒</span> Workshop</p>
           <div class="small" style="margin-bottom:8px">Turn Bars into equipment and choose a specialized Tool.</div>
           <button class="btn" id="openGearBtn">Craft Equipment</button>
-        </div>
+        </section>
 
         <!-- Fishing Activity -->
-        <div class="card">
-          <p class="title">Active Fishing</p>
+        <section class="card card-fishing">
+          <p class="title"><span class="title-icon">◉</span> Active Fishing</p>
           <div class="small" style="margin-bottom:8px">Optional Shallows fishing for burst rewards and a temporary idle boost.</div>
           <button class="btn" id="openFishingBtn">Go Fishing</button>
-        </div>
+        </section>
 
         <!-- Save -->
-        <div class="card">
-          <p class="title">Save</p>
+        <section class="card card-save">
+          <p class="title"><span class="title-icon">▣</span> Save Core</p>
           <div class="small" id="saveStatus" style="margin-bottom:8px">Autosaves every 10 seconds.</div>
           <button class="btn" id="saveBtn">Save Now</button>
           <button class="btn" id="resetSaveBtn">Reset Save</button>
-        </div>
+        </section>
       </div>
 
       <!-- Totals -->
-      <div class="card">
-        <p class="title">Totals</p>
+      <section class="card card-inventory">
+        <p class="title"><span class="title-icon">◇</span> Resource Vault</p>
         <div id="totals"></div>
         <div style="margin-top:12px; padding-top:12px; border-top:1px solid #222745">
           <div class="small" style="margin-bottom:8px">Smithing consumes 1 Ore per attempt. Failed smelts produce Scrap.</div>
           <button class="btn" id="recycleScrapBtn" disabled>Recycle Scrap</button>
           <div class="small" id="recycleStatus" style="margin-top:6px">0/5 Scrap — recycle 5 Scrap into 1 Ore.</div>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   </div>
 
   <!-- Fishing Modal -->

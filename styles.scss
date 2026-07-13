@@ -1,139 +1,157 @@
-
-  body { font-family: system-ui, sans-serif; margin: 0; background:#0f1220; color:#e6e6f0 }
-  .wrap { max-width: 980px; margin: 24px auto; padding: 0 16px }
-  .row { display: grid; gap: 12px }
-  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px }
-  .card { background:#171a2b; border:1px solid #222745; border-radius:12px; padding:12px }
-  .title { font-weight:700; font-size:20px; margin:0 0 8px }
-  .btn { cursor:pointer; background:#2b3160; border:1px solid #39407a; color:#fff; padding:8px 10px; border-radius:8px }
-  .btn[disabled] { opacity:.5; cursor:not-allowed }
-  .tag { font-size:12px; padding:3px 8px; border-radius:999px; border:1px solid #39407a; color:#b9c0ff; display:inline-block }
-  .meter { height:8px; background:#0d1020; border-radius:6px; overflow:hidden; border:1px solid #222745 }
-  .meter > i { display:block; height:100%; background:#5a66ff; width:0% }
-  .green { color:#9cffb9 }
-  .yellow { color:#ffe89a }
-  .small { font-size:12px; opacity:.9 }
-  .flex { display:flex; gap:8px; align-items:center; justify-content:space-between }
-
-  #status {
-  margin-bottom: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-size: 13px;
+:root {
+  color-scheme: dark;
+  --bg: #060914;
+  --panel: #10182b;
+  --panel-2: #151f37;
+  --line: #28385f;
+  --line-bright: #4564a5;
+  --text: #edf4ff;
+  --muted: #95a5c7;
+  --cyan: #50d9ff;
+  --violet: #9b7bff;
+  --gold: #ffc857;
+  --green: #62e6a7;
+  --red: #ff637d;
 }
 
-.statLabel {
-  color: #9aa0c6;
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(80,217,255,.13), transparent 31rem),
+    radial-gradient(circle at 88% 12%, rgba(155,123,255,.14), transparent 28rem),
+    linear-gradient(rgba(40,56,95,.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(40,56,95,.09) 1px, transparent 1px),
+    var(--bg);
+  background-size: auto, auto, 34px 34px, 34px 34px, auto;
 }
-
-.statValue {
-  background: #1c2035;
-  border: 1px solid #2a3155;
-  padding: 2px 8px;
-  border-radius: 6px;
-  color: #e6e6f0;
-  font-weight: 500;
-}
-
-
-  /* arena modal */
-  #arenaModal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.6) }
-  #arena { background:#0b0f1c; border:1px solid #222745; border-radius:12px; padding:10px }
-  canvas { background:#0f1428; border:1px solid #222745; border-radius:12px; display:block }
-
-  /* result modal */
-  #resultModal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.6) }
-
-  /* toast */
-  #toastHost { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; pointer-events: none }
-  .toast {
-    background:#12172a; border:1px solid #222745; color:#e6e6f0;
-    padding:10px 12px; border-radius:10px; min-width: 180px;
-    box-shadow: 0 8px 20px rgba(0,0,0,.25); font-size:14px; opacity:0; transform: translateY(8px);
-    transition: opacity .2s ease, transform .2s ease;
-  }
-  .toast.show { opacity:1; transform: translateY(0) }
-
-#confettiCanvas {
+body::before {
+  content: "";
   position: fixed;
   inset: 0;
-  width: 100vw;          /* ensure the element fills the viewport */
-  height: 100vh;
-  display: block;        /* avoid inline gaps */
-  pointer-events: none;  /* clicks pass through */
-  z-index: 99999;        /* above everything */
-  background: transparent;
-}
-#baseUpModal,
-#skillUpModal,
-#gearModal {
-  position: fixed;
-  inset: 0;
-  display: none;             /* hide by default */
-  align-items: center;
-  justify-content: center;
-  background: rgba(0,0,0,.6); /* dim backdrop */
-  z-index: 10000;
-}
-#baseUpModal > div,
-#skillUpModal > div,
-#gearModal > div {
-  max-height: 80vh;
-  overflow-y: auto;
-}
-#gearModal > div {
-  width: min(520px, calc(100vw - 32px)) !important;
-  box-sizing: border-box;
-}
-#levelHost {
-  position: fixed;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  z-index: 10000;
   pointer-events: none;
+  background: linear-gradient(180deg, transparent 70%, rgba(6,9,20,.85));
 }
-.levelNotice {
-  background: linear-gradient(135deg, #222745, #2e3350);
-  border: 3px solid #6cf;
-  color: #fff;
-  padding: 24px 40px;
-  border-radius: 20px;
-  font-size: 36px;
-  font-weight: 900;
-  letter-spacing: 1px;
-  min-width: 420px;
-  text-align: center;
-  opacity: 0;
-  transform: translateY(-20px) scale(0.9);
-  transition: opacity .3s ease, transform .3s ease;
-  box-shadow: 0 12px 40px rgba(0,0,0,.6);
+button, select { font: inherit; }
+.wrap { position: relative; max-width: 1180px; margin: 0 auto; padding: 28px 20px 48px; }
+
+.game-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 132px;
+  padding: 22px 26px;
+  border: 1px solid var(--line-bright);
+  border-bottom: 3px solid var(--cyan);
+  background: linear-gradient(120deg, rgba(16,24,43,.96), rgba(15,20,42,.82));
+  box-shadow: 0 20px 55px rgba(0,0,0,.35), inset 0 1px rgba(255,255,255,.06);
+  clip-path: polygon(0 0, calc(100% - 26px) 0, 100% 26px, 100% 100%, 0 100%);
 }
-.levelNotice.show {
-  opacity: 1;
-  transform: translateY(0) scale(1);
+.eyebrow { color: var(--cyan); font: 700 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .2em; }
+h1 { margin: 3px 0 0; font-size: clamp(48px, 8vw, 78px); line-height: .95; letter-spacing: .05em; background: linear-gradient(90deg, #fff 5%, var(--cyan) 55%, var(--violet)); -webkit-background-clip: text; color: transparent; text-shadow: 0 0 35px rgba(80,217,255,.18); }
+.game-subtitle { margin: 10px 0 0; color: var(--muted); font-size: 14px; }
+.header-mark { display: grid; place-items: center; width: 76px; height: 76px; border: 2px solid var(--cyan); color: var(--cyan); font: 900 38px/1 ui-monospace, monospace; clip-path: polygon(50% 0,100% 50%,50% 100%,0 50%); background: rgba(80,217,255,.06); box-shadow: 0 0 30px rgba(80,217,255,.18), inset 0 0 24px rgba(80,217,255,.12); }
+
+.status-bar { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 12px; margin: 10px 0 16px; border: 1px solid var(--line); background: rgba(9,14,27,.92); box-shadow: inset 0 -1px rgba(255,255,255,.04); }
+.statLabel { color: var(--muted); font: 700 10px/1.8 ui-monospace, monospace; letter-spacing: .1em; text-transform: uppercase; }
+.statValue { color: var(--text); font: 700 12px/1.4 ui-monospace, monospace; background: var(--panel-2); border: 1px solid var(--line); border-left-color: var(--cyan); padding: 4px 9px; }
+
+.row { display: grid; gap: 14px; }
+.dashboard-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
+.card { position: relative; overflow: hidden; min-width: 0; padding: 16px; border: 1px solid var(--line); border-top: 2px solid var(--line-bright); background: linear-gradient(145deg, rgba(21,31,55,.96), rgba(12,18,33,.97)); box-shadow: 0 12px 28px rgba(0,0,0,.23), inset 0 1px rgba(255,255,255,.04); clip-path: polygon(0 0, calc(100% - 13px) 0, 100% 13px, 100% 100%, 0 100%); }
+.card::after { content: ""; position: absolute; right: 0; top: 0; width: 26px; height: 2px; background: var(--cyan); box-shadow: 0 0 14px var(--cyan); }
+.card-skills { grid-column: span 7; grid-row: span 3; }
+.card-honing { grid-column: span 5; border-top-color: var(--violet); }
+.card-arena { grid-column: span 5; border-top-color: var(--red); }
+.card-upgrades, .card-workshop, .card-fishing { grid-column: span 4; }
+.card-fishing { border-top-color: var(--cyan); }
+.card-save { grid-column: span 12; display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+.card-save .title { margin: 0 auto 0 0; }
+.card-save #saveStatus { flex-basis: 100%; order: 3; margin: 0 !important; }
+.card-inventory { border-top-color: var(--gold); }
+.title { display: flex; align-items: center; gap: 9px; margin: 0 0 10px; color: var(--text); font: 800 18px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .035em; text-transform: uppercase; }
+.title-icon { color: var(--cyan); text-shadow: 0 0 12px currentColor; }
+.small { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.flex { display: flex; gap: 9px; align-items: center; justify-content: space-between; }
+.green { color: var(--green); }
+.yellow { color: var(--gold); }
+.tag { display: inline-flex; align-items: center; margin-left: auto; padding: 4px 8px; color: var(--cyan); border: 1px solid rgba(80,217,255,.35); background: rgba(80,217,255,.08); font: 700 10px/1 ui-monospace, monospace; text-transform: uppercase; }
+
+.btn { min-height: 38px; cursor: pointer; color: var(--text); padding: 8px 13px; border: 1px solid var(--line-bright); border-left: 3px solid var(--violet); border-radius: 0; background: linear-gradient(180deg, #243257, #18233f); box-shadow: inset 0 1px rgba(255,255,255,.08), 0 5px 12px rgba(0,0,0,.2); clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px); transition: transform .12s ease, border-color .12s ease, background .12s ease, color .12s ease; }
+.btn:hover:not(:disabled) { color: #06101a; border-color: var(--cyan); background: var(--cyan); transform: translateY(-1px); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.btn[disabled] { opacity: .42; cursor: not-allowed; filter: saturate(.45); }
+select.btn { appearance: none; padding-right: 28px; background-image: linear-gradient(45deg, transparent 50%, var(--cyan) 50%), linear-gradient(135deg, var(--cyan) 50%, transparent 50%), linear-gradient(180deg, #243257, #18233f); background-position: calc(100% - 14px) 16px, calc(100% - 9px) 16px, 0 0; background-size: 5px 5px, 5px 5px, 100% 100%; background-repeat: no-repeat; }
+
+.skill-card { position: relative; padding: 11px 11px 10px 14px; margin-bottom: 8px !important; border: 1px solid var(--line); border-left: 3px solid #53617f; background: rgba(6,10,22,.6); transition: border-color .18s, background .18s, transform .18s, box-shadow .18s; }
+.skill-card:hover { transform: translateX(2px); border-color: var(--line-bright); }
+.skill-card.is-active { border-left-color: var(--cyan); background: rgba(80,217,255,.07); box-shadow: inset 10px 0 18px -18px var(--cyan); }
+.skill-card.is-honed { border-left-color: var(--violet); background: rgba(155,123,255,.11); box-shadow: inset 12px 0 22px -18px var(--violet), 0 0 18px rgba(155,123,255,.08); }
+.skill-card.is-waiting { border-left-color: var(--gold); opacity: .72; }
+.skill-card label { font: 800 13px/1 ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; }
+.skill-card input[type="checkbox"] { appearance: none; width: 17px; height: 17px; margin: 0 2px 0 0; vertical-align: middle; border: 1px solid var(--line-bright); background: #080d1a; box-shadow: inset 0 0 0 3px #080d1a; }
+.skill-card input[type="checkbox"]:checked { background: var(--cyan); box-shadow: inset 0 0 0 3px #080d1a, 0 0 10px rgba(80,217,255,.55); }
+.meter { height: 8px; margin-top: 8px; overflow: hidden; border: 1px solid #223050; border-radius: 0; background: #070b16; box-shadow: inset 0 2px 5px rgba(0,0,0,.7); }
+.meter > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--violet), var(--cyan)); box-shadow: 0 0 10px rgba(80,217,255,.45); }
+.skill-card .meter:nth-of-type(2) > i { background: linear-gradient(90deg, #247cd1, var(--cyan)) !important; }
+#totals .grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
+#totals .grid > div { padding: 10px; border: 1px solid var(--line); background: rgba(6,10,22,.58); }
+#totals .grid > div > div:first-child { color: var(--muted); font: 700 10px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .08em; }
+#totals .grid .yellow { margin-top: 4px; font: 800 20px ui-monospace, monospace; }
+
+#arenaModal, #resultModal, #baseUpModal, #skillUpModal, #gearModal, #fishingModal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 16px; background: rgba(2,5,12,.84); backdrop-filter: blur(7px); z-index: 10000; }
+#arena, #resultModal > div, #baseUpModal > div, #skillUpModal > div, #gearModal > div, .fishing-panel { width: min(720px, calc(100vw - 32px)) !important; max-height: 90vh; overflow: auto; padding: 16px !important; border: 1px solid var(--line-bright) !important; border-top: 3px solid var(--cyan) !important; border-radius: 0 !important; background: linear-gradient(145deg, #111a30, #090e1c) !important; box-shadow: 0 25px 80px rgba(0,0,0,.65), 0 0 30px rgba(80,217,255,.09); clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%); }
+#resultModal > div { max-width: 380px; }
+#baseUpModal > div { max-width: 520px; }
+#skillUpModal > div { max-width: 600px; }
+#gearModal > div, .fishing-panel { max-width: 560px; }
+canvas { display: block; max-width: 100%; height: auto; border: 1px solid var(--line-bright); border-radius: 0; background: #091126; box-shadow: inset 0 0 40px rgba(0,0,0,.55), 0 0 18px rgba(80,217,255,.08); }
+
+.fishing-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
+#fishingPlayfield { position: relative; width: 170px; height: 320px; margin: 14px auto; overflow: hidden; border: 2px solid var(--cyan); border-radius: 0; touch-action: none; background: linear-gradient(rgba(80,217,255,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(80,217,255,.08) 1px, transparent 1px), linear-gradient(#153d63,#071629); background-size: 20px 20px,20px 20px,auto; box-shadow: inset 0 0 35px rgba(0,0,0,.6), 0 0 22px rgba(80,217,255,.12); }
+#fishingFish { position: absolute; left: 68px; top: 60px; width: 34px; height: 20px; border-radius: 55% 70% 70% 55%; background: var(--gold); box-shadow: 0 0 14px rgba(255,200,87,.7); }
+#fishingFish::after { content:""; position:absolute; left:-9px; top:4px; border-right:10px solid var(--gold); border-top:6px solid transparent; border-bottom:6px solid transparent; }
+#fishingCatchZone { position: absolute; left: 8px; top: 190px; width: 150px; height: 60px; border: 2px solid var(--green); background: rgba(98,230,167,.12); box-shadow: inset 0 0 12px rgba(98,230,167,.15), 0 0 12px rgba(98,230,167,.25); }
+.fishing-meter { height: 11px; overflow: hidden; margin: 4px 0 10px; border: 1px solid var(--line); background: #060a14; }
+.fishing-meter i { display: block; width: 0; height: 100%; background: linear-gradient(90deg, #2ebf83, var(--green)); box-shadow: 0 0 12px rgba(98,230,167,.5); }
+.fishing-meter.tension i { background: linear-gradient(90deg, var(--gold), var(--red)); }
+
+#toastHost { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 99999; pointer-events: none; }
+.toast { min-width: 210px; padding: 11px 13px; color: var(--text); border: 1px solid var(--line-bright); border-left: 3px solid var(--cyan); background: #10182b; box-shadow: 0 12px 30px rgba(0,0,0,.4); opacity: 0; transform: translateX(12px); transition: opacity .2s, transform .2s; }
+.toast.show { opacity: 1; transform: translateX(0); }
+#confettiCanvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; pointer-events: none; z-index: 999999; background: transparent; border: 0; box-shadow: none; }
+#levelHost { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 100000; pointer-events: none; }
+.levelNotice { min-width: min(420px,calc(100vw - 32px)); padding: 20px 32px; color:#fff; text-align:center; font-size:30px; font-weight:900; border:2px solid var(--cyan); background:#111a30; box-shadow:0 18px 50px rgba(0,0,0,.55); opacity:0; transform:translateY(-16px) scale(.96); transition:opacity .25s, transform .25s; }
+.levelNotice.show { opacity:1; transform:translateY(0) scale(1); }
+.levelNotice.mining { border-color:var(--gold); } .levelNotice.smithing { border-color:#c9d1dc; } .levelNotice.combat { border-color:var(--red); } .levelNotice.fishing { border-color:var(--cyan); }
+
+@media (max-width: 820px) {
+  .wrap { padding: 14px 12px 32px; }
+  .game-header { min-height: 112px; padding: 18px; }
+  .header-mark { width: 54px; height: 54px; font-size: 28px; }
+  .game-subtitle { max-width: 30ch; }
+  .dashboard-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .card-skills, .card-honing, .card-arena, .card-upgrades, .card-workshop, .card-fishing, .card-save { grid-column: span 1; grid-row: auto; }
+  .card-skills, .card-save { grid-column: span 2; }
 }
-
-/* bigger banner already defined; add themed variants */
-.levelNotice.mining  { border-color:#f6c453; background:linear-gradient(135deg,#2a2530,#4d3c19); }
-.levelNotice.smithing{ border-color:#aeb6c1; background:linear-gradient(135deg,#2a2f36,#3e4957); }
-.levelNotice.combat  { border-color:#ff6b6b; background:linear-gradient(135deg,#2a2230,#5a2630); }
-
-
-
-
-
-
-#fishingModal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.7); z-index:10000; }
-.fishing-panel { width:min(520px, calc(100vw - 32px)); max-height:90vh; overflow:auto; box-sizing:border-box; background:#0b0f1c; border:1px solid #222745; border-radius:12px; padding:16px; }
-.fishing-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:12px 0; }
-#fishingPlayfield { position:relative; width:140px; height:300px; margin:12px auto; overflow:hidden; background:linear-gradient(#15385c,#08192d); border:1px solid #4a79a8; border-radius:10px; touch-action:none; }
-#fishingFish { position:absolute; left:54px; top:60px; width:32px; height:20px; border-radius:50% 60% 60% 50%; background:#ffe89a; }
-#fishingCatchZone { position:absolute; left:8px; top:190px; width:122px; height:60px; border:2px solid #6df2a7; background:rgba(109,242,167,.14); border-radius:8px; }
-.fishing-meter { height:10px; background:#0d1020; border:1px solid #222745; border-radius:6px; overflow:hidden; margin:4px 0 10px; }
-.fishing-meter i { display:block; width:0; height:100%; background:#6df2a7; }
-.fishing-meter.tension i { background:#ff6b6b; }
+@media (max-width: 560px) {
+  .game-header { align-items: flex-start; }
+  .header-mark { display:none; }
+  h1 { font-size: 46px; }
+  .game-subtitle { font-size:12px; }
+  .dashboard-grid { display:block; }
+  .card { margin-bottom: 10px; padding: 14px; }
+  .card-save { display:block; }
+  .card-save .title { margin-bottom:10px; }
+  .btn { min-height:44px; margin:2px 0; }
+  #totals .grid { grid-template-columns: 1fr; }
+  .flex { flex-wrap:wrap; }
+  #arenaModal { align-items:flex-start; overflow:auto; }
+  #arena { margin-top:8px; }
+  .levelNotice { font-size:24px; padding:16px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior:auto !important; transition:none !important; } }

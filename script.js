@@ -651,6 +651,7 @@ function renderSkills() {
   skillsDiv.innerHTML = '';
   skills.forEach(s=>{
     const card = document.createElement('div');
+    card.className = `skill-card skill-${s.id.toLowerCase()}`;
     card.style.marginBottom = '8px';
 
     const chk = document.createElement('input');
@@ -701,7 +702,7 @@ function renderSkills() {
     card.appendChild(row);
     skillsDiv.appendChild(card);
 
-    s._els = { tickFill, xpFill, rateEl, qtyEl, label: lbl };  // UPDATED
+    s._els = { card, tickFill, xpFill, rateEl, qtyEl, label: lbl };
   });
 
   honeSelect.innerHTML = '<option value="">None</option>' + skills.map(s=> `<option value="${s.id}">${s.id}</option>`).join('');
@@ -788,8 +789,11 @@ actives.forEach(s => {
 skills.forEach(s=>{
   const H = hone === s.id ? honingMult : 1.0;
   const cfg = getSkillCfg(s.id);
-  const waiting = s.active && cfg.canAct && !cfg.canAct();
+  const waiting = Boolean(s.active && cfg.canAct && !cfg.canAct());
   const perSec = s.active && !waiting ? clampPerSec(s.basePerSec * m * H * baseMult * gearRateMult(s.id) * fishingRateMult(s.id)) : 0;
+  s._els.card.classList.toggle('is-active', s.active);
+  s._els.card.classList.toggle('is-honed', hone === s.id);
+  s._els.card.classList.toggle('is-waiting', waiting);
 
   const tickPct = Math.min(100, s.progress * 100);
   s._els.tickFill.style.width = tickPct.toFixed(1) + '%';
@@ -1160,7 +1164,8 @@ function onKeyUp(e){ delete keysDown[e.code]; }
 function onClick(e){
   if (!arena) return;
   const rect = cv.getBoundingClientRect();
-  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const mx = (e.clientX - rect.left) * cv.width / rect.width;
+  const my = (e.clientY - rect.top) * cv.height / rect.height;
   const dx = mx - arena.you.x, dy = my - arena.you.y;
   const len = Math.hypot(dx,dy) || 1;
   arena.shots.push({ x: arena.you.x, y: arena.you.y, vx: dx/len*400, vy: dy/len*400, t:0 });
