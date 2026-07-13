@@ -102,6 +102,9 @@ const baseUpModal = document.getElementById('baseUpModal');
 const skillUpModal = document.getElementById('skillUpModal');
 const gearModal = document.getElementById('gearModal');
 const gearList = document.getElementById('gearList');
+const loadoutModal = document.getElementById('loadoutModal');
+const loadoutSlots = document.getElementById('loadoutSlots');
+const inventoryList = document.getElementById('inventoryList');
 const baseUpList  = document.getElementById('baseUpList');
 const skillUpList = document.getElementById('skillUpList');
 
@@ -378,20 +381,32 @@ const GEAR = [
   { id:'forgeGauntlet', name:'Forge Gauntlet', desc:'+25% Smithing rate while equipped', cost:30, slot:'tool' },
   { id:'platedVest', name:'Plated Vest', desc:'+25 maximum arena health', cost:40, slot:'armor' }
 ];
+const ITEMS = {
+  pulseSidearm:{ id:'pulseSidearm', name:'Pulse Sidearm', slot:'gun', damage:10, attackInterval:.25, accuracy:5, maxHit:4, projectileSpeed:400, lifetime:3 },
+  ironBlade:{ id:'ironBlade', name:'Iron Blade', slot:'melee', damage:14, attackInterval:.55, accuracy:3, maxHit:6, unavailable:true },
+  reinforcedPick:{ id:'reinforcedPick', name:'Reinforced Pick', slot:'tool', detail:'+25% Mining rate' },
+  forgeGauntlet:{ id:'forgeGauntlet', name:'Forge Gauntlet', slot:'tool', detail:'+25% Smithing rate' },
+  platedVest:{ id:'platedVest', name:'Plated Vest', slot:'armor', hp:25 },
+  rawFish:{ id:'rawFish', name:'Raw Fish', slot:'food', detail:'Healing unlocks with idle combat' }
+};
+const LOADOUT_SLOTS = ['melee','ranged','gun','magic','armor','tool','food'];
 const ownedGear = new Set();
+const ownedItems = new Set(['pulseSidearm']);
 let equippedTool = null;
+let equipment = { melee:null, ranged:null, gun:'pulseSidearm', magic:null, armor:null, tool:null, food:null };
 function gearRateMult(skillId) {
-  if (skillId === 'Mining' && equippedTool === 'reinforcedPick') return 1.25;
-  if (skillId === 'Smithing' && equippedTool === 'forgeGauntlet') return 1.25;
+  if (skillId === 'Mining' && equipment.tool === 'reinforcedPick') return 1.25;
+  if (skillId === 'Smithing' && equipment.tool === 'forgeGauntlet') return 1.25;
   return 1;
 }
-function playerMaxHp() { return ownedGear.has('platedVest') ? 125 : 100; }
+function playerMaxHp() { return equipment.armor === 'platedVest' ? 125 : 100; }
+function equippedGun() { return ITEMS[equipment.gun] || ITEMS.pulseSidearm; }
 
 /* =====================================
    SAVE / LOAD
 ===================================== */
 const SAVE_KEY = 'momentum-save';
-const SAVE_VERSION = 5;
+const SAVE_VERSION = 6;
 const AUTO_SAVE_MS = 10_000;
 let resetInProgress = false;
 
@@ -418,7 +433,9 @@ function createSaveData() {
     ownedBaseUps: [...ownedBaseUps],
     ownedSkillUps: [...ownedSkillUps],
     ownedGear: [...ownedGear],
-    equippedTool,
+    equippedTool: equipment.tool,
+    ownedItems: [...ownedItems],
+    equipment: { ...equipment },
     arenaTierUnlocked,
     selectedArenaTier,
     arenaWins: [...arenaWins]
@@ -443,7 +460,7 @@ function loadGame() {
 
   try {
     const save = JSON.parse(raw);
-    if (![1, 2, 3, 4, SAVE_VERSION].includes(save.version)) return false;
+    if (![1, 2, 3, 4, 5, SAVE_VERSION].includes(save.version)) return false;
 
     save.skills.forEach(savedSkill => {
       const skill = skills.find(s => s.id === savedSkill.id);
@@ -477,7 +494,15 @@ function loadGame() {
     save.ownedSkillUps.forEach(id => ownedSkillUps.add(id));
     ownedGear.clear();
     if (save.version >= 3) save.ownedGear.forEach(id => ownedGear.add(id));
-    equippedTool = save.version >= 3 && ownedGear.has(save.equippedTool) ? save.equippedTool : null;
+    ownedItems.clear();
+    ownedItems.add('pulseSidearm');
+    ownedGear.forEach(id => ownedItems.add(id));
+    if (save.version >= 6) save.ownedItems.forEach(id => { if (ITEMS[id]) ownedItems.add(id); });
+    const legacyTool = save.version >= 3 && ownedGear.has(save.equippedTool) ? save.equippedTool : null;
+    equipment = save.version >= 6 ? { ...equipment, ...save.equipment } : { melee:null, ranged:null, gun:'pulseSidearm', magic:null, armor:ownedGear.has('platedVest')?'platedVest':null, tool:legacyTool, food:null };
+    LOADOUT_SLOTS.forEach(slot => { if (equipment[slot] && !ownedItems.has(equipment[slot]) && equipment[slot] !== 'rawFish') equipment[slot] = null; });
+    if (!equipment.gun) equipment.gun = 'pulseSidearm';
+    equippedTool = equipment.tool;
     arenaTierUnlocked = save.version >= 4 ? save.arenaTierUnlocked : 1;
     selectedArenaTier = save.version >= 4 ? Math.min(save.selectedArenaTier, arenaTierUnlocked) : 1;
     arenaWins = save.version >= 4 ? [...save.arenaWins] : [0, 0, 0];
@@ -623,7 +648,7 @@ function renderGear() {
   const bars = skills.find(s=>s.id==='Smithing').qty;
   GEAR.forEach(item => {
     const owned = ownedGear.has(item.id);
-    const equipped = item.slot === 'armor' ? owned : equippedTool === item.id;
+    const equipped = equipment[item.slot] === item.id;
     const row = document.createElement('div');
     row.style.margin = '10px 0';
     row.innerHTML = `<div style="font-weight:600">${item.name}</div><div style="opacity:.9; margin:2px 0 6px">${item.desc}</div><div class="flex"><span>${owned ? 'Crafted' : `Cost: ${item.cost} Bars`}</span><button class="btn" ${equipped ? 'disabled' : ''}>${equipped ? 'Equipped' : owned ? 'Equip' : 'Craft'}</button></div>`;
@@ -631,17 +656,44 @@ function renderGear() {
       if (!ownedGear.has(item.id)) {
         const smithing = skills.find(s=>s.id==='Smithing');
         if (smithing.qty < item.cost) { showToast('Not enough Bars'); return; }
-        smithing.qty -= item.cost;
-        ownedGear.add(item.id);
-        showToast(`Crafted ${item.name}`);
+        smithing.qty -= item.cost; ownedGear.add(item.id); ownedItems.add(item.id); showToast(`Crafted ${item.name}`);
       }
+      equipment[item.slot] = item.id;
       if (item.slot === 'tool') equippedTool = item.id;
-      renderGear();
+      renderGear(); renderLoadout();
     };
     gearList.appendChild(row);
   });
-  const equipped = GEAR.find(item=>item.id===equippedTool)?.name || 'None';
-  gearList.insertAdjacentHTML('afterbegin', `<div style="margin-bottom:10px">Bars available: ${bars.toFixed(1)} · Tool equipped: ${equipped}</div>`);
+  gearList.insertAdjacentHTML('afterbegin', `<div style="margin-bottom:10px">Bars available: ${bars.toFixed(1)} · Tool equipped: ${ITEMS[equipment.tool]?.name || 'None'}</div>`);
+}
+
+function itemStats(item) {
+  if (!item) return 'No item equipped';
+  if (item.slot === 'gun' || item.slot === 'melee') return `${item.damage} damage · ${item.attackInterval}s interval · ${item.accuracy} accuracy · ${item.maxHit} max hit`;
+  if (item.slot === 'armor') return `+${item.hp} maximum HP`;
+  return item.detail || '';
+}
+function equipItem(itemId) {
+  const item = ITEMS[itemId];
+  if (!item || item.unavailable) return;
+  if (item.slot === 'food' && skills.find(s=>s.id==='Fishing').qty <= 0) return;
+  if (item.slot !== 'food' && !ownedItems.has(itemId)) return;
+  equipment[item.slot] = itemId;
+  if (item.slot === 'tool') equippedTool = itemId;
+  renderLoadout();
+}
+function renderLoadout() {
+  if (!loadoutSlots) return;
+  loadoutSlots.innerHTML = LOADOUT_SLOTS.map(slot => {
+    const item = ITEMS[equipment[slot]];
+    return `<div class="loadout-slot"><div class="slot-name">${slot === 'magic' ? 'Magic Spell' : slot}</div><strong>${item?.name || 'Empty'}</strong><div class="small">${itemStats(item)}</div>${item ? `<button class="btn" data-unequip="${slot}">Unequip</button>` : ''}</div>`;
+  }).join('');
+  loadoutSlots.querySelectorAll('[data-unequip]').forEach(btn => btn.onclick = () => { const slot=btn.dataset.unequip; equipment[slot]=null; if(slot==='tool') equippedTool=null; renderLoadout(); });
+  const fishing = skills.find(s=>s.id==='Fishing');
+  const materials = [['Ore',skills[0].qty],['Bars',skills[1].qty],['Scrap',scrap],['Raw Fish',fishing.qty],['Basic Bait',basicBait],['Uncommon Fish',uncommonFish],['Rare Gems',rareGems]];
+  const owned = [...ownedItems].map(id => ITEMS[id]).filter(Boolean);
+  inventoryList.innerHTML = `<div class="inventory-materials">${materials.map(([n,q])=>`<div><span>${n}</span><strong>${Number(q).toFixed(0)}</strong></div>`).join('')}</div><h3>Owned Equipment</h3>${owned.map(item=>`<div class="inventory-item"><div><strong>${item.name}</strong><div class="small">${itemStats(item)}</div></div><button class="btn" data-equip="${item.id}">Equip</button></div>`).join('')}<div class="inventory-item"><div><strong>Raw Fish</strong><div class="small">Food slot · healing unlocks with idle combat</div></div><button class="btn" data-equip="rawFish" ${fishing.qty<=0?'disabled':''}>Select Food</button></div><div class="inventory-item unavailable"><div><strong>Iron Blade</strong><div class="small">Melee weapon · crafting coming next</div></div><span>Unavailable</span></div>`;
+  inventoryList.querySelectorAll('[data-equip]').forEach(btn => btn.onclick = () => equipItem(btn.dataset.equip));
 }
 
 /* =====================================
@@ -1091,9 +1143,9 @@ function arenaLoop(now) {
 
   // player shots
   for (const s of arena.shots) { s.x += s.vx*dt; s.y += s.vy*dt; s.t += dt; }
-  arena.shots = arena.shots.filter(s=> s.x>-20 && s.x<cv.width+20 && s.y>-20 && s.y<cv.height+20 && s.t<3 );
+  arena.shots = arena.shots.filter(s=> s.x>-20 && s.x<cv.width+20 && s.y>-20 && s.y<cv.height+20 && s.t<(s.lifetime ?? 3) );
   for (const s of arena.shots) {
-    if (circleHit(s.x,s.y,2, boss.x,boss.y,boss.r)) { boss.hp -= BULLET_DAMAGE; s.t = 99; }
+    if (circleHit(s.x,s.y,2, boss.x,boss.y,boss.r)) { boss.hp -= s.damage ?? BULLET_DAMAGE; s.t = 99; }
   }
 
   // draw actors
@@ -1116,6 +1168,8 @@ function arenaLoop(now) {
 ===================================== */
 document.getElementById('openBaseUpBtn').onclick = ()=>{ renderBaseUps(); baseUpModal.style.display='flex'; };
 document.getElementById('openGearBtn').onclick = ()=>{ renderGear(); gearModal.style.display='flex'; };
+document.getElementById('openLoadoutBtn').onclick = ()=>{ renderLoadout(); loadoutModal.style.display='flex'; };
+document.getElementById('closeLoadout').onclick = ()=> loadoutModal.style.display='none';
 document.getElementById('closeGear').onclick = ()=> gearModal.style.display='none';
 document.getElementById('closeBaseUp').onclick   = ()=> baseUpModal.style.display='none';
 
@@ -1168,7 +1222,9 @@ function onClick(e){
   const my = (e.clientY - rect.top) * cv.height / rect.height;
   const dx = mx - arena.you.x, dy = my - arena.you.y;
   const len = Math.hypot(dx,dy) || 1;
-  arena.shots.push({ x: arena.you.x, y: arena.you.y, vx: dx/len*400, vy: dy/len*400, t:0 });
+  const gun = equippedGun();
+  const speed = gun.projectileSpeed || 400;
+  arena.shots.push({ x: arena.you.x, y: arena.you.y, vx: dx/len*speed, vy: dy/len*speed, damage:BULLET_DAMAGE + (gun.damage - 10), lifetime:gun.lifetime || 3, t:0 });
 }
 
 resultOk.onclick = () => {

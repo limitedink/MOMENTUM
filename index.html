@@ -79,6 +79,7 @@
           <p class="title"><span class="title-icon">⚒</span> Workshop</p>
           <div class="small" style="margin-bottom:8px">Turn Bars into equipment and choose a specialized Tool.</div>
           <button class="btn" id="openGearBtn">Craft Equipment</button>
+          <button class="btn" id="openLoadoutBtn">Character & Inventory</button>
         </section>
 
         <!-- Fishing Activity -->
@@ -148,6 +149,16 @@
     <div style="background:#0b0f1c; border:1px solid #222745; border-radius:12px; padding:20px; width:320px; text-align:center">
       <div class="small" id="resultMsg" style="font-size:18px; margin-bottom:12px">Result</div>
       <button class="btn" id="resultOk">Continue</button>
+    </div>
+  </div>
+
+  <!-- Character & Inventory Modal -->
+  <div id="loadoutModal">
+    <div class="loadout-panel">
+      <div class="flex modal-heading"><span class="title" style="margin:0">Character Loadout</span><button class="btn" id="closeLoadout">Close</button></div>
+      <div id="loadoutSlots" class="loadout-grid"></div>
+      <div class="inventory-heading"><span class="title">Inventory</span><span class="small">Materials remain stackable; equipment has no arbitrary slot limit.</span></div>
+      <div id="inventoryList"></div>
     </div>
   </div>
 
