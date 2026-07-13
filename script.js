@@ -50,7 +50,14 @@ let keyRateMult = 1.0;  // multiplies boss keys
 
 
 
-const CONTACT_DPS = 15;
+const ARENA_TIERS = [
+  { id:1, name:'Initiate', keyCost:3, bossHp:30, bossSpeed:40, contactDps:15, waveDamage:28, waveCooldown:4.0, oreGain:600, gemChance:0.25 },
+  { id:2, name:'Vanguard', keyCost:5, bossHp:70, bossSpeed:55, contactDps:20, waveDamage:36, waveCooldown:3.4, oreGain:1000, gemChance:0.50 },
+  { id:3, name:'Apex', keyCost:8, bossHp:120, bossSpeed:70, contactDps:25, waveDamage:44, waveCooldown:2.8, oreGain:1600, gemChance:1.00 }
+];
+let arenaTierUnlocked = 1;
+let selectedArenaTier = 1;
+let arenaWins = [0, 0, 0];
 
 
 
@@ -67,6 +74,8 @@ const activeCountTag = document.getElementById('activeCountTag');
 const totalsDiv = document.getElementById('totals');
 const keysLabel = document.getElementById('keysLabel');
 const fightBtn = document.getElementById('fightBtn');
+const arenaTierSelect = document.getElementById('arenaTierSelect');
+const arenaTierDetails = document.getElementById('arenaTierDetails');
 const buffLabel = document.getElementById('buffLabel');
 const statusEl = document.getElementById('status');
 const saveStatus = document.getElementById('saveStatus');
@@ -367,7 +376,7 @@ function playerMaxHp() { return ownedGear.has('platedVest') ? 125 : 100; }
    SAVE / LOAD
 ===================================== */
 const SAVE_KEY = 'momentum-save';
-const SAVE_VERSION = 3;
+const SAVE_VERSION = 4;
 const AUTO_SAVE_MS = 10_000;
 let resetInProgress = false;
 
@@ -391,7 +400,10 @@ function createSaveData() {
     ownedBaseUps: [...ownedBaseUps],
     ownedSkillUps: [...ownedSkillUps],
     ownedGear: [...ownedGear],
-    equippedTool
+    equippedTool,
+    arenaTierUnlocked,
+    selectedArenaTier,
+    arenaWins: [...arenaWins]
   };
 }
 
@@ -413,7 +425,7 @@ function loadGame() {
 
   try {
     const save = JSON.parse(raw);
-    if (![1, 2, SAVE_VERSION].includes(save.version)) return false;
+    if (![1, 2, 3, SAVE_VERSION].includes(save.version)) return false;
 
     save.skills.forEach(savedSkill => {
       const skill = skills.find(s => s.id === savedSkill.id);
@@ -445,6 +457,9 @@ function loadGame() {
     ownedGear.clear();
     if (save.version >= 3) save.ownedGear.forEach(id => ownedGear.add(id));
     equippedTool = save.version >= 3 && ownedGear.has(save.equippedTool) ? save.equippedTool : null;
+    arenaTierUnlocked = save.version >= 4 ? save.arenaTierUnlocked : 1;
+    selectedArenaTier = save.version >= 4 ? Math.min(save.selectedArenaTier, arenaTierUnlocked) : 1;
+    arenaWins = save.version >= 4 ? [...save.arenaWins] : [0, 0, 0];
 
     updateSaveStatus(save.savedAt);
     return true;
@@ -566,6 +581,19 @@ function getSkillCfg(id){
 
 
 
+function currentArenaTier() { return ARENA_TIERS[selectedArenaTier - 1]; }
+function renderArenaTierOptions() {
+  arenaTierSelect.innerHTML = ARENA_TIERS.map(tier => `<option value="${tier.id}" ${tier.id > arenaTierUnlocked ? 'disabled' : ''}>${tier.name}${tier.id > arenaTierUnlocked ? ' — Locked' : ''}</option>`).join('');
+  arenaTierSelect.value = selectedArenaTier;
+  updateArenaTierUI();
+}
+function updateArenaTierUI() {
+  const tier = currentArenaTier();
+  arenaTierDetails.textContent = `${tier.bossHp} Boss HP · ${tier.oreGain} Ore · ${Math.round(tier.gemChance * 100)}% Gem · Wins ${arenaWins[tier.id - 1]}`;
+  fightBtn.textContent = `Enter ${tier.name} Arena (${tier.keyCost} Keys)`;
+  fightBtn.disabled = Math.floor(keys) < tier.keyCost;
+}
+
 function renderGear() {
   gearList.innerHTML = '';
   const bars = skills.find(s=>s.id==='Smithing').qty;
@@ -658,6 +686,7 @@ function renderSkills() {
 
 const loadedSave = loadGame();
 renderSkills();
+renderArenaTierOptions();
 honeSelect.value = hone || '';
 honedLabel.textContent = hone || 'None';
 startWarmup();
@@ -753,7 +782,7 @@ skills.forEach(s=>{
 
 
   keysLabel.textContent = Math.floor(keys);
-  fightBtn.disabled = Math.floor(keys) < 3;
+  updateArenaTierUI();
 
   const ore = skills.find(s=>s.id==='Mining')?.qty ?? 0;
   const bars = skills.find(s=>s.id==='Smithing')?.qty ?? 0;
@@ -793,10 +822,12 @@ let arena = null;
 const keysDown = {};
 
 function openArena() {
+  const tier = currentArenaTier();
   modal.style.display = 'flex';
   arena = {
+    tier,
     you:  { x:120, y:210, r:14, vx:0, vy:0, hp:playerMaxHp(), dash:0 },
-    boss: { x:560, y:210, r:28, hp:30, cd:2.0, tele:0, phase:0 },
+    boss: { x:560, y:210, r:28, hp:tier.bossHp, cd:2.0, tele:0, phase:0 },
     shots: [],
     t: performance.now(),
     stopped: false
@@ -821,15 +852,15 @@ function showResult(win) {
   arena.stopped = true;
 
   if (win) {
-    const oreGain  = 600;
-    const gotGem   = Math.random() < 0.25;
+    const tier = arena.tier;
+    const gotGem = Math.random() < tier.gemChance;
     const buffSecs = 20 * 60;
-    lastFightResult = { win:true, oreGain, gotGem, buffSecs };
+    lastFightResult = { win:true, tierId:tier.id, tierName:tier.name, oreGain:tier.oreGain, gotGem, buffSecs };
     resultMsg.textContent =
-      `Victory. +${oreGain} Ore${gotGem ? ', +1 Rare Gem' : ''}. Global 1.5x for ${Math.floor(buffSecs/60)}m.`;
+      `${tier.name} Victory. +${tier.oreGain} Ore${gotGem ? ', +1 Rare Gem' : ''}. Global 1.5x for ${Math.floor(buffSecs/60)}m.`;
   } else {
-    lastFightResult = { win:false };
-    resultMsg.textContent = "Defeat. Better luck next time.";
+    lastFightResult = { win:false, tierName:arena.tier.name };
+    resultMsg.textContent = `${arena.tier.name} defeat. Better luck next time.`;
   }
 
   closeArena();
@@ -847,6 +878,13 @@ function applyWinRewards() {
     if (g) g.textContent = rareGems;
   }
   globalBuff.secs = Math.max(globalBuff.secs, r.buffSecs);
+  arenaWins[r.tierId - 1] += 1;
+  if (r.tierId === arenaTierUnlocked && arenaTierUnlocked < ARENA_TIERS.length) {
+    arenaTierUnlocked += 1;
+    selectedArenaTier = arenaTierUnlocked;
+    showToast(`${ARENA_TIERS[selectedArenaTier - 1].name} Arena unlocked`);
+  }
+  renderArenaTierOptions();
 }
 
 function arenaLoop(now) {
@@ -856,7 +894,7 @@ function arenaLoop(now) {
 
   // contact damage
   if (circleHit(you.x, you.y, you.r, boss.x, boss.y, boss.r)) {
-    you.hp -= CONTACT_DPS * dt;
+    you.hp -= arena.tier.contactDps * dt;
   }
 
   // move
@@ -874,13 +912,13 @@ function arenaLoop(now) {
 
   // boss chase and ability
   const dx = you.x - boss.x, dy = you.y - boss.y, bl = Math.hypot(dx,dy) || 1;
-  boss.x += dx/bl * 40 * dt;
-  boss.y += dy/bl * 40 * dt;
+  boss.x += dx/bl * arena.tier.bossSpeed * dt;
+  boss.y += dy/bl * arena.tier.bossSpeed * dt;
 
   boss.cd -= dt;
   if (boss.cd <= 0 && boss.tele <= 0) {
     boss.tele  = 1.2;
-    boss.cd    = 4.0;
+    boss.cd    = arena.tier.waveCooldown;
     boss.phase = 0;
   }
   if (boss.tele > 0) {
@@ -893,7 +931,7 @@ function arenaLoop(now) {
   const dist = Math.hypot(you.x - boss.x, you.y - boss.y);
   if (arena.wave) {
     if (!arena.wave.hit && Math.abs(dist - arena.wave.r) < 12 && you.dash <= 0) {
-      you.hp -= 28;
+      you.hp -= arena.tier.waveDamage;
       arena.wave.hit = true;
     }
     arena.wave.r += arena.wave.speed * dt;
@@ -956,9 +994,15 @@ recycleScrapBtn.onclick = () => {
   showToast('Recycled 5 Scrap into 1 Ore');
 };
 
+arenaTierSelect.onchange = () => {
+  const requested = Number(arenaTierSelect.value);
+  selectedArenaTier = requested <= arenaTierUnlocked ? requested : arenaTierUnlocked;
+  updateArenaTierUI();
+};
 fightBtn.onclick = ()=>{
-  if (Math.floor(keys) >= 3) {
-    keys -= 3;
+  const tier = currentArenaTier();
+  if (Math.floor(keys) >= tier.keyCost) {
+    keys -= tier.keyCost;
     openArena();
   }
 };

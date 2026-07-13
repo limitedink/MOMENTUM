@@ -46,7 +46,7 @@
   #resultModal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.6) }
 
   /* toast */
-  #toastHost { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 9999 }
+  #toastHost { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; pointer-events: none }
   .toast {
     background:#12172a; border:1px solid #222745; color:#e6e6f0;
     padding:10px 12px; border-radius:10px; min-width: 180px;
