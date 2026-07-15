@@ -1,11 +1,10 @@
 import '../styles.scss';
 import './party/party-transport';
-import { createLocalMomentumPartyTransport } from './party/local-party-transport';
-import { createPartyClient } from './party/party-client';
 import './party/party-store';
 import './party/party-controller';
+import { createPartyRuntime, resolvePartyRuntimeMode } from './party/party-runtime';
 
-const partyClient = createPartyClient(createLocalMomentumPartyTransport());
+const partyClient = createPartyRuntime({ mode: resolvePartyRuntimeMode() });
 window.MomentumPartyRuntime = partyClient;
 window.MomentumPartySync = partyClient;
 import audioUrl from '../audio.js?url';
