@@ -70,3 +70,56 @@ Open `http://localhost:8000` in a browser. No build step is required.
 
 Momentum is currently a solo dev project.
 In the future, collaboration and contributions may be welcome.
+
+
+## Client architecture and backend readiness
+
+The current party feature is deliberately client-only, but its boundary is shaped like an authoritative multiplayer client. `PartySnapshot` is the canonical server-owned model. It contains party and expedition state only; connection status, authenticated identity, pending commands, reconnect state, latency, and the last accepted revision live in `ClientSession`.
+
+```text
+                         future authoritative server
+                                  │
+                 snapshots + command results (async messages)
+                                  │
+                         MomentumPartyTransport
+                                  │
+             ┌────────────────────┴────────────────────┐
+             │                                         │
+       PartySnapshotStore                         ClientSession
+       canonical server state                  lifecycle + identity
+       revision ordering                        pending/correlation
+             └────────────────────┬────────────────────┘
+                                  │
+                         MomentumPartyClient
+                         application command API
+                                  │
+                         taskbar presentation
+
+  LocalPartyTransport is only one adapter behind the same boundary.
+  Its elapsed-time and tick helpers are test-only adapter capabilities;
+  presentation code never calls them.
+```
+
+### Responsibilities
+
+- **Transport:** asynchronous connect/disconnect, session identity, snapshot requests, command submission, and typed message streams. A future server transport can replace `LocalPartyTransport` without changing rendering or command code.
+- **Snapshot store:** validates and accepts only newer canonical snapshots. Legacy local-save aliases are adapted inside the local adapter and never enter the canonical model.
+- **Client session:** owns connection/reconnect lifecycle, authenticated player ID, current party ID, pending command correlation, command errors, latency, and `lastAcceptedRevision`.
+- **Client facade:** composes the store, session, and transport into the small application API consumed by the UI.
+- **Presentation:** renders validated snapshot data and session status. Server-provided names and events are escaped before insertion into HTML.
+
+### Remaining work before backend implementation
+
+The client is ready for a server transport, but the server itself still needs protocol/version negotiation, authentication, authorization, persistence, reconnect/resume semantics, command idempotency, authoritative simulation, rate limits, and integration/load tests. None of those backend concerns are implemented by this prototype refactor.
+
+### Verification
+
+Run the repository checks before shipping a client change:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
+Browser verification should confirm that the party panel starts in a connecting state, renders the last accepted snapshot while disconnected/reconnecting, keeps commands pending until an asynchronous confirmation/rejection arrives, and renders untrusted member names/events as text rather than markup.

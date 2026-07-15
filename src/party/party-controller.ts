@@ -1,63 +1,44 @@
 import {
   COMMAND_TYPES,
   CONNECTION_STATES,
+  type ClientSession,
   type CommandPayloadMap,
   type CommandType,
   type MomentumPartyTransport,
   type PartyActivityId,
-  type PartySnapshotStore
+  type PartySnapshot
 } from './party-types';
 import { assertTransport, createCommandEnvelope } from './party-transport';
 
 export interface PartyCommandController {
-  submit<T extends CommandType>(type: T, payload?: CommandPayloadMap[T]): boolean;
-  requestSnapshot(): ReturnType<PartySnapshotStore['getSnapshot']>;
-  setActivity(activityId: PartyActivityId): boolean;
-  startExpedition(): boolean;
-  pauseExpedition(): boolean;
-  resumeExpedition(): boolean;
-  claimReward(rewardId: string): boolean;
+  submit<T extends CommandType>(type: T, payload?: CommandPayloadMap[T]): Promise<boolean>;
+  requestSnapshot(): Promise<PartySnapshot>;
+  setActivity(activityId: PartyActivityId): Promise<boolean>;
+  startExpedition(): Promise<boolean>;
+  pauseExpedition(): Promise<boolean>;
+  resumeExpedition(): Promise<boolean>;
+  claimReward(rewardId: string): Promise<boolean>;
 }
 
-export function createPartyCommandController(
-  store: PartySnapshotStore,
-  activeTransport: MomentumPartyTransport
-): PartyCommandController {
+export function createPartyCommandController(session: ClientSession, activeTransport: MomentumPartyTransport): PartyCommandController {
   assertTransport(activeTransport);
 
-  function submit<T extends CommandType>(type: T, payload?: CommandPayloadMap[T]): boolean {
-    if (store.getState().connection.status !== CONNECTION_STATES.CONNECTED) return false;
-    const command = createCommandEnvelope(
-      type,
-      (payload || {}) as CommandPayloadMap[T],
-      store.getAcceptedRevision()
-    );
-    if (!store.beginCommand(command)) return false;
-    if (activeTransport.submitCommand(command)) return true;
-    store.applyCommandResult({
-      commandId: command.commandId,
-      status: 'rejected',
-      error: { code: 'TRANSPORT_UNAVAILABLE', message: 'Changes could not be sent. Try again.' }
-    });
-    return false;
+  async function submit<T extends CommandType>(type: T, payload?: CommandPayloadMap[T]): Promise<boolean> {
+    if (session.getState().connection.status !== CONNECTION_STATES.CONNECTED) return false;
+    const command = createCommandEnvelope(type, (payload || {}) as CommandPayloadMap[T], session.getState().lastAcceptedRevision);
+    if (!session.beginCommand(command)) return false;
+    const accepted = await activeTransport.submitCommand(command);
+    if (!accepted) {
+      session.applyCommandResult({ commandId: command.commandId, status: 'rejected', error: { code: 'TRANSPORT_UNAVAILABLE', message: 'Changes could not be sent. Try again.' } });
+    }
+    return accepted;
   }
 
-  function requestSnapshot() {
-    if (store.getState().connection.status !== CONNECTION_STATES.CONNECTED) return store.getSnapshot();
-    const command = createCommandEnvelope(
-      COMMAND_TYPES.REQUEST_SNAPSHOT,
-      {},
-      store.getAcceptedRevision()
-    );
-    if (!store.beginCommand(command)) return store.getSnapshot();
-    if (!activeTransport.submitCommand(command)) {
-      store.applyCommandResult({
-        commandId: command.commandId,
-        status: 'rejected',
-        error: { code: 'TRANSPORT_UNAVAILABLE', message: 'The snapshot could not be requested. Try again.' }
-      });
-    }
-    return store.getSnapshot();
+  async function requestSnapshot(): Promise<PartySnapshot> {
+    if (session.getState().connection.status !== CONNECTION_STATES.CONNECTED) return session.getSnapshot();
+    const snapshot = await activeTransport.requestSnapshot();
+    session.acceptSnapshot(snapshot);
+    return session.getSnapshot();
   }
 
   return Object.freeze({
@@ -70,6 +51,3 @@ export function createPartyCommandController(
     claimReward: (rewardId: string) => submit(COMMAND_TYPES.CLAIM_REWARD, { rewardId })
   });
 }
-
-export const partyControllerApi = { createPartyCommandController };
-if (typeof window !== 'undefined') window.MomentumPartyController = partyControllerApi;

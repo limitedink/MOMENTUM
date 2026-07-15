@@ -8,6 +8,14 @@ export const CONNECTION_STATES = {
 
 export type ConnectionState = (typeof CONNECTION_STATES)[keyof typeof CONNECTION_STATES];
 
+export const RECONNECT_STATES = {
+  IDLE: 'idle',
+  CONNECTING: 'connecting',
+  RECONNECTING: 'reconnecting'
+} as const;
+
+export type ReconnectState = (typeof RECONNECT_STATES)[keyof typeof RECONNECT_STATES];
+
 export const COMMAND_TYPES = {
   SET_ACTIVITY: 'SET_ACTIVITY',
   START_EXPEDITION: 'START_EXPEDITION',
@@ -18,9 +26,11 @@ export const COMMAND_TYPES = {
 } as const;
 
 export type CommandType = (typeof COMMAND_TYPES)[keyof typeof COMMAND_TYPES];
+export const PARTY_ACTIVITY_IDS = ['forest_patrol', 'pine_chopping', 'camp_cooking', 'rest'] as const;
+export type PartyActivityId = (typeof PARTY_ACTIVITY_IDS)[number];
+export const LANE_IDS = ['threat', 'timber', 'supplies'] as const;
+export type LaneId = (typeof LANE_IDS)[number];
 export type CommandStatus = 'idle' | 'pending' | 'confirmed' | 'rejected';
-export type PartyActivityId = 'forest_patrol' | 'pine_chopping' | 'camp_cooking' | 'rest';
-export type LaneId = 'threat' | 'timber' | 'supplies';
 
 export interface CommandError {
   code: string;
@@ -92,8 +102,8 @@ export interface PartyEvent {
 export interface PartyMember {
   id: string;
   name: string;
-  type: 'human' | 'ghost' | string;
-  affinity: 'balanced' | 'timber' | 'supplies' | 'patrol' | string;
+  type: string;
+  affinity: string;
   activity: PartyActivityId;
   efficiency: number;
   lastActivityTick: number;
@@ -106,7 +116,7 @@ export interface Party {
 }
 
 export interface Expedition {
-  status: 'active' | 'paused' | 'ready' | string;
+  status: 'active' | 'paused' | 'ready';
   completedExpeditions: number;
   lanes: Record<LaneId, number>;
   contributions: Record<string, ContributionValues>;
@@ -115,27 +125,16 @@ export interface Expedition {
   claimedRewards: ClaimedReward[];
 }
 
+/** The only server-owned state rendered by the client. */
 export interface PartySnapshot {
   revision: number;
   generatedAt: number;
-  connection: {
-    status: ConnectionState;
-    lastConfirmedAt: number;
-  };
   party: Party;
   expedition: Expedition;
   recentEvents: PartyEvent[];
   notable: string[];
   elapsedTicks: number;
   lastResolvedAt: number;
-  // Legacy aliases are retained by the local transport for compatibility.
-  expeditionStatus?: Expedition['status'];
-  completedExpeditions?: number;
-  lanes?: Record<LaneId, number>;
-  partyMembers?: PartyMember[];
-  pendingRewards?: PendingReward | null;
-  claimedRewards?: ClaimedReward[];
-  lastContributions?: ContributionSummary[] | null;
 }
 
 export type ConfirmedCommandResult = {
@@ -156,26 +155,14 @@ export type ConnectionListener = (status: ConnectionState) => void;
 export type CommandResultListener = (result: PartyCommandResult) => void;
 export type Unsubscribe = () => void;
 
-export interface PartyStoreState {
-  snapshot: PartySnapshot;
-  acceptedRevision: number;
-  connection: { status: ConnectionState; lastConfirmedAt: number };
-  pendingCommands: PendingCommand[];
-  commandStates: Partial<Record<CommandType, PendingCommand | SettledCommand>>;
-  commandErrors: Array<CommandError & { commandId: string; type: CommandType; at: number }>;
+export interface PartySessionIdentity {
+  authenticatedPlayerId: string;
+  currentPartyId: string | null;
 }
 
-export interface PartySnapshotStore {
-  acceptSnapshot(snapshot: PartySnapshot): SnapshotAcceptance;
-  applyCommandResult(result: PartyCommandResult): CommandResolution;
-  beginCommand(command: PartyCommand): string | null;
-  getAcceptedRevision(): number;
-  getCommandState(type: CommandType): PendingCommand | SettledCommand | { type: CommandType; status: 'idle' };
-  getState(): PartyStoreState;
-  getSnapshot(): PartySnapshot;
-  rejectPendingCommands(code: string, message: string): number;
-  setConnection(status: ConnectionState): boolean;
-  subscribe(listener: (state: PartyStoreState, reason: string) => void): Unsubscribe;
+export interface PartySnapshotStoreState {
+  snapshot: PartySnapshot;
+  acceptedRevision: number;
 }
 
 export interface SnapshotAcceptance {
@@ -192,16 +179,52 @@ export interface CommandResolution {
   snapshotResult?: SnapshotAcceptance | null;
 }
 
+export interface PartySnapshotStore {
+  acceptSnapshot(snapshot: unknown): SnapshotAcceptance;
+  getAcceptedRevision(): number;
+  getState(): PartySnapshotStoreState;
+  getSnapshot(): PartySnapshot;
+  subscribe(listener: (state: PartySnapshotStoreState, reason: string) => void): Unsubscribe;
+}
+
+export interface ClientSessionState {
+  connection: {
+    status: ConnectionState;
+    lastConfirmedAt: number | null;
+  };
+  reconnectState: ReconnectState;
+  authenticatedPlayerId: string;
+  currentPartyId: string | null;
+  pendingCommands: PendingCommand[];
+  commandStates: Partial<Record<CommandType, PendingCommand | SettledCommand>>;
+  commandErrors: Array<CommandError & { commandId: string; type: CommandType; at: number }>;
+  lastAcceptedRevision: number;
+  latencyMs: number | null;
+}
+
+export interface ClientSession {
+  acceptSnapshot(snapshot: unknown): SnapshotAcceptance;
+  applyCommandResult(result: unknown): CommandResolution;
+  beginCommand(command: PartyCommand): string | null;
+  getCommandState(type: CommandType): PendingCommand | SettledCommand | { type: CommandType; status: 'idle' };
+  getSnapshot(): PartySnapshot;
+  getState(): ClientSessionState;
+  rejectPendingCommands(code: string, message: string): number;
+  setConnection(status: ConnectionState): boolean;
+  subscribe(listener: (state: ClientSessionState, reason: string) => void): Unsubscribe;
+}
+
 export interface MomentumPartyTransport {
-  connect(): boolean;
-  disconnect(): boolean;
-  getConnectionState(): ConnectionState;
-  requestSnapshot(): PartySnapshot;
-  submitCommand(command: PartyCommand): boolean;
+  connect(): Promise<boolean>;
+  disconnect(): Promise<boolean>;
+  getConnectionState(): Promise<ConnectionState>;
+  getSessionIdentity(): Promise<PartySessionIdentity>;
+  requestSnapshot(): Promise<PartySnapshot>;
+  submitCommand(command: PartyCommand): Promise<boolean>;
   subscribeToSnapshots(listener: SnapshotListener): Unsubscribe;
   subscribeToConnection(listener: ConnectionListener): Unsubscribe;
   subscribeToCommandResults(listener: CommandResultListener): Unsubscribe;
-  destroy(): void;
+  destroy(): Promise<void>;
 }
 
 export interface ActivityDefinition {
@@ -232,33 +255,48 @@ export interface PartyTransportApi {
   normalizeCommandType(type: unknown): CommandType | null;
 }
 
-export interface MomentumPartySyncFacade {
+export interface PartyClientState {
+  snapshot: PartySnapshot;
+  session: ClientSessionState;
+}
+
+export interface MomentumPartyClient {
+  initialize(): Promise<boolean>;
+  connect(): Promise<boolean>;
+  disconnect(): Promise<boolean>;
+  reconnect(): Promise<boolean>;
+  destroy(): Promise<void>;
   getSnapshot(): PartySnapshot;
-  getStoreState(): PartyStoreState;
+  getState(): PartyClientState;
+  getSessionState(): ClientSessionState;
   getCommandState(type: string): PendingCommand | SettledCommand | { type: CommandType; status: 'idle' };
-  getTransportState(): { status: ConnectionState; recentResults: PartyCommandResult[] };
-  requestSnapshot(): PartySnapshot;
-  setActivity(activityId: PartyActivityId): boolean;
-  startExpedition(): boolean;
-  pauseExpedition(): boolean;
-  resumeExpedition(): boolean;
-  toggleExpedition(): boolean;
-  claimReward(): boolean;
-  resolveElapsed(): number;
-  simulateReconnect(): boolean;
   getConnectionState(): ConnectionState;
-  runSnapshotVerification(): { passed: boolean; checks: Array<{ name: string; passed: boolean }>; failures: string[] };
+  requestSnapshot(): Promise<PartySnapshot>;
+  setActivity(activityId: PartyActivityId): Promise<boolean>;
+  startExpedition(): Promise<boolean>;
+  pauseExpedition(): Promise<boolean>;
+  resumeExpedition(): Promise<boolean>;
+  toggleExpedition(): Promise<boolean>;
+  claimReward(rewardId?: string): Promise<boolean>;
+  subscribe(listener: (state: PartyClientState, reason: string) => void): Unsubscribe;
+}
+
+export interface PartyTransportRuntimeApi {
+  readonly client: MomentumPartyClient;
 }
 
 declare global {
   interface Window {
     MomentumPartyTransport: PartyTransportApi;
-    LocalMomentumPartyTransport: (options?: { commandDelay?: number; connectDelay?: number; storage?: Storage }) => MomentumPartyTransport & {
+    LocalMomentumPartyTransport: (options?: { commandDelay?: number; connectDelay?: number; authenticatedPlayerId?: string; storage?: Storage }) => MomentumPartyTransport & {
       resolveElapsed(): number;
       simulateTick(): boolean;
     };
-    MomentumPartyStore: { createPartySnapshotStore: typeof import('./party-store').createPartySnapshotStore };
-    MomentumPartyController: { createPartyCommandController: typeof import('./party-controller').createPartyCommandController };
-    MomentumPartySync: MomentumPartySyncFacade;
+    MomentumPartyRuntime: MomentumPartyClient;
+    MomentumPartySync: MomentumPartyClient;
+    MomentumPartyStore: {
+      createPartySnapshotStore: (initialSnapshot: PartySnapshot) => PartySnapshotStore;
+      isPartySnapshot: (value: unknown) => value is PartySnapshot;
+    };
   }
 }

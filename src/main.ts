@@ -1,8 +1,13 @@
 import '../styles.scss';
 import './party/party-transport';
-import './party/local-party-transport';
+import { createLocalMomentumPartyTransport } from './party/local-party-transport';
+import { createPartyClient } from './party/party-client';
 import './party/party-store';
 import './party/party-controller';
+
+const partyClient = createPartyClient(createLocalMomentumPartyTransport());
+window.MomentumPartyRuntime = partyClient;
+window.MomentumPartySync = partyClient;
 import audioUrl from '../audio.js?url';
 import arenaUrl from '../arena.js?url';
 import gameUrl from '../script.js?url';

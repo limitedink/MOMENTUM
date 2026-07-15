@@ -11,7 +11,12 @@
     "test": "vitest run",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "backend:dev": "npm --prefix backend run dev",
+    "backend:build": "npm --prefix backend run build",
+    "backend:start": "npm --prefix backend run start",
+    "backend:typecheck": "npm --prefix backend run typecheck",
+    "backend:test": "npm --prefix backend run test"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",

@@ -12,6 +12,7 @@ import {
   type PartySnapshot,
   type PartyTransportApi
 } from './party-types';
+import { isPartyCommand } from './party-schema';
 
 export const DEFINITIONS = {
   lanes: [
@@ -40,15 +41,8 @@ const COMMAND_ALIASES: Readonly<Record<string, CommandType>> = {
 };
 
 const TRANSPORT_METHODS = [
-  'connect',
-  'disconnect',
-  'getConnectionState',
-  'requestSnapshot',
-  'submitCommand',
-  'subscribeToSnapshots',
-  'subscribeToConnection',
-  'subscribeToCommandResults',
-  'destroy'
+  'connect', 'disconnect', 'getConnectionState', 'getSessionIdentity', 'requestSnapshot', 'submitCommand',
+  'subscribeToSnapshots', 'subscribeToConnection', 'subscribeToCommandResults', 'destroy'
 ] as const;
 
 let commandSequence = 0;
@@ -63,11 +57,7 @@ export function normalizeCommandType(type: unknown): CommandType | null {
   return (Object.values(COMMAND_TYPES) as string[]).includes(type) ? type as CommandType : null;
 }
 
-export function createCommandEnvelope<T extends CommandType>(
-  type: T,
-  payload: CommandPayloadMap[T],
-  clientRevision = 0
-): Extract<PartyCommand, { type: T }> {
+export function createCommandEnvelope<T extends CommandType>(type: T, payload: CommandPayloadMap[T], clientRevision = 0): Extract<PartyCommand, { type: T }> {
   commandSequence += 1;
   return Object.freeze({
     commandId: `cmd_${Date.now()}_${commandSequence}`,
@@ -78,26 +68,8 @@ export function createCommandEnvelope<T extends CommandType>(
   }) as unknown as Extract<PartyCommand, { type: T }>;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function isPayloadForCommand(type: CommandType, payload: unknown): boolean {
-  if (!isRecord(payload)) return false;
-  if (type === COMMAND_TYPES.SET_ACTIVITY) return typeof payload.activityId === 'string' && payload.activityId in DEFINITIONS.activities;
-  if (type === COMMAND_TYPES.CLAIM_REWARD) return typeof payload.rewardId === 'string' && payload.rewardId.length > 0;
-  return Object.keys(payload).length === 0;
-}
-
 export function isCommandEnvelope(value: unknown): value is PartyCommand {
-  if (!isRecord(value)) return false;
-  const type = normalizeCommandType(value.type);
-  return Boolean(
-    typeof value.commandId === 'string' && value.commandId.length > 0 &&
-    type && isPayloadForCommand(type, value.payload) &&
-    typeof value.clientRevision === 'number' && Number.isInteger(value.clientRevision) && value.clientRevision >= 0 &&
-    Number.isFinite(value.createdAt)
-  );
+  return isPartyCommand(value);
 }
 
 export function createCommandResult(commandId: string, status: 'confirmed', snapshot?: PartySnapshot): Extract<PartyCommandResult, { status: 'confirmed' }>;
@@ -105,35 +77,24 @@ export function createCommandResult(commandId: string, status: 'rejected', error
 export function createCommandResult(commandId: string, status: 'confirmed' | 'rejected', value?: PartySnapshot | Partial<CommandError>): PartyCommandResult {
   if (status === 'confirmed') return { commandId, status, snapshot: value as PartySnapshot | undefined };
   const error = value as Partial<CommandError> | undefined;
-  return {
-    commandId,
-    status,
-    error: {
-      code: error?.code || 'COMMAND_REJECTED',
-      message: error?.message || 'The command was rejected.'
-    }
-  };
+  return { commandId, status, error: { code: error?.code || 'COMMAND_REJECTED', message: error?.message || 'The command was rejected.' } };
 }
 
 export function assertTransport(value: unknown): MomentumPartyTransport {
-  if (!isRecord(value)) throw new Error('Party transport must be an object.');
-  const missing = TRANSPORT_METHODS.filter(method => typeof value[method] !== 'function');
+  if (typeof value !== 'object' || value === null) throw new Error('Party transport must be an object.');
+  const record = value as Record<string, unknown>;
+  const missing = TRANSPORT_METHODS.filter(method => typeof record[method] !== 'function');
   if (missing.length > 0) throw new Error(`Party transport is missing: ${missing.join(', ')}`);
-  return value as unknown as MomentumPartyTransport;
+  return value as MomentumPartyTransport;
 }
 
 export { COMMAND_TYPES, CONNECTION_STATES };
 
 export const partyTransportApi: PartyTransportApi = {
-  CONNECTION_STATES,
-  COMMAND_TYPES,
-  DEFINITIONS,
-  assertTransport,
-  clone,
+  CONNECTION_STATES, COMMAND_TYPES, DEFINITIONS, assertTransport, clone,
   createCommandEnvelope: createCommandEnvelope as PartyTransportApi['createCommandEnvelope'],
   createCommandResult: createCommandResult as PartyTransportApi['createCommandResult'],
-  isCommandEnvelope,
-  normalizeCommandType
+  isCommandEnvelope, normalizeCommandType
 };
 
 if (typeof window !== 'undefined') window.MomentumPartyTransport = partyTransportApi;

@@ -37,6 +37,7 @@ type LocalStorageLike = {
 type LocalTransportOptions = {
   commandDelay?: number;
   connectDelay?: number;
+  authenticatedPlayerId?: string;
   storage?: LocalStorageLike;
 };
 
@@ -44,7 +45,6 @@ type LocalPartyState = {
   version: 1;
   elapsedTicks: number;
   lastResolvedAt: number;
-  lastConfirmedAt: number;
   revision: number;
   completedExpeditions: number;
   expeditionStatus: 'active' | 'paused' | 'ready';
@@ -52,6 +52,7 @@ type LocalPartyState = {
   pendingRewards: PendingReward | null;
   claimedRewards: ClaimedReward[];
   lastContributions: ContributionSummary[] | null;
+  partyId: string;
   party: PartyMember[];
   ledger: PartyEvent[];
   notable: string[];
@@ -65,12 +66,17 @@ type LocalTransport = MomentumPartyTransport & {
   simulateTick(): boolean;
 };
 
-const DEFAULT_PARTY: PartyMember[] = [
-  { id: 'player', name: 'You', type: 'human', affinity: 'balanced', activity: 'forest_patrol', efficiency: 1, lastActivityTick: 0, totals: { threat: 0, timber: 0, supplies: 0 } },
+const DEFAULT_AUTHENTICATED_PLAYER_ID = 'local-player';
+const LEGACY_AUTHENTICATED_PLAYER_ID = 'player';
+
+function createDefaultParty(authenticatedPlayerId: string): PartyMember[] {
+  return [
+  { id: authenticatedPlayerId, name: 'You', type: 'human', affinity: 'balanced', activity: 'forest_patrol', efficiency: 1, lastActivityTick: 0, totals: { threat: 0, timber: 0, supplies: 0 } },
   { id: 'faith', name: 'Faith', type: 'ghost', affinity: 'timber', activity: 'pine_chopping', efficiency: 1.2, lastActivityTick: 0, totals: { threat: 0, timber: 0, supplies: 0 } },
   { id: 'sofia', name: 'Sofia', type: 'ghost', affinity: 'supplies', activity: 'camp_cooking', efficiency: 0.9, lastActivityTick: 0, totals: { threat: 0, timber: 0, supplies: 0 } },
   { id: 'maya', name: 'Maya', type: 'ghost', affinity: 'patrol', activity: 'forest_patrol', efficiency: 0.8, lastActivityTick: 0, totals: { threat: 0, timber: 0, supplies: 0 } }
-];
+  ];
+}
 
 function isRecord(value: unknown): value is RawRecord {
   return typeof value === 'object' && value !== null;
@@ -88,16 +94,15 @@ function activityIsValid(value: unknown): value is PartyMember['activity'] {
   return typeof value === 'string' && value in DEFINITIONS.activities;
 }
 
-function cloneDefaultParty(): PartyMember[] {
-  return clone(DEFAULT_PARTY);
+function cloneDefaultParty(authenticatedPlayerId = DEFAULT_AUTHENTICATED_PLAYER_ID): PartyMember[] {
+  return clone(createDefaultParty(authenticatedPlayerId));
 }
 
-function createDefaultState(): LocalPartyState {
+function createDefaultState(authenticatedPlayerId: string): LocalPartyState {
   return {
     version: 1,
     elapsedTicks: 0,
     lastResolvedAt: Date.now(),
-    lastConfirmedAt: Date.now(),
     revision: 0,
     completedExpeditions: 0,
     expeditionStatus: 'active',
@@ -105,9 +110,10 @@ function createDefaultState(): LocalPartyState {
     pendingRewards: null,
     claimedRewards: [],
     lastContributions: null,
-    party: cloneDefaultParty(),
+    party: cloneDefaultParty(authenticatedPlayerId),
     ledger: [],
-    notable: []
+    notable: [],
+    partyId: 'local-party'
   };
 }
 
@@ -134,10 +140,10 @@ function normalizeClaimedRewards(value: unknown): ClaimedReward[] {
   }).filter((reward): reward is ClaimedReward => reward !== null).slice(0, 30);
 }
 
-function normalizeMember(value: unknown, fallback: PartyMember): PartyMember {
+function normalizeMember(value: unknown, fallback: PartyMember, authenticatedPlayerId: string): PartyMember {
   const raw = isRecord(value) ? value : {};
-  const legacyId = raw.id === 'alex' ? 'sofia' : raw.id === 'rowan' ? 'maya' : raw.id;
-  const fallbackById = DEFAULT_PARTY.find(candidate => candidate.id === legacyId) || fallback;
+  const legacyId = raw.id === LEGACY_AUTHENTICATED_PLAYER_ID ? authenticatedPlayerId : raw.id === 'alex' ? 'sofia' : raw.id === 'rowan' ? 'maya' : raw.id;
+  const fallbackById = fallback;
   const totals = isRecord(raw.totals) ? raw.totals : {};
   return {
     ...clone(fallbackById),
@@ -157,14 +163,14 @@ function normalizeMember(value: unknown, fallback: PartyMember): PartyMember {
   };
 }
 
-export function normalizePartySave(value: unknown): LocalPartySave {
-  const defaults = createDefaultState();
+export function normalizePartySave(value: unknown, authenticatedPlayerId = DEFAULT_AUTHENTICATED_PLAYER_ID): LocalPartySave {
+  const defaults = createDefaultState(authenticatedPlayerId);
   const raw = isRecord(value) ? value : {};
   const rawParty = Array.isArray(raw.party) ? raw.party : [];
   const party = rawParty.length > 0
-    ? rawParty.map((member, index) => normalizeMember(member, DEFAULT_PARTY[index] || DEFAULT_PARTY[0]))
-    : cloneDefaultParty();
-  if (!party.some(member => member.id === 'player')) party.unshift(clone(DEFAULT_PARTY[0]));
+    ? rawParty.map((member, index) => normalizeMember(member, createDefaultParty(authenticatedPlayerId)[index] || createDefaultParty(authenticatedPlayerId)[0], authenticatedPlayerId))
+    : cloneDefaultParty(authenticatedPlayerId);
+  if (!party.some(member => member.id === authenticatedPlayerId)) party.unshift(clone(createDefaultParty(authenticatedPlayerId)[0]));
 
   const claimedRewards = normalizeClaimedRewards(raw.claimedRewards);
   const claimedIds = new Set(claimedRewards.map(reward => reward.id));
@@ -189,7 +195,6 @@ export function normalizePartySave(value: unknown): LocalPartySave {
     revision: nonNegativeInteger(raw.revision, 0),
     elapsedTicks: nonNegativeInteger(raw.elapsedTicks, 0),
     lastResolvedAt: numberOr(raw.lastResolvedAt, Date.now()),
-    lastConfirmedAt: numberOr(raw.lastConfirmedAt, Date.now()),
     completedExpeditions: nonNegativeInteger(raw.completedExpeditions, 0),
     expeditionStatus,
     lanes: {
@@ -202,16 +207,17 @@ export function normalizePartySave(value: unknown): LocalPartySave {
     lastContributions,
     party,
     ledger,
-    notable
+    notable,
+    partyId: typeof raw.partyId === 'string' && raw.partyId.length > 0 ? raw.partyId : defaults.partyId
   };
 }
 
-function loadState(storage: LocalStorageLike): LocalPartyState {
+function loadState(storage: LocalStorageLike, authenticatedPlayerId: string): LocalPartyState {
   try {
     const stored = storage.getItem(STORAGE_KEY);
-    return normalizePartySave(stored ? JSON.parse(stored) as unknown : null);
+    return normalizePartySave(stored ? JSON.parse(stored) as unknown : null, authenticatedPlayerId);
   } catch {
-    return createDefaultState();
+    return createDefaultState(authenticatedPlayerId);
   }
 }
 
@@ -244,8 +250,7 @@ function buildSnapshot(state: LocalPartyState): PartySnapshot {
   return {
     revision: state.revision,
     generatedAt,
-    connection: { status: CONNECTION_STATES.CONNECTED, lastConfirmedAt: state.lastConfirmedAt || generatedAt },
-    party: { id: 'local-party', members },
+    party: { id: state.partyId, members },
     expedition: {
       status: state.expeditionStatus,
       completedExpeditions: state.completedExpeditions,
@@ -259,13 +264,6 @@ function buildSnapshot(state: LocalPartyState): PartySnapshot {
     notable: [...state.notable],
     elapsedTicks: state.elapsedTicks,
     lastResolvedAt: state.lastResolvedAt,
-    expeditionStatus: state.expeditionStatus,
-    completedExpeditions: state.completedExpeditions,
-    lanes: { ...state.lanes },
-    partyMembers: members,
-    pendingRewards,
-    claimedRewards,
-    lastContributions
   };
 }
 
@@ -274,10 +272,11 @@ function rewardDescription(reward: PendingReward): string {
 }
 
 export function createLocalMomentumPartyTransport(options: LocalTransportOptions = {}): LocalTransport {
-  const commandDelay = Math.max(0, Number(options.commandDelay) || DEFAULT_COMMAND_DELAY_MS);
-  const connectDelay = Math.max(0, Number(options.connectDelay) || DEFAULT_CONNECT_DELAY_MS);
+  const commandDelay = Math.max(0, Number(options.commandDelay ?? DEFAULT_COMMAND_DELAY_MS) || 0);
+  const connectDelay = Math.max(0, Number(options.connectDelay ?? DEFAULT_CONNECT_DELAY_MS) || 0);
+  const authenticatedPlayerId = typeof options.authenticatedPlayerId === 'string' && options.authenticatedPlayerId.length > 0 ? options.authenticatedPlayerId : DEFAULT_AUTHENTICATED_PLAYER_ID;
   const storage = options.storage || globalThis.localStorage;
-  const state = loadState(storage);
+  const state = loadState(storage, authenticatedPlayerId);
   const snapshotListeners = new Set<(snapshot: PartySnapshot) => void>();
   const connectionListeners = new Set<(status: ConnectionState) => void>();
   const resultListeners = new Set<(result: PartyCommandResult) => void>();
@@ -291,12 +290,10 @@ export function createLocalMomentumPartyTransport(options: LocalTransportOptions
   function notifyConnection(nextState: ConnectionState): void {
     if (connection === nextState) return;
     connection = nextState;
-    state.lastConfirmedAt = Date.now();
     connectionListeners.forEach(listener => listener(connection));
   }
 
   function notifySnapshot(snapshot: PartySnapshot): void {
-    state.lastConfirmedAt = Date.now();
     snapshotListeners.forEach(listener => listener(clone(snapshot)));
   }
 
@@ -354,7 +351,6 @@ export function createLocalMomentumPartyTransport(options: LocalTransportOptions
 
   function commitAuthoritativeState(): PartySnapshot {
     state.revision += 1;
-    state.lastConfirmedAt = Date.now();
     state.lastResolvedAt = Date.now();
     persistState(state, storage);
     return buildSnapshot(state);
@@ -362,7 +358,6 @@ export function createLocalMomentumPartyTransport(options: LocalTransportOptions
 
   function forceFreshSnapshot(): PartySnapshot {
     state.revision += 1;
-    state.lastConfirmedAt = Date.now();
     state.lastResolvedAt = Date.now();
     persistState(state, storage);
     return buildSnapshot(state);
@@ -436,7 +431,7 @@ export function createLocalMomentumPartyTransport(options: LocalTransportOptions
     if (command.type === COMMAND_TYPES.SET_ACTIVITY) {
       const activityCommand = command as Extract<PartyCommand, { type: typeof COMMAND_TYPES.SET_ACTIVITY }>;
       const activityId = activityCommand.payload.activityId;
-      const player = state.party.find(member => member.id === 'player');
+      const player = state.party.find(member => member.id === authenticatedPlayerId);
       if (!player) return { ok: false, code: 'PLAYER_UNAVAILABLE', message: 'Your party member is unavailable. Try again.' };
       if (player.activity === activityId) return { ok: false, code: 'ACTIVITY_UNCHANGED', message: `You are already ${DEFINITIONS.activities[activityId].name.toLowerCase()}.` };
       player.activity = activityId;
@@ -497,7 +492,8 @@ export function createLocalMomentumPartyTransport(options: LocalTransportOptions
     commandTimers.set(timer, command);
   }
 
-  function submitCommand(command: PartyCommand): boolean {
+  async function submitCommand(command: PartyCommand): Promise<boolean> {
+    await Promise.resolve();
     if (destroyed || !isConnected() || !isCommandEnvelope(command)) return false;
     if (command.type === COMMAND_TYPES.REQUEST_SNAPSHOT) {
       const timer = setTimeout(() => {
@@ -506,7 +502,7 @@ export function createLocalMomentumPartyTransport(options: LocalTransportOptions
           notifyResult(createCommandResult(command.commandId, 'rejected', { code: 'TRANSPORT_DISCONNECTED', message: 'The snapshot could not be requested because the party connection was lost.' }));
           return;
         }
-        notifyResult(createCommandResult(command.commandId, 'confirmed', requestSnapshot()));
+        notifyResult(createCommandResult(command.commandId, 'confirmed', buildSnapshot(state)));
       }, commandDelay);
       commandTimers.set(timer, command);
       return true;
@@ -515,26 +511,35 @@ export function createLocalMomentumPartyTransport(options: LocalTransportOptions
     return true;
   }
 
-  function requestSnapshot(): PartySnapshot {
-    return buildSnapshot(state);
+  function requestSnapshot(): Promise<PartySnapshot> {
+    return new Promise(resolve => {
+      setTimeout(() => resolve(buildSnapshot(state)), commandDelay);
+    });
   }
 
-  function connect(): boolean {
-    if (destroyed || connection === CONNECTION_STATES.CONNECTED || connection === CONNECTION_STATES.CONNECTING || connection === CONNECTION_STATES.RECONNECTING) return false;
+  function getSessionIdentity() {
+    return Promise.resolve({ authenticatedPlayerId, currentPartyId: state.partyId });
+  }
+
+  function connect(): Promise<boolean> {
+    if (destroyed || connection === CONNECTION_STATES.CONNECTED || connection === CONNECTION_STATES.CONNECTING || connection === CONNECTION_STATES.RECONNECTING) return Promise.resolve(false);
     notifyConnection(hasConnected ? CONNECTION_STATES.RECONNECTING : CONNECTION_STATES.CONNECTING);
-    connectTimer = setTimeout(() => {
-      connectTimer = null;
-      if (destroyed) return;
-      hasConnected = true;
-      notifyConnection(CONNECTION_STATES.CONNECTED);
-      resolveElapsed({ allowDisconnected: true, emit: false });
-      notifySnapshot(forceFreshSnapshot());
-      startTickLoop();
-    }, connectDelay);
-    return true;
+    return new Promise(resolve => {
+      connectTimer = setTimeout(() => {
+        connectTimer = null;
+        if (destroyed) { resolve(false); return; }
+        hasConnected = true;
+        notifyConnection(CONNECTION_STATES.CONNECTED);
+        resolveElapsed({ allowDisconnected: true, emit: false });
+        notifySnapshot(forceFreshSnapshot());
+        startTickLoop();
+        resolve(true);
+      }, connectDelay);
+    });
   }
 
-  function disconnect(): boolean {
+  async function disconnect(): Promise<boolean> {
+    await Promise.resolve();
     if (destroyed || connection === CONNECTION_STATES.DISCONNECTED) return false;
     if (connectTimer) clearTimeout(connectTimer);
     connectTimer = null;
@@ -562,9 +567,9 @@ export function createLocalMomentumPartyTransport(options: LocalTransportOptions
     return () => resultListeners.delete(listener);
   }
 
-  function destroy(): void {
+  async function destroy(): Promise<void> {
     if (destroyed) return;
-    disconnect();
+    await disconnect();
     destroyed = true;
     snapshotListeners.clear();
     connectionListeners.clear();
@@ -574,7 +579,8 @@ export function createLocalMomentumPartyTransport(options: LocalTransportOptions
   const transport: LocalTransport = {
     connect,
     disconnect,
-    getConnectionState: () => connection,
+    getConnectionState: () => Promise.resolve(connection),
+    getSessionIdentity,
     requestSnapshot,
     submitCommand,
     subscribeToSnapshots,
