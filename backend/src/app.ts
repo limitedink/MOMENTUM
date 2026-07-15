@@ -5,6 +5,7 @@ import type { WebSocket } from 'ws';
 import type { AppConfig } from './config/environment.js';
 import { closeDatabasePool, createDatabasePool } from './infrastructure/database.js';
 import { registerAuthRoutes, createReadyHandler } from './authentication/auth.js';
+import { registerPartyRoutes } from './parties/party-routes.js';
 
 export interface AppDependencies {
   database?: Pool;
@@ -31,6 +32,9 @@ export async function buildApp(
 
   // Auth routes (dev players, bearer auth, /me, revoke)
   await registerAuthRoutes(app, database);
+
+  // Persistent party routes. WebSocket auth and gameplay synchronization remain separate milestones.
+  await registerPartyRoutes(app, database);
 
   app.get('/v1/ws', { websocket: true }, (socket: WebSocket, request) => {
     app.log.info({ requestId: request.id }, 'websocket connection opened');
