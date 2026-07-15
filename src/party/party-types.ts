@@ -243,6 +243,7 @@ export interface AuthoritativePartyState {
   };
   contributions: Record<string, number>;
   updatedAt: string;
+  serverTimestamp: number;
 }
 
 export interface ActivityDefinition {

@@ -31,7 +31,8 @@ Momentum takes inspiration from the long-term skill progression of **Old School 
 
 - Persistent players, sessions, parties, memberships, and authenticated party-aware WebSockets
 - Server-authoritative party expedition state with revisions, PostgreSQL persistence, and command idempotency
-- The live client still uses its local expedition transport; authoritative client integration remains the next milestone
+- A standalone authoritative client WebSocket transport adapter with reconnect, request correlation, and revision protection
+- The live client still uses its local expedition transport until the UI migration milestone
 
 ### Idle progression
 
@@ -112,6 +113,14 @@ The client already treats party snapshots as canonical server-owned state. Conne
 
 The current local transport is an adapter behind that boundary. Presentation code does not directly control its simulation clock, which keeps the UI ready for a real network transport.
 
+### Authoritative client transport
+
+`createAuthoritativePartyTransport` in `src/party/authoritative-party-transport.ts` is the browser-compatible adapter for the versioned backend protocol. It sends the bearer token in the required first `auth` message, tracks connection lifecycle and party scope, exposes presence and authoritative state subscriptions, and correlates requests by `requestId`.
+
+The adapter accepts only newer state revisions; equal or stale snapshots are harmless. It preserves caller-supplied `commandId` values when retrying commands after a transient disconnect, and safely ignores duplicate or unknown command results. Reconnect uses bounded exponential backoff and stops for authentication or permanent protocol failures. Callers must mark known HTTP membership changes with `markPartyMembershipChanged()` and refresh the party scope before requesting state again.
+
+Only the server-supported forest expedition commands are sent: `expedition.start`, `expedition.contribute`, and `expedition.reset`. Existing local pause, resume, reward, and other simulation commands remain local-only and are rejected by this adapter rather than being remapped. The adapter is tested independently of the existing `LocalPartyTransport`; wiring it into the current UI is the next client milestone.
+
 ---
 
 ## Backend foundation
@@ -127,7 +136,7 @@ The backend is implemented in **TypeScript** with **Fastify**, **WebSockets**, a
 - Bearer authentication, `GET /v1/me`, and current-session revocation
 - Authoritative party state, revisions, idempotent commands, and real PostgreSQL integration tests
 
-The backend currently supports a small server-authoritative forest expedition state loop. Full expedition simulation, client transport integration, reconnect/resume semantics, rewards, and load testing remain future work.
+The backend currently supports a small server-authoritative forest expedition state loop. The browser-compatible client transport adapter is implemented, while UI migration, full expedition simulation, rewards, and load testing remain future work.
 
 ---
 
@@ -175,7 +184,7 @@ npm run backend:dev
 
 The backend checks the database connection and applies pending migrations before listening on its configured host and port.
 
-The current backend protocol supports authenticated party state reads and commands, but the browser client still uses `LocalPartyTransport` until the authoritative client transport milestone is complete.
+The current backend protocol supports authenticated party state reads and commands. The browser client still uses `LocalPartyTransport` until the standalone authoritative adapter is wired into the existing party UI.
 
 ---
 
@@ -212,11 +221,12 @@ Database integration tests run when `DATABASE_URL` is available.
 - [x] Server-ready party client architecture
 - [x] Tauri desktop shell
 - [x] PostgreSQL migrations, persistent players, sessions, and development authentication
-- [ ] Connect the client to backend identity and sessions
-- [ ] Define and implement the versioned multiplayer protocol
-- [ ] Add authenticated WebSocket sessions and authoritative party commands
+- [x] Define and implement the versioned multiplayer protocol
+- [x] Add authenticated WebSocket sessions and authoritative party commands
+- [x] Implement the browser-compatible authoritative client transport adapter
+- [ ] Connect the client to backend identity and sessions, then migrate the local expedition UI
 - [ ] Persist parties, expeditions, characters, and shared progression
-- [ ] Add reconnect and resume support, idempotent commands, authorization, and rate limits
+- [x] Add reconnect and resume support, idempotent commands, authorization, and rate limits
 - [ ] Expand social presence, shared goals, party bonuses, and cooperative content
 - [ ] Build the full taskbar-native desktop experience
 - [ ] Expand skills, encounters, equipment, progression, balance, and polish
