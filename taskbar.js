@@ -15,6 +15,7 @@
   const elements = {
     card:document.getElementById('partyCard'),
     status:document.getElementById('partyExpeditionStatus'),
+    transportLabel:document.getElementById('partyTransportLabel'),
     reconnect:document.getElementById('partyReconnectBtn'),
     sync:document.getElementById('partySyncStatus'),
     tick:document.getElementById('partyTickLabel'),
@@ -37,8 +38,16 @@
   let previousTickForSummary = null;
   let lastRenderSignature = '';
 
-  function currentStoreState() {
+  function currentRuntimeState() {
     return partyClient.getState();
+  }
+
+  function isAuthoritative() {
+    return currentRuntimeState().mode === 'authoritative';
+  }
+
+  function currentStoreState() {
+    return currentRuntimeState().client;
   }
 
   function currentSnapshot() {
@@ -46,10 +55,11 @@
   }
 
   function isConnected() {
-    return currentStoreState().session.connection.status === CONNECTION_STATES.CONNECTED;
+    return partyClient.getConnectionState() === CONNECTION_STATES.CONNECTED;
   }
 
   function commandIsPending(type) {
+    if (isAuthoritative()) return currentRuntimeState().authoritative.pendingCommandIds.length > 0;
     return currentStoreState().session.pendingCommands.some(command => command.type === type);
   }
 
@@ -89,6 +99,7 @@
   }
 
   async function setActivity(activityId) {
+    if (isAuthoritative()) return false;
     if (!DEFINITIONS.activities[activityId]) return false;
     return partyClient.setActivity(activityId);
   }
@@ -98,6 +109,7 @@
   }
 
   async function claimReward() {
+    if (isAuthoritative()) return false;
     const reward = currentSnapshot().expedition.pendingRewards;
     if (!reward || commandIsPending(COMMAND_TYPES.CLAIM_REWARD)) return false;
     return partyClient.claimReward(reward.id);
@@ -167,7 +179,7 @@
     return `<button class="btn btn-small" data-claim-party-reward ${disabled ? 'disabled' : ''}>${commandIsPending(COMMAND_TYPES.CLAIM_REWARD) ? 'Claiming…' : label}</button>`;
   }
 
-  function render(force = false) {
+  function renderLocal(force = false) {
     const storeState = currentStoreState();
     const snapshot = storeState.snapshot;
     const expedition = snapshot.expedition;
@@ -179,11 +191,13 @@
     lastRenderSignature = signature;
 
     const connectionStatus = storeState.session.connection.status;
+    if (elements.transportLabel) elements.transportLabel.textContent = currentRuntimeState().fallbackReason ? 'LOCAL FALLBACK TRANSPORT' : 'LOCAL PARTY TRANSPORT';
     const expeditionLabel = expedition.status === 'active' ? 'Active' : expedition.status === 'paused' ? 'Paused' : 'Ready';
-    const connectionText = connectionStatus === CONNECTION_STATES.DISCONNECTED ? 'Disconnected · showing last snapshot' : connectionStatus === CONNECTION_STATES.CONNECTING ? 'Connecting · showing last snapshot' : connectionStatus === CONNECTION_STATES.RECONNECTING ? 'Reconnecting · showing last snapshot' : connectionStatus === CONNECTION_STATES.ERROR ? 'Connection problem · showing last snapshot' : `${expeditionLabel} · authoritative snapshot`;
+    const fallbackLabel = currentRuntimeState().fallbackReason ? 'Local fallback · ' : '';
+    const connectionText = fallbackLabel + (connectionStatus === CONNECTION_STATES.DISCONNECTED ? 'Disconnected · showing last snapshot' : connectionStatus === CONNECTION_STATES.CONNECTING ? 'Connecting · showing last snapshot' : connectionStatus === CONNECTION_STATES.RECONNECTING ? 'Reconnecting · showing last snapshot' : connectionStatus === CONNECTION_STATES.ERROR ? 'Connection problem · showing last snapshot' : `${expeditionLabel} · local snapshot`);
     elements.status.textContent = `${connectionText} · Expedition ${expedition.completedExpeditions + 1}`;
     if (elements.sync) {
-      elements.sync.textContent = connectionStatus === CONNECTION_STATES.DISCONNECTED ? `Offline · last confirmed revision ${storeState.session.lastAcceptedRevision}` : connectionStatus === CONNECTION_STATES.CONNECTING ? 'Connecting…' : connectionStatus === CONNECTION_STATES.RECONNECTING ? 'Reconnecting…' : pendingCommandLabel(storeState) ? `Syncing ${pendingCommandLabel(storeState)}…` : error ? `${error} · retry available` : `Synced · revision ${storeState.session.lastAcceptedRevision}`;
+      elements.sync.textContent = currentRuntimeState().fallbackReason ? `Local fallback · ${currentRuntimeState().fallbackReason}` : connectionStatus === CONNECTION_STATES.DISCONNECTED ? `Offline · last confirmed revision ${storeState.session.lastAcceptedRevision}` : connectionStatus === CONNECTION_STATES.CONNECTING ? 'Connecting…' : connectionStatus === CONNECTION_STATES.RECONNECTING ? 'Reconnecting…' : pendingCommandLabel(storeState) ? `Syncing ${pendingCommandLabel(storeState)}…` : error ? `${error} · retry available` : `Local · revision ${storeState.session.lastAcceptedRevision}`;
       elements.sync.classList.toggle('is-pending', Boolean(pendingCommandLabel(storeState)) || [CONNECTION_STATES.CONNECTING, CONNECTION_STATES.RECONNECTING].includes(connectionStatus));
       elements.sync.classList.toggle('is-error', Boolean(error) || connectionStatus === CONNECTION_STATES.ERROR);
     }
@@ -224,6 +238,114 @@
     }
     bindRewardButtons(elements.dockNotable);
     bindRewardButtons(elements.checkin);
+  }
+
+  function shortPlayerId(playerId) {
+    return playerId ? playerId.slice(0, 8) : 'unknown';
+  }
+
+  function authoritativeActivityLabel(authoritativeState) {
+    if (!authoritativeState) return 'Awaiting party state';
+    const activity = authoritativeState.activity;
+    return activity.status === 'active' ? 'Active' : activity.status === 'completed' ? 'Completed' : 'Idle';
+  }
+
+  function authoritativeContributionTotal(authoritativeState) {
+    return authoritativeState ? Object.values(authoritativeState.contributions || {}).reduce((sum, value) => sum + (Number(value) || 0), 0) : 0;
+  }
+
+  function renderAuthoritativeState(host, authoritativeState, compact = false) {
+    const activity = authoritativeState?.activity;
+    const cards = [
+      { label: 'Server activity', value: authoritativeActivityLabel(authoritativeState), detail: activity?.destination ? `Destination · ${activity.destination}` : 'No expedition running' },
+      { label: 'Party contribution', value: Math.floor(authoritativeContributionTotal(authoritativeState)), detail: 'Accepted server contributions' },
+      { label: 'State revision', value: authoritativeState?.revision ?? '—', detail: authoritativeState ? 'Newer revisions only' : 'State not loaded' }
+    ];
+    host.innerHTML = cards.map(card => `<div class="party-lane party-authoritative-lane"><div><span>${escapeHtml(card.label)}</span><strong>${escapeHtml(card.value)}</strong></div><small>${escapeHtml(card.detail)}</small>${compact ? '' : '<div class="party-authoritative-rule"></div>'}</div>`).join('');
+  }
+
+  function renderAuthoritativeMembers(host, runtimeState) {
+    const authoritative = runtimeState.authoritative;
+    const currentPlayerId = runtimeState.identity.authenticatedPlayerId;
+    const contributions = authoritative.state?.contributions || {};
+    const members = authoritative.scope.memberPlayerIds || [];
+    host.innerHTML = members.length ? members.map(playerId => {
+      const presence = authoritative.presence[playerId];
+      const status = presence?.status || (playerId === currentPlayerId ? 'online' : 'offline');
+      const leader = playerId === authoritative.scope.leaderPlayerId;
+      const label = playerId === currentPlayerId ? 'You' : `Player ${shortPlayerId(playerId)}`;
+      return `<div class="party-member${playerId === currentPlayerId ? ' is-player' : ' is-authoritative-member'}"><span class="party-avatar">${playerId === currentPlayerId ? '◆' : '◌'}</span><span class="party-member-name"><strong>${escapeHtml(label)}${leader ? ' · LEADER' : ''}</strong><small>${status === 'online' ? 'Online' : 'Offline'} · ${Math.floor(Number(contributions[playerId]) || 0)} contribution</small></span><span class="party-presence">${status.toUpperCase()}</span></div>`;
+    }).join('') : '<div class="small party-empty-state">No party membership is currently available.</div>';
+  }
+
+  function authoritativeActionMarkup(runtimeState, compact = false) {
+    const activity = runtimeState.authoritative.state?.activity;
+    if (!runtimeState.authoritative.scope.partyId) return '<div class="small party-authoritative-note">Join a party to unlock shared server progress.</div>';
+    if (activity?.status === 'active') {
+      return `<button class="btn party-action" data-authoritative-contribute="1" ${!isConnected() || commandIsPending() ? 'disabled' : ''}><span>＋</span>${compact ? '' : 'Contribute 1'}</button><button class="btn party-action" data-authoritative-contribute="10" ${!isConnected() || commandIsPending() ? 'disabled' : ''}><span>✦</span>${compact ? '' : 'Contribute 10'}</button><div class="small party-authoritative-note">The server controls activity timing and completion.</div>`;
+    }
+    if (activity?.status === 'completed') return `<div class="small party-authoritative-note">Expedition complete. Reset is available to the party leader.</div>`;
+    return `<div class="small party-authoritative-note">Start the shared forest expedition when your party is ready.</div>`;
+  }
+
+  function bindAuthoritativeActions(host) {
+    host.querySelectorAll('[data-authoritative-contribute]').forEach(button => {
+      button.onclick = () => { void partyClient.contribute(Number(button.dataset.authoritativeContribute)); };
+    });
+  }
+
+  function renderAuthoritative(runtimeState, force = false) {
+    const authoritative = runtimeState.authoritative;
+    const authoritativeState = authoritative.state;
+    const connectionStatus = runtimeState.connection;
+    const pending = authoritative.pendingCommandIds.join(',');
+    const error = authoritative.lastError?.message || '';
+    const signature = `authoritative:${connectionStatus}:${authoritative.scope.partyId || 'none'}:${authoritativeState?.revision ?? 'none'}:${pending}:${error}:${presentation.compact}`;
+    if (!force && signature === lastRenderSignature) return;
+    lastRenderSignature = signature;
+
+    const partyLabel = authoritative.scope.partyId ? 'Authoritative party' : 'No party membership';
+    if (elements.transportLabel) elements.transportLabel.textContent = 'AUTHORITATIVE PARTY TRANSPORT';
+    const stateLabel = authoritativeActivityLabel(authoritativeState);
+    const connectionText = connectionStatus === CONNECTION_STATES.CONNECTED ? `${partyLabel} · ${stateLabel}` : connectionStatus === CONNECTION_STATES.RECONNECTING ? 'Reconnecting · showing last server state' : connectionStatus === CONNECTION_STATES.CONNECTING ? 'Connecting · acquiring server state' : connectionStatus === CONNECTION_STATES.ERROR ? 'Connection problem · showing last server state' : 'Disconnected · showing last server state';
+    elements.status.textContent = `${connectionText} · Revision ${authoritativeState?.revision ?? '—'}`;
+    if (elements.sync) {
+      elements.sync.textContent = error ? `${error} · retry available` : connectionStatus === CONNECTION_STATES.CONNECTED ? `Authoritative · revision ${authoritativeState?.revision ?? '—'}` : connectionStatus === CONNECTION_STATES.RECONNECTING ? 'Authoritative reconnecting…' : connectionStatus === CONNECTION_STATES.CONNECTING ? 'Authoritative connecting…' : 'Authoritative offline';
+      elements.sync.classList.toggle('is-pending', Boolean(pending) || [CONNECTION_STATES.CONNECTING, CONNECTION_STATES.RECONNECTING].includes(connectionStatus));
+      elements.sync.classList.toggle('is-error', Boolean(error) || connectionStatus === CONNECTION_STATES.ERROR);
+    }
+    if (elements.reconnect) {
+      elements.reconnect.textContent = [CONNECTION_STATES.CONNECTING, CONNECTION_STATES.RECONNECTING].includes(connectionStatus) ? 'Connecting…' : 'Reconnect';
+      elements.reconnect.disabled = [CONNECTION_STATES.CONNECTING, CONNECTION_STATES.RECONNECTING].includes(connectionStatus);
+    }
+    elements.tick.textContent = `Revision ${authoritativeState?.revision ?? '—'}`;
+
+    const toggle = document.getElementById('partyExpeditionToggle');
+    const canToggle = Boolean(authoritative.scope.partyId) && isConnected() && !pending;
+    if (toggle) {
+      toggle.textContent = !authoritative.scope.partyId ? 'No Party' : authoritativeState?.activity.status === 'completed' ? 'Reset Expedition' : authoritativeState?.activity.status === 'active' ? 'Server Running' : 'Start Expedition';
+      toggle.disabled = !canToggle || authoritativeState?.activity.status === 'active';
+    }
+
+    renderAuthoritativeState(elements.lanes, authoritativeState);
+    renderAuthoritativeMembers(elements.members, runtimeState);
+    elements.actions.innerHTML = authoritativeActionMarkup(runtimeState);
+    elements.actions.setAttribute('aria-busy', String(Boolean(pending)));
+    bindAuthoritativeActions(elements.actions);
+    renderAuthoritativeState(elements.dockLanes, authoritativeState, true);
+    renderAuthoritativeMembers(elements.dockMembers, runtimeState);
+    elements.dockActions.innerHTML = authoritativeActionMarkup(runtimeState, true);
+    elements.dockActions.setAttribute('aria-busy', String(Boolean(pending)));
+    bindAuthoritativeActions(elements.dockActions);
+    elements.dockLabel.textContent = `Authoritative Forest Expedition · ${stateLabel} · revision ${authoritativeState?.revision ?? '—'}`;
+    elements.dockNotable.textContent = error || (authoritativeState ? `Server state confirmed at revision ${authoritativeState.revision}.` : 'Waiting for authoritative party state.');
+    elements.checkin.innerHTML = authoritative.scope.partyId ? `<span>${authoritativeState ? `Shared forest expedition is ${stateLabel.toLowerCase()}.` : 'Waiting for the server to provide the shared expedition state.'} ${authoritativeState?.activity.status === 'active' ? 'Contribute when you have a moment; the server controls completion.' : ''}</span>` : '<span>No party membership is currently available. The local fallback remains available by selecting local mode.</span>';
+  }
+
+  function render(force = false) {
+    const runtimeState = currentRuntimeState();
+    if (runtimeState.mode === 'authoritative') return renderAuthoritative(runtimeState, force);
+    return renderLocal(force);
   }
 
   function bindRewardButtons(host) {
@@ -272,7 +394,8 @@
 
   async function init() {
     await initializeClient();
-    previousTickForSummary = currentSnapshot().elapsedTicks;
+    const initialState = currentRuntimeState();
+    previousTickForSummary = initialState.mode === 'local' ? initialState.client.snapshot.elapsedTicks : initialState.authoritative.state?.revision ?? 0;
     render(true);
     let compact = false;
     try { compact = localStorage.getItem(COMPACT_STORAGE_KEY) === '1'; } catch {}
@@ -284,19 +407,23 @@
     getSnapshot:() => partyClient.getSnapshot(),
     getStoreState:() => partyClient.getState(),
     getSessionState:() => partyClient.getSessionState(),
+    getMode:() => partyClient.getMode(),
+    getRequestedMode:() => partyClient.getRequestedMode(),
     getCommandState:type => partyClient.getCommandState(type),
     requestSnapshot,
     setActivity,
     startExpedition:() => partyClient.startExpedition(),
     pauseExpedition:() => partyClient.pauseExpedition(),
     resumeExpedition:() => partyClient.resumeExpedition(),
+    resetExpedition:() => partyClient.resetExpedition(),
+    contribute:amount => partyClient.contribute(amount),
     toggleExpedition,
     claimReward,
     reconnect,
     getConnectionState:() => partyClient.getConnectionState()
   });
   window.MomentumTaskbar = Object.freeze({
-    getState:() => partyClient.getSnapshot(),
+    getState:() => partyClient.getState(),
     setCompact,
     render,
     startExpedition:() => partyClient.startExpedition(),

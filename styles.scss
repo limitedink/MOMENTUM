@@ -484,6 +484,12 @@ body.reduce-motion .settings-panel,body.reduce-motion .frontier-panel,body.reduc
 .party-lane strong { color:var(--text); }
 .party-lane-meter { height:6px; margin-top:6px; overflow:hidden; border:1px solid var(--line); background:#050812; }
 .party-lane-meter i { display:block; height:100%; }
+.party-authoritative-lane { min-height:58px; }
+.party-authoritative-lane small { display:block; margin-top:5px; color:var(--muted); font-size:9px; }
+.party-authoritative-rule { height:1px; margin-top:8px; background:linear-gradient(90deg,var(--cyan),transparent); opacity:.45; }
+.party-member.is-authoritative-member { border-color:rgba(119,198,110,.3); }
+.party-empty-state,.party-authoritative-note { padding:7px 0; color:var(--muted); }
+.party-authoritative-note { flex-basis:100%; font-size:10px; }
 .party-members { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px; }
 .party-member { display:flex; min-width:0; align-items:center; gap:7px; padding:7px; border:1px solid var(--line); background:rgba(6,10,22,.4); }
 .party-member.is-player { border-color:rgba(80,217,255,.55); }

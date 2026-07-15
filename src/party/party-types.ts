@@ -311,8 +311,8 @@ declare global {
       resolveElapsed(): number;
       simulateTick(): boolean;
     };
-    MomentumPartyRuntime: MomentumPartyClient;
-    MomentumPartySync: MomentumPartyClient;
+    MomentumPartyRuntime: import('./party-runtime').PartyRuntime;
+    MomentumPartySync: import('./party-runtime').PartyRuntime;
     MomentumPartyStore: {
       createPartySnapshotStore: (initialSnapshot: PartySnapshot) => PartySnapshotStore;
       isPartySnapshot: (value: unknown) => value is PartySnapshot;

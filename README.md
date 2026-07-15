@@ -9,7 +9,7 @@
 The long-term vision is a small persistent adventure shared with friends or matched players. Players should be able to see one another's presence, choose complementary activities, earn party bonuses, and move expeditions forward without needing everyone online or actively playing at the same time.
 
 > [!NOTE]
-> The public build is an early gameplay prototype. Its party expedition is currently simulated locally. The desktop shell and multiplayer backend foundations exist, but live online multiplayer is not connected yet.
+> The public build is an early gameplay prototype and defaults to the local party simulation. The desktop shell and multiplayer backend foundations exist. The browser client can opt into the current authoritative party transport for development, but full online party management and gameplay parity are still in progress.
 
 Momentum takes inspiration from the long-term skill progression of **Old School RuneScape**, the idle systems of **Melvor Idle**. Its primary focus is bringing meaningful persistent multiplayer to the low-attention taskbar RPG format.
 
@@ -31,8 +31,9 @@ Momentum takes inspiration from the long-term skill progression of **Old School 
 
 - Persistent players, sessions, parties, memberships, and authenticated party-aware WebSockets
 - Server-authoritative party expedition state with revisions, PostgreSQL persistence, and command idempotency
-- A standalone authoritative client WebSocket transport adapter with reconnect, request correlation, and revision protection
-- The live client still uses its local expedition transport until the UI migration milestone
+- A browser client identity/session adapter backed by the development player endpoint and `/v1/me`
+- Explicit local versus authoritative party runtime modes, with local fallback when development identity acquisition is unavailable
+- The default/public client still uses the local expedition transport; authoritative mode is opt-in while the server command set is intentionally small
 
 ### Idle progression
 
@@ -94,12 +95,12 @@ Momentum takes inspiration from the long-term skill progression of **Old School 
 ```text
 Browser or Tauri client
 ├── Gameplay runtime
-├── MomentumPartyClient
-│   ├── PartySnapshotStore
-│   ├── ClientSession
-│   └── MomentumPartyTransport
-│       ├── LocalPartyTransport today
-│       └── Authoritative server transport next
+├── PartyRuntime
+│   ├── LocalPartyTransport fallback
+│   └── AuthoritativePartyTransport
+│       ├── Backend identity/session acquisition
+│       ├── Party scope and presence
+│       └── Revisioned state and command correlation
 └── Presentation and taskbar UI
 
 Fastify backend
@@ -119,7 +120,13 @@ The current local transport is an adapter behind that boundary. Presentation cod
 
 The adapter accepts only newer state revisions; equal or stale snapshots are harmless. It preserves caller-supplied `commandId` values when retrying commands after a transient disconnect, and safely ignores duplicate or unknown command results. Reconnect uses bounded exponential backoff and stops for authentication or permanent protocol failures. Callers must mark known HTTP membership changes with `markPartyMembershipChanged()` and refresh the party scope before requesting state again.
 
-Only the server-supported forest expedition commands are sent: `expedition.start`, `expedition.contribute`, and `expedition.reset`. Existing local pause, resume, reward, and other simulation commands remain local-only and are rejected by this adapter rather than being remapped. The adapter is tested independently of the existing `LocalPartyTransport`; wiring it into the current UI is the next client milestone.
+Only the server-supported forest expedition commands are sent: `expedition.start`, `expedition.contribute`, and `expedition.reset`. Existing local pause, resume, reward, and other simulation commands remain local-only and are rejected by this adapter rather than being remapped. The adapter is tested independently of the existing `LocalPartyTransport` and is now selected by the frontend party runtime when authoritative mode is enabled.
+
+### Party runtime modes
+
+The frontend runtime resolves its mode in this order: the `partyTransport=authoritative` or `partyTransport=local` query parameter, then `VITE_MOMENTUM_PARTY_MODE`, then local mode. Authoritative mode acquires a development player/session, connects the authenticated WebSocket transport, and renders only server-owned party state, revisions, contributions, and presence. It does not present local-only pause, reward, or activity controls as if they were authoritative. If identity acquisition fails and fallback is enabled, the runtime switches to `LocalPartyTransport` and exposes the reason in its state.
+
+For local development, run the backend and Vite dev server, then open `/` with `?partyTransport=authoritative`. `VITE_MOMENTUM_BACKEND_URL` may point the client at a different backend; the Vite development proxy forwards `/v1` and WebSocket traffic to `http://127.0.0.1:3000` by default. The development identity token is stored in browser local storage for reuse and is not a production authentication design.
 
 ---
 
@@ -136,7 +143,7 @@ The backend is implemented in **TypeScript** with **Fastify**, **WebSockets**, a
 - Bearer authentication, `GET /v1/me`, and current-session revocation
 - Authoritative party state, revisions, idempotent commands, and real PostgreSQL integration tests
 
-The backend currently supports a small server-authoritative forest expedition state loop. The browser-compatible client transport adapter is implemented, while UI migration, full expedition simulation, rewards, and load testing remain future work.
+The backend currently supports a small server-authoritative forest expedition state loop. The browser client can acquire development identity, select authoritative mode, and render that state through the existing party panel. Party creation/join/leave UI, full expedition simulation, rewards, and load testing remain future work.
 
 ---
 
@@ -184,7 +191,7 @@ npm run backend:dev
 
 The backend checks the database connection and applies pending migrations before listening on its configured host and port.
 
-The current backend protocol supports authenticated party state reads and commands. The browser client still uses `LocalPartyTransport` until the standalone authoritative adapter is wired into the existing party UI.
+The current backend protocol supports authenticated party state reads and commands. The browser client defaults to `LocalPartyTransport`, while `?partyTransport=authoritative` or `VITE_MOMENTUM_PARTY_MODE=authoritative` enables the deliberate authoritative rendering path.
 
 ---
 
@@ -224,7 +231,7 @@ Database integration tests run when `DATABASE_URL` is available.
 - [x] Define and implement the versioned multiplayer protocol
 - [x] Add authenticated WebSocket sessions and authoritative party commands
 - [x] Implement the browser-compatible authoritative client transport adapter
-- [ ] Connect the client to backend identity and sessions, then migrate the local expedition UI
+- [x] Connect the client to backend identity and sessions, then migrate the party UI with an explicit local fallback
 - [ ] Persist parties, expeditions, characters, and shared progression
 - [x] Add reconnect and resume support, idempotent commands, authorization, and rate limits
 - [ ] Expand social presence, shared goals, party bonuses, and cooperative content
