@@ -4,12 +4,14 @@ export interface Session {
   tokenHash: string;
   createdAt: Date;
   lastUsedAt: Date;
+  expiresAt: Date;
   revokedAt?: Date | null;
 }
 
 export interface CreateSessionInput {
   playerId: string;
   tokenHash: string;
+  expiresAt?: Date;
 }
 
 export interface SessionRepository {

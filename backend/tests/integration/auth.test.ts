@@ -25,7 +25,7 @@ describe.skipIf(!databaseUrl)('auth integration (PostgreSQL)', () => {
       connectionTimeoutMillis: 2000
     });
     const runner = createMigrationRunner(pool);
-    const migrationsDir = new URL('../../../migrations', import.meta.url).pathname;
+    const migrationsDir = new URL('../../migrations', import.meta.url).pathname;
     await runner.runFromDirectory(migrationsDir);
   });
 

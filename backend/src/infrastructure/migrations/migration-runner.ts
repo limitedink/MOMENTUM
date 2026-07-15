@@ -34,6 +34,12 @@ async function ensureSchemaMigrations(client: PoolClient): Promise<void> {
   `);
 }
 
+async function lockSchemaMigrations(client: PoolClient): Promise<void> {
+  await client.query(
+    `SELECT pg_advisory_xact_lock(hashtextextended('momentum:schema_migrations', 0))`
+  );
+}
+
 async function getAppliedMigrations(client: PoolClient): Promise<Map<string, string>> {
   const { rows } = await client.query<SchemaMigrationRow>(
     'SELECT version, checksum FROM schema_migrations ORDER BY version'
@@ -93,6 +99,7 @@ export function createMigrationRunner(pool: Pool): MigrationRunner {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+        await lockSchemaMigrations(client);
         await ensureSchemaMigrations(client);
         const applied = await getAppliedMigrations(client);
 
@@ -121,6 +128,7 @@ export function createMigrationRunner(pool: Pool): MigrationRunner {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+        await lockSchemaMigrations(client);
         await ensureSchemaMigrations(client);
         const applied = await getAppliedMigrations(client);
 

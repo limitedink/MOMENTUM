@@ -18,39 +18,46 @@ export interface AuthContext {
   session: Session;
 }
 
-export function createAuthHook(database: Pool) {
-  const players = createPostgresPlayerRepository(database);
+export function extractBearerToken(header: string | undefined): string | null {
+  if (!header || !header.toLowerCase().startsWith('bearer ')) return null;
+  const raw = header.slice(7).trim();
+  return raw || null;
+}
+
+export async function authenticateToken(database: Pool, rawToken: string): Promise<AuthContext | null> {
   const sessions = createPostgresSessionRepository(database);
+  const players = createPostgresPlayerRepository(database);
+  const session = await sessions.findByTokenHash(hashToken(rawToken));
+  if (!session) return null;
 
+  const player = await players.findById(session.playerId);
+  if (!player) return null;
+
+  await sessions.touchLastUsed(session.id);
+  return { player, session };
+}
+
+export async function authenticateAuthorizationHeader(
+  database: Pool,
+  header: string | undefined
+): Promise<AuthContext | null> {
+  const rawToken = extractBearerToken(header);
+  return rawToken ? authenticateToken(database, rawToken) : null;
+}
+
+function attachAuthContext(request: FastifyRequest, context: AuthContext): void {
+  request.currentPlayer = context.player;
+  request.currentSession = context.session;
+}
+
+export function createAuthHook(database: Pool) {
   return async function requireAuth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-    const header = request.headers.authorization;
-    if (!header || !header.toLowerCase().startsWith('bearer ')) {
+    const context = await authenticateAuthorizationHeader(database, request.headers.authorization);
+    if (!context) {
       reply.code(401).send({ error: 'unauthorized' });
       return;
     }
-    const raw = header.slice(7).trim();
-    if (!raw) {
-      reply.code(401).send({ error: 'unauthorized' });
-      return;
-    }
-
-    const hash = hashToken(raw);
-    const session = await sessions.findByTokenHash(hash);
-    if (!session) {
-      reply.code(401).send({ error: 'unauthorized' });
-      return;
-    }
-
-    const player = await players.findById(session.playerId);
-    if (!player) {
-      reply.code(401).send({ error: 'unauthorized' });
-      return;
-    }
-
-    await sessions.touchLastUsed(session.id);
-
-    request.currentPlayer = player;
-    request.currentSession = session;
+    attachAuthContext(request, context);
   };
 }
 

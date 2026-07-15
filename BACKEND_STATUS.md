@@ -1,18 +1,42 @@
 # Momentum Backend Status
 
-Updated from the current working tree after completing the backend foundation stage.
+Updated after completing the first server-authoritative party state and command loop.
 
 ## Completed
 
-- Milestone 0: focused Phase 1 technical documentation exists in the canonical Technical folder.
-- Milestone 1: backend shell, typed configuration, Fastify server, PostgreSQL pool boundary, structured logging, `/healthz`, migration-runner boundary, startup connection check, and test bootstrap are implemented.
+- Backend shell, typed configuration, Fastify server, PostgreSQL pool boundary, structured logging, health/readiness routes, and graceful shutdown.
+- Automatic PostgreSQL migrations with checksum tracking and transaction-scoped migration locking.
+- Persistent development players and opaque sessions.
+- SHA-256 token hashing, bearer authentication, `/v1/me`, and current-session revocation.
+- Expiring development sessions with a thirty-day lifetime and revocation checks.
+- Persistent parties, memberships, secure join codes, one-party-per-player enforcement, member listing, size limits, and safe leadership transfer.
+- Authenticated party HTTP routes and PostgreSQL integration coverage.
+- Authenticated, party-aware `/v1/ws` connections with header and browser-compatible first-message authentication.
+- Versioned WebSocket protocol validation, connection limits, message/rate limits, idle timeouts, lifecycle logging, party refresh, and isolated presence broadcasts.
+- One lazily initialized authoritative expedition state per party, persisted with normalized contributions and command idempotency records.
+- Authenticated `party.state.get` and `party.command` WebSocket messages with `party.state.snapshot`, `party.state.error`, and `party.command.result` responses.
+- Server-owned forest expedition start/completion timestamps, contribution totals, leader-only reset, optimistic revision checks, completion reconciliation on access, and commit-after-broadcast ordering.
+- PostgreSQL-backed authorization revalidation, state/contribution/command cascade behavior, and real concurrent WebSocket/PostgreSQL integration coverage.
+
+## WebSocket foundation
+
+- Preferred authentication is `Authorization: Bearer dev_...` during the HTTP upgrade.
+- Browser clients that cannot set upgrade headers may send one first message of type `auth` with the token in its payload. Tokens are never accepted in URL query parameters.
+- Protocol version 1 supports `ping`, `party.refresh`, `party.state.get`, `party.command`, and first-message `auth`. Server messages include `connection.ready`, `pong`, `party.snapshot`, `party.presence`, `party.state.snapshot`, `party.state.error`, and `party.command.result`.
+- Party scope is derived from the authenticated player's persistent membership. Client-supplied party IDs are not accepted.
+- After a successful HTTP create, join, or leave operation, clients must send `party.refresh` on each existing socket for that player.
+- Authoritative state is one `party_states` row per party. Revisions start at zero and increment once for each accepted state mutation or server reconciliation; stale expected revisions are rejected.
+- The supported commands are `expedition.start` to `forest`, `expedition.contribute` with amounts 1–10, and leader-only `expedition.reset`. Start and completion timestamps are server-controlled; completion is reconciled on state access or command processing.
+- Command IDs are unique within a party. The request hash, accepted/rejected result, and revision are persisted so exact retries are safe and payload mismatches return `duplicate_command_mismatch`. Records are retained until a later explicit retention policy is designed.
+- State broadcasts are emitted only after the PostgreSQL transaction commits and are filtered to current members of the party. The in-memory registry remains a single-server fanout boundary.
+- The registry is intentionally in-memory and single-server. Redis, persistent event history, and cross-instance fanout are deferred.
 
 ## First incomplete stage
 
-Milestone 2 — development authentication.
+Client integration with the authoritative state loop: a server WebSocket transport adapter, reconnect/resume behavior, and migration of the existing local expedition UI. Full expedition simulation, rewards, and combat remain later stages.
 
-It must add only the development-auth endpoint, stable device-subject identity mapping, signed expiring tokens, the authentication service interface, and token-validation tests. Do not add party persistence or WebSocket session authentication in that stage.
+That stage should build on the state and party-presence foundation without adding matchmaking, chat, guilds, or other out-of-scope social systems.
 
 ## Verification note
 
-The PostgreSQL integration test runs when `DATABASE_URL` is supplied. Without that environment variable, the test is skipped so the normal unit/test suite remains usable without a local database.
+The PostgreSQL integration tests run when `DATABASE_URL` is supplied. Without that environment variable, they are skipped so the normal unit/test suite remains usable without a local database. The integration bootstrap applies `backend/migrations` and is safe when multiple test files initialize the database concurrently. WebSocket and authoritative-state limits/duration are configured with the `WEBSOCKET_*` and `PARTY_STATE_*` environment variables shown in `backend/.env.example`.

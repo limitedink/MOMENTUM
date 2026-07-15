@@ -1,10 +1,11 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import websocket from '@fastify/websocket';
 import type { Pool } from 'pg';
-import type { WebSocket } from 'ws';
 import type { AppConfig } from './config/environment.js';
 import { closeDatabasePool, createDatabasePool } from './infrastructure/database.js';
 import { registerAuthRoutes, createReadyHandler } from './authentication/auth.js';
+import { registerPartyRoutes } from './parties/party-routes.js';
+import { registerWebSocketRoute } from './websocket/websocket-service.js';
 
 export interface AppDependencies {
   database?: Pool;
@@ -22,7 +23,13 @@ export async function buildApp(
   const database = dependencies.database ?? createDatabasePool(config);
   const ownsDatabase = dependencies.database === undefined;
 
-  await app.register(websocket);
+  await app.register(websocket, {
+    options: {
+      // Leave a small transport margin so protocol-level validation can send
+      // its stable close reason for messages just over the configured limit.
+      maxPayload: config.websocketMaxMessageBytes + 1024
+    }
+  });
 
   app.get('/healthz', async () => ({ status: 'ok' }));
 
@@ -32,26 +39,13 @@ export async function buildApp(
   // Auth routes (dev players, bearer auth, /me, revoke)
   await registerAuthRoutes(app, database);
 
-  app.get('/v1/ws', { websocket: true }, (socket: WebSocket, request) => {
-    app.log.info({ requestId: request.id }, 'websocket connection opened');
+  // Persistent party routes. WebSocket auth and gameplay synchronization remain separate milestones.
+  await registerPartyRoutes(app, database);
 
-    socket.on('close', (code, reason) => {
-      app.log.info(
-        {
-          code,
-          reason: reason.toString(),
-          requestId: request.id
-        },
-        'websocket connection closed'
-      );
-    });
-
-    socket.on('error', error => {
-      app.log.error({ error, requestId: request.id }, 'websocket connection error');
-    });
-  });
+  const websocketService = registerWebSocketRoute(app, database, config);
 
   app.addHook('onClose', async () => {
+    websocketService.close();
     if (ownsDatabase) await closeDatabasePool(database);
   });
 

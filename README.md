@@ -27,6 +27,12 @@ Momentum takes inspiration from the long-term skill progression of **Old School 
 
 ## Current prototype
 
+### Backend multiplayer foundation
+
+- Persistent players, sessions, parties, memberships, and authenticated party-aware WebSockets
+- Server-authoritative party expedition state with revisions, PostgreSQL persistence, and command idempotency
+- The live client still uses its local expedition transport; authoritative client integration remains the next milestone
+
 ### Idle progression
 
 - Six trainable skills: **Mining, Smithing, Combat, Fishing, Cooking, and Woodchopping**
@@ -114,14 +120,14 @@ The backend is implemented in **TypeScript** with **Fastify**, **WebSockets**, a
 
 - Typed environment configuration and structured logging
 - `/healthz` liveness and `/readyz` database readiness endpoints
-- A `/v1/ws` WebSocket endpoint ready for the future party protocol
+- An authenticated `/v1/ws` WebSocket endpoint with party scope and presence
 - Automatic versioned PostgreSQL migrations at startup
 - Persistent player and session records
 - Opaque `dev_*` access tokens stored only as SHA-256 hashes
 - Bearer authentication, `GET /v1/me`, and current-session revocation
-- Unit tests and real PostgreSQL integration tests
+- Authoritative party state, revisions, idempotent commands, and real PostgreSQL integration tests
 
-The backend does not yet run authoritative party simulation. Protocol negotiation, authenticated WebSocket sessions, party persistence, reconnect and resume semantics, command idempotency, authorization, rate limiting, and load testing remain future work.
+The backend currently supports a small server-authoritative forest expedition state loop. Full expedition simulation, client transport integration, reconnect/resume semantics, rewards, and load testing remain future work.
 
 ---
 
@@ -168,6 +174,8 @@ npm run backend:dev
 ```
 
 The backend checks the database connection and applies pending migrations before listening on its configured host and port.
+
+The current backend protocol supports authenticated party state reads and commands, but the browser client still uses `LocalPartyTransport` until the authoritative client transport milestone is complete.
 
 ---
 
