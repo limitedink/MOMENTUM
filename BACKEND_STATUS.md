@@ -1,6 +1,6 @@
 # Momentum Backend Status
 
-Updated after completing the standalone authoritative client transport adapter milestone.
+Updated after completing the authoritative client transport and first frontend mode/UI milestone.
 
 ## Completed
 
@@ -18,6 +18,7 @@ Updated after completing the standalone authoritative client transport adapter m
 - Server-owned forest expedition start/completion timestamps, contribution totals, leader-only reset, optimistic revision checks, completion reconciliation on access, and commit-after-broadcast ordering.
 - PostgreSQL-backed authorization revalidation, state/contribution/command cascade behavior, and real concurrent WebSocket/PostgreSQL integration coverage.
 - Browser-compatible client transport adapter with first-message authentication, party scope and presence handling, request/command correlation, newer-only state revisions, bounded reconnect, and command ID preservation.
+- Frontend development identity acquisition with persisted opaque session reuse, explicit local/authoritative party runtime modes, local fallback, and authoritative rendering of server status, revisions, contributions, and membership presence.
 
 ## WebSocket foundation
 
@@ -34,7 +35,7 @@ Updated after completing the standalone authoritative client transport adapter m
 
 ## First incomplete stage
 
-Migration of the existing local expedition UI to the authoritative client transport, including backend identity/session acquisition and a deliberate mapping of local presentation actions to the smaller server command set. Full expedition simulation, rewards, and combat remain later stages.
+Party creation/join/leave controls and richer membership management in the frontend, followed by a broader mapping of authoritative expedition actions. Full expedition simulation, rewards, and combat remain later stages; the existing party panel now deliberately distinguishes server-owned state from the local simulation.
 
 That stage should build on the state and party-presence foundation without adding matchmaking, chat, guilds, or other out-of-scope social systems.
 
