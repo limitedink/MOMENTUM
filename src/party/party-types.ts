@@ -227,6 +227,24 @@ export interface MomentumPartyTransport {
   destroy(): Promise<void>;
 }
 
+/**
+ * Server-authoritative party state is deliberately separate from the legacy
+ * LocalPartyTransport snapshot until the client transport migration milestone.
+ */
+export interface AuthoritativePartyState {
+  partyId: string;
+  revision: number;
+  activity: {
+    kind: 'expedition';
+    status: 'idle' | 'active' | 'completed';
+    destination: 'forest' | null;
+    startedAt: string | null;
+    completesAt: string | null;
+  };
+  contributions: Record<string, number>;
+  updatedAt: string;
+}
+
 export interface ActivityDefinition {
   name: string;
   icon: string;

@@ -18,6 +18,14 @@ export interface AppConfig {
   websocketAuthTimeoutMs: number;
   websocketIdleTimeoutMs: number;
   websocketMaxConnectionsPerPlayer: number;
+  partyStateExpeditionDurationMs: number;
+  partyStateCommandWindowMs: number;
+  partyStateMaxCommands: number;
+  partyStateContributionWindowMs: number;
+  partyStateMaxContributions: number;
+  partyStateMaxContribution: number;
+  partyStateMaxCommandIdLength: number;
+  partyStateMaxCommandPayloadBytes: number;
 }
 
 const DEFAULT_DATABASE_URL = 'postgresql://localhost:5432/momentum';
@@ -58,6 +66,14 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     websocketRateWindowMs: parsePositiveInteger('WEBSOCKET_RATE_WINDOW_MS', environment.WEBSOCKET_RATE_WINDOW_MS, 10_000),
     websocketAuthTimeoutMs: parsePositiveInteger('WEBSOCKET_AUTH_TIMEOUT_MS', environment.WEBSOCKET_AUTH_TIMEOUT_MS, 5_000),
     websocketIdleTimeoutMs: parsePositiveInteger('WEBSOCKET_IDLE_TIMEOUT_MS', environment.WEBSOCKET_IDLE_TIMEOUT_MS, 120_000),
-    websocketMaxConnectionsPerPlayer: parsePositiveInteger('WEBSOCKET_MAX_CONNECTIONS_PER_PLAYER', environment.WEBSOCKET_MAX_CONNECTIONS_PER_PLAYER, 4)
+    websocketMaxConnectionsPerPlayer: parsePositiveInteger('WEBSOCKET_MAX_CONNECTIONS_PER_PLAYER', environment.WEBSOCKET_MAX_CONNECTIONS_PER_PLAYER, 4),
+    partyStateExpeditionDurationMs: parsePositiveInteger('PARTY_STATE_EXPEDITION_DURATION_MS', environment.PARTY_STATE_EXPEDITION_DURATION_MS, 60_000),
+    partyStateCommandWindowMs: parsePositiveInteger('PARTY_STATE_COMMAND_WINDOW_MS', environment.PARTY_STATE_COMMAND_WINDOW_MS, 10_000),
+    partyStateMaxCommands: parsePositiveInteger('PARTY_STATE_MAX_COMMANDS', environment.PARTY_STATE_MAX_COMMANDS, 30),
+    partyStateContributionWindowMs: parsePositiveInteger('PARTY_STATE_CONTRIBUTION_WINDOW_MS', environment.PARTY_STATE_CONTRIBUTION_WINDOW_MS, 10_000),
+    partyStateMaxContributions: parsePositiveInteger('PARTY_STATE_MAX_CONTRIBUTIONS', environment.PARTY_STATE_MAX_CONTRIBUTIONS, 10),
+    partyStateMaxContribution: parsePositiveInteger('PARTY_STATE_MAX_CONTRIBUTION', environment.PARTY_STATE_MAX_CONTRIBUTION, 1_000),
+    partyStateMaxCommandIdLength: parsePositiveInteger('PARTY_STATE_MAX_COMMAND_ID_LENGTH', environment.PARTY_STATE_MAX_COMMAND_ID_LENGTH, 128),
+    partyStateMaxCommandPayloadBytes: parsePositiveInteger('PARTY_STATE_MAX_COMMAND_PAYLOAD_BYTES', environment.PARTY_STATE_MAX_COMMAND_PAYLOAD_BYTES, 4_096)
   };
 }

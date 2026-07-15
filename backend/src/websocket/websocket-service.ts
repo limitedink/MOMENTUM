@@ -11,6 +11,12 @@ import { createPartyService } from '../domain/parties/party-service.js';
 import { createPostgresPartyRepository } from '../domain/parties/postgres-party-repository.js';
 import type { PartyWithMembers } from '../domain/parties/party.js';
 import {
+  createPartyStateService,
+  PartyStateError,
+  type PartyState,
+  type PartyStateErrorCode
+} from '../domain/party-state/index.js';
+import {
   createConnectionRegistry,
   type ConnectionRegistry,
   type RegisteredConnection,
@@ -27,6 +33,8 @@ import {
   WEBSOCKET_PROTOCOL_VERSION,
   type ClientMessage,
   type PartySnapshotPayload,
+  type PartyCommandMessage,
+  type PartyStateSnapshotPayload,
   type ServerMessage
 } from './protocol.js';
 
@@ -59,6 +67,23 @@ function stringifyMessage(message: ServerMessage): string {
   return JSON.stringify(message);
 }
 
+function partyStateSnapshotPayload(state: PartyState): PartyStateSnapshotPayload {
+  return {
+    partyId: state.partyId,
+    revision: state.revision,
+    activity: {
+      kind: state.activity.kind,
+      status: state.activity.status,
+      destination: state.activity.destination,
+      startedAt: state.activity.startedAt?.toISOString() ?? null,
+      completesAt: state.activity.completesAt?.toISOString() ?? null
+    },
+    contributions: state.contributions,
+    updatedAt: state.updatedAt.toISOString(),
+    serverTimestamp: Date.now()
+  };
+}
+
 function failureReason(failure: 'invalid_json' | 'unsupported_version' | 'unknown_message_type' | 'invalid_message' | 'binary_message'): string {
   switch (failure) {
     case 'invalid_json': return WEBSOCKET_CLOSE_REASONS.INVALID_JSON;
@@ -83,6 +108,11 @@ export function registerWebSocketRoute(
 ): WebSocketService {
   const registry = createConnectionRegistry();
   const partyService = createPartyService(createPostgresPartyRepository(database));
+  const partyStateService = createPartyStateService(database, {
+    expeditionDurationMs: config.partyStateExpeditionDurationMs,
+    maxContribution: config.partyStateMaxContribution,
+    maxCommandIdLength: config.partyStateMaxCommandIdLength
+  });
   const pendingSockets = new Set<RegistrySocket>();
   let closing = false;
 
@@ -125,6 +155,8 @@ export function registerWebSocketRoute(
     let idleTimer: NodeJS.Timeout | undefined;
     let messageChain = Promise.resolve();
     let messageTimes: number[] = [];
+    let partyCommandTimes: number[] = [];
+    let partyContributionTimes: number[] = [];
 
     pendingSockets.add(registrySocket);
 
@@ -212,6 +244,40 @@ export function registerWebSocketRoute(
       return true;
     };
 
+    const consumePartyCommandRateLimit = (message: PartyCommandMessage): boolean => {
+      const now = Date.now();
+      const commandCutoff = now - config.partyStateCommandWindowMs;
+      partyCommandTimes = partyCommandTimes.filter(timestamp => timestamp > commandCutoff);
+      if (partyCommandTimes.length >= config.partyStateMaxCommands) return false;
+      partyCommandTimes.push(now);
+
+      if (message.payload.command.type === 'expedition.contribute') {
+        const contributionCutoff = now - config.partyStateContributionWindowMs;
+        partyContributionTimes = partyContributionTimes.filter(timestamp => timestamp > contributionCutoff);
+        if (partyContributionTimes.length >= config.partyStateMaxContributions) return false;
+        partyContributionTimes.push(now);
+      }
+      return true;
+    };
+
+    const broadcastPartyState = (partyId: string, state: PartyState, memberPlayerIds: string[]): void => {
+      const data = stringifyMessage(createServerMessage('party.state.snapshot', null, partyStateSnapshotPayload(state)));
+      const authorized = new Set(memberPlayerIds);
+      for (const connection of registry.getByParty(partyId)) {
+        if (!connection.session.playerId || !authorized.has(connection.session.playerId)) continue;
+        if (connection.socket.readyState !== 1) continue;
+        try {
+          connection.socket.send(data);
+        } catch {
+          try {
+            connection.socket.close(WEBSOCKET_CLOSE_CODES.INTERNAL_ERROR, WEBSOCKET_CLOSE_REASONS.INTERNAL_ERROR);
+          } catch {
+            // Cleanup remains owned by the connection's close handler.
+          }
+        }
+      }
+    };
+
     const broadcastPresence = (
       partyId: string,
       playerId: string,
@@ -282,7 +348,97 @@ export function registerWebSocketRoute(
         send(createServerMessage('pong', message.requestId, { serverTimestamp: Date.now() }));
         return;
       }
-      await refreshPartyScope(message.requestId);
+      if (message.type === 'party.refresh') {
+        await refreshPartyScope(message.requestId);
+        return;
+      }
+      if (!session.playerId) {
+        if (message.type === 'party.state.get') {
+          send(createServerMessage('party.state.error', message.requestId, {
+            errorCode: 'not_authenticated',
+            serverTimestamp: Date.now()
+          }));
+        } else {
+          send(createServerMessage('party.command.result', message.requestId, {
+            commandId: message.payload.commandId,
+            accepted: false,
+            resultingRevision: null,
+            currentRevision: null,
+            errorCode: 'not_authenticated',
+            serverTimestamp: Date.now()
+          }));
+        }
+        return;
+      }
+
+      if (message.type === 'party.state.get') {
+        try {
+          const result = await partyStateService.getState(session.playerId, session.partyId);
+          if (result.reconciled) broadcastPartyState(result.state.partyId, result.state, result.party.members.map(member => member.playerId));
+          send(createServerMessage('party.state.snapshot', message.requestId, partyStateSnapshotPayload(result.state)));
+        } catch (error) {
+          const code: PartyStateErrorCode = error instanceof PartyStateError ? error.code : 'internal_error';
+          if (!(error instanceof PartyStateError)) {
+            logger.error({ connectionId, playerId: session.playerId, error: safeErrorName(error) }, 'party state read failed');
+          }
+          send(createServerMessage('party.state.error', message.requestId, {
+            errorCode: code,
+            serverTimestamp: Date.now()
+          }));
+        }
+        return;
+      }
+
+      if (!consumePartyCommandRateLimit(message)) {
+        send(createServerMessage('party.command.result', message.requestId, {
+          commandId: message.payload.commandId,
+          accepted: false,
+          resultingRevision: null,
+          currentRevision: null,
+          errorCode: 'rate_limited',
+          serverTimestamp: Date.now()
+        }));
+        return;
+      }
+
+      try {
+        const result = await partyStateService.executeCommand(session.playerId, session.partyId, message.payload);
+        if (result.accepted && !result.duplicate || result.reconciled) {
+          broadcastPartyState(result.state.partyId, result.state, result.memberPlayerIds);
+        }
+        logger.info({
+          connectionId,
+          playerId: session.playerId,
+          partyId: result.state.partyId,
+          commandId: result.commandId,
+          commandType: message.payload.command.type,
+          accepted: result.accepted,
+          duplicate: result.duplicate,
+          resultingRevision: result.resultingRevision,
+          errorCode: result.errorCode
+        }, result.accepted ? 'party command accepted' : 'party command rejected');
+        send(createServerMessage('party.command.result', message.requestId, {
+          commandId: result.commandId,
+          accepted: result.accepted,
+          resultingRevision: result.resultingRevision,
+          currentRevision: result.currentRevision,
+          errorCode: result.errorCode,
+          serverTimestamp: Date.now()
+        }));
+      } catch (error) {
+        const code: PartyStateErrorCode = error instanceof PartyStateError ? error.code : 'internal_error';
+        if (!(error instanceof PartyStateError)) {
+          logger.error({ connectionId, playerId: session.playerId, error: safeErrorName(error) }, 'party command failed');
+        }
+        send(createServerMessage('party.command.result', message.requestId, {
+          commandId: message.payload.commandId,
+          accepted: false,
+          resultingRevision: null,
+          currentRevision: null,
+          errorCode: code,
+          serverTimestamp: Date.now()
+        }));
+      }
     };
 
     const acceptAuthenticatedConnection = async (context: Awaited<ReturnType<typeof authenticateToken>>): Promise<void> => {
@@ -350,6 +506,18 @@ export function registerWebSocketRoute(
       if (!parsed.ok) {
         logger.warn({ connectionId, playerId: session.playerId, reason: failureReason(parsed.failure) }, 'websocket protocol validation failed');
         closeConnection(failureCode(parsed.failure), failureReason(parsed.failure));
+        return;
+      }
+
+      if (parsed.message.type === 'party.command' && messageBytes > config.partyStateMaxCommandPayloadBytes) {
+        send(createServerMessage('party.command.result', parsed.message.requestId, {
+          commandId: parsed.message.payload.commandId,
+          accepted: false,
+          resultingRevision: null,
+          currentRevision: null,
+          errorCode: 'invalid_command',
+          serverTimestamp: Date.now()
+        }));
         return;
       }
 

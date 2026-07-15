@@ -2,6 +2,7 @@ import { Buffer } from 'node:buffer';
 
 export const WEBSOCKET_PROTOCOL_VERSION = 1 as const;
 export const MAX_REQUEST_ID_LENGTH = 64;
+export const MAX_PARTY_COMMAND_ID_LENGTH = 128;
 
 export const WEBSOCKET_CLOSE_CODES = {
   AUTH_REQUIRED: 4001,
@@ -33,6 +34,7 @@ export const WEBSOCKET_CLOSE_REASONS = {
 } as const;
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+const PARTY_COMMAND_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
 export interface AuthMessage {
   protocolVersion: typeof WEBSOCKET_PROTOCOL_VERSION;
@@ -55,7 +57,41 @@ export interface PartyRefreshMessage {
   payload: Record<string, never>;
 }
 
-export type ClientMessage = AuthMessage | PingMessage | PartyRefreshMessage;
+export interface PartyStateGetMessage {
+  protocolVersion: typeof WEBSOCKET_PROTOCOL_VERSION;
+  type: 'party.state.get';
+  requestId: string;
+  payload: Record<string, never>;
+}
+
+export interface ExpeditionStartCommand {
+  type: 'expedition.start';
+  destination: string;
+}
+
+export interface ExpeditionContributeCommand {
+  type: 'expedition.contribute';
+  amount: number;
+}
+
+export interface ExpeditionResetCommand {
+  type: 'expedition.reset';
+}
+
+export type PartyCommand = ExpeditionStartCommand | ExpeditionContributeCommand | ExpeditionResetCommand;
+
+export interface PartyCommandMessage {
+  protocolVersion: typeof WEBSOCKET_PROTOCOL_VERSION;
+  type: 'party.command';
+  requestId: string;
+  payload: {
+    commandId: string;
+    expectedRevision: number;
+    command: PartyCommand;
+  };
+}
+
+export type ClientMessage = AuthMessage | PingMessage | PartyRefreshMessage | PartyStateGetMessage | PartyCommandMessage;
 
 export interface ConnectionReadyPayload {
   connectionId: string;
@@ -81,13 +117,42 @@ export interface PartyPresencePayload {
   serverTimestamp: number;
 }
 
+export interface PartyStateSnapshotPayload {
+  partyId: string;
+  revision: number;
+  activity: {
+    kind: 'expedition';
+    status: 'idle' | 'active' | 'completed';
+    destination: 'forest' | null;
+    startedAt: string | null;
+    completesAt: string | null;
+  };
+  contributions: Record<string, number>;
+  updatedAt: string;
+  serverTimestamp: number;
+}
+
+export interface PartyStateErrorPayload {
+  errorCode: string;
+  serverTimestamp: number;
+}
+
+export interface PartyCommandResultPayload {
+  commandId: string;
+  accepted: boolean;
+  resultingRevision: number | null;
+  currentRevision: number | null;
+  errorCode: string | null;
+  serverTimestamp: number;
+}
+
 export interface PongPayload {
   serverTimestamp: number;
 }
 
 export interface ServerMessage<TPayload = unknown> {
   protocolVersion: typeof WEBSOCKET_PROTOCOL_VERSION;
-  type: 'connection.ready' | 'pong' | 'party.snapshot' | 'party.presence';
+  type: 'connection.ready' | 'pong' | 'party.snapshot' | 'party.presence' | 'party.state.snapshot' | 'party.state.error' | 'party.command.result';
   requestId: string | null;
   payload: TPayload;
 }
@@ -117,6 +182,30 @@ function hasExactKeys(value: RecordValue, keys: readonly string[]): boolean {
 
 function isRequestId(value: unknown): value is string {
   return typeof value === 'string' && value.length <= MAX_REQUEST_ID_LENGTH && REQUEST_ID_PATTERN.test(value);
+}
+
+function isPartyCommandId(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= MAX_PARTY_COMMAND_ID_LENGTH && PARTY_COMMAND_ID_PATTERN.test(value);
+}
+
+function isRevision(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function parsePartyCommand(value: unknown): PartyCommand | null {
+  if (!isRecord(value) || typeof value.type !== 'string') return null;
+
+  if (value.type === 'expedition.start' && hasExactKeys(value, ['type', 'destination']) && typeof value.destination === 'string') {
+    return value as unknown as ExpeditionStartCommand;
+  }
+  if (value.type === 'expedition.contribute' && hasExactKeys(value, ['type', 'amount']) &&
+    typeof value.amount === 'number') {
+    return value as unknown as ExpeditionContributeCommand;
+  }
+  if (value.type === 'expedition.reset' && hasExactKeys(value, ['type'])) {
+    return value as unknown as ExpeditionResetCommand;
+  }
+  return value as unknown as PartyCommand;
 }
 
 function isEmptyPayload(value: unknown): value is Record<string, never> {
@@ -161,7 +250,31 @@ export function parseClientMessage(raw: string, allowAuthentication: boolean): P
     return { ok: true, message: value as unknown as PartyRefreshMessage };
   }
 
-  if (value.type === 'ping' || value.type === 'party.refresh') {
+  if (value.type === 'party.state.get' && isEmptyPayload(value.payload)) {
+    return { ok: true, message: value as unknown as PartyStateGetMessage };
+  }
+
+  if (value.type === 'party.command' && isRecord(value.payload) &&
+    hasExactKeys(value.payload, ['commandId', 'expectedRevision', 'command']) &&
+    isPartyCommandId(value.payload.commandId) && isRevision(value.payload.expectedRevision)) {
+    const command = parsePartyCommand(value.payload.command);
+    if (command) {
+      return {
+        ok: true,
+        message: {
+          ...value,
+          payload: {
+            commandId: value.payload.commandId,
+            expectedRevision: value.payload.expectedRevision,
+            command
+          }
+        } as PartyCommandMessage
+      };
+    }
+    return { ok: false, failure: 'invalid_message' };
+  }
+
+  if (value.type === 'ping' || value.type === 'party.refresh' || value.type === 'party.state.get' || value.type === 'party.command') {
     return { ok: false, failure: 'invalid_message' };
   }
   return { ok: false, failure: 'unknown_message_type' };
