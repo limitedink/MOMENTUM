@@ -27,7 +27,7 @@ Inspired by games like **Old School RuneScape**, **Melvor Idle**, **Warframe**, 
 - **Run Records** – Arena summaries track weapon performance, clear times, damage, defensive actions, and best records.
 - **Various upgrade systems** – Base upgrades and skill-specific upgrades to boost progression.
 - **Global/Social Buffs** – Defeat bosses solo for limited-time multipliers and rare loot or with others for shared buffs special bonuses.
-- **Multiplayer (Planned)** – Cooperative gameplay, shared worlds, and persistent progression.
+- **Multiplayer foundation (Current)** – Persistent parties, authenticated sessions, party-aware WebSocket connections, and isolated asynchronous presence. Authoritative gameplay synchronization remains planned.
 - **Minigames (Planned)** – A variety of minigames for both singleplayer and multiplayer.
 
 ---
@@ -36,8 +36,8 @@ Inspired by games like **Old School RuneScape**, **Melvor Idle**, **Warframe**, 
 
 - **Frontend (Current):** HTML, CSS, JavaScript (vanilla) + Canvas API
 - **Frontend (Future):** Potential migration to **Phaser** (2D game framework) or **Three.js** (for 3D/visual depth)
-- **Backend (Planned):** Go (Golang) with WebSockets for real-time multiplayer
-- **Database (Planned):** PostgreSQL
+- **Backend (Current foundation):** Fastify + TypeScript with WebSockets
+- **Database (Current foundation):** PostgreSQL
 
 
 ---
@@ -49,7 +49,8 @@ Inspired by games like **Old School RuneScape**, **Melvor Idle**, **Warframe**, 
 - [x] Upgrade systems (base + skill-specific)
 - [ ] More skills (Woodcutting, Fishing, Magic, etc.)
 - [ ] Expanded boss encounters and rewards
-- [ ] Core multiplayer backend in Go
+- [x] Authenticated backend, persistent parties, and party-aware WebSocket foundation
+- [ ] Authoritative multiplayer snapshots, activity synchronization, and expedition simulation
 - [x] Local persistence (versioned browser saves)
 
 ---
@@ -74,7 +75,7 @@ In the future, collaboration and contributions may be welcome.
 
 ## Client architecture and backend readiness
 
-The current party feature is deliberately client-only, but its boundary is shaped like an authoritative multiplayer client. `PartySnapshot` is the canonical server-owned model. It contains party and expedition state only; connection status, authenticated identity, pending commands, reconnect state, latency, and the last accepted revision live in `ClientSession`.
+The client party gameplay simulation is deliberately local-only, but its boundary is shaped like an authoritative multiplayer client. The backend now provides persistent identity, parties, authenticated WebSocket sessions, and party presence; it does not yet provide authoritative expedition simulation. `PartySnapshot` is the canonical server-owned gameplay model. It contains party and expedition state only; connection status, authenticated identity, pending commands, reconnect state, latency, and the last accepted revision live in `ClientSession`.
 
 ```text
                          future authoritative server
@@ -108,9 +109,15 @@ The current party feature is deliberately client-only, but its boundary is shape
 - **Client facade:** composes the store, session, and transport into the small application API consumed by the UI.
 - **Presentation:** renders validated snapshot data and session status. Server-provided names and events are escaped before insertion into HTML.
 
-### Remaining work before backend implementation
+### Remaining work before authoritative multiplayer implementation
 
-The client is ready for a server transport, but the server itself still needs protocol/version negotiation, authentication, authorization, persistence, reconnect/resume semantics, command idempotency, authoritative simulation, rate limits, and integration/load tests. None of those backend concerns are implemented by this prototype refactor.
+The client is ready for a future server transport, while the backend currently provides protocol versioning, bearer/first-message authentication, persistent party authorization, connection limits, refresh semantics, presence, and integration tests. Remaining work includes a server transport adapter, reconnect/resume semantics, command idempotency, authoritative snapshots, activity synchronization, expedition simulation, and load testing.
+
+### Authenticated WebSocket foundation
+
+`/v1/ws` prefers an `Authorization: Bearer dev_...` header during upgrade. Browser clients that cannot set upgrade headers may send one first `auth` message instead; tokens are never accepted in query parameters. Protocol version 1 supports `ping` and `party.refresh`, with server messages `connection.ready`, `pong`, `party.snapshot`, and `party.presence`.
+
+Party scope is always resolved from the authenticated player's PostgreSQL membership. After a successful HTTP party create, join, or leave request, clients must send `party.refresh` on each existing socket. The current connection registry is in-memory and single-server; Redis and cross-instance fanout are intentionally deferred.
 
 ### Verification
 

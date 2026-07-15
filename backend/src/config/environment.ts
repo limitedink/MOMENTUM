@@ -12,6 +12,12 @@ export interface AppConfig {
   logLevel: LogLevel;
   databaseUrl: string;
   databasePoolMax: number;
+  websocketMaxMessageBytes: number;
+  websocketMaxMessages: number;
+  websocketRateWindowMs: number;
+  websocketAuthTimeoutMs: number;
+  websocketIdleTimeoutMs: number;
+  websocketMaxConnectionsPerPlayer: number;
 }
 
 const DEFAULT_DATABASE_URL = 'postgresql://localhost:5432/momentum';
@@ -46,6 +52,12 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     port: parsePositiveInteger('PORT', environment.PORT, 3000),
     logLevel: parseLogLevel(environment.LOG_LEVEL),
     databaseUrl: environment.DATABASE_URL ?? DEFAULT_DATABASE_URL,
-    databasePoolMax: parsePositiveInteger('DATABASE_POOL_MAX', environment.DATABASE_POOL_MAX, 10)
+    databasePoolMax: parsePositiveInteger('DATABASE_POOL_MAX', environment.DATABASE_POOL_MAX, 10),
+    websocketMaxMessageBytes: parsePositiveInteger('WEBSOCKET_MAX_MESSAGE_BYTES', environment.WEBSOCKET_MAX_MESSAGE_BYTES, 16_384),
+    websocketMaxMessages: parsePositiveInteger('WEBSOCKET_MAX_MESSAGES', environment.WEBSOCKET_MAX_MESSAGES, 60),
+    websocketRateWindowMs: parsePositiveInteger('WEBSOCKET_RATE_WINDOW_MS', environment.WEBSOCKET_RATE_WINDOW_MS, 10_000),
+    websocketAuthTimeoutMs: parsePositiveInteger('WEBSOCKET_AUTH_TIMEOUT_MS', environment.WEBSOCKET_AUTH_TIMEOUT_MS, 5_000),
+    websocketIdleTimeoutMs: parsePositiveInteger('WEBSOCKET_IDLE_TIMEOUT_MS', environment.WEBSOCKET_IDLE_TIMEOUT_MS, 120_000),
+    websocketMaxConnectionsPerPlayer: parsePositiveInteger('WEBSOCKET_MAX_CONNECTIONS_PER_PLAYER', environment.WEBSOCKET_MAX_CONNECTIONS_PER_PLAYER, 4)
   };
 }

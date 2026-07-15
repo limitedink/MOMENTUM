@@ -8,6 +8,7 @@ function mapRow(row: any): Session {
     tokenHash: row.token_hash,
     createdAt: row.created_at,
     lastUsedAt: row.last_used_at,
+    expiresAt: row.expires_at,
     revokedAt: row.revoked_at
   };
 }
@@ -16,19 +17,19 @@ export function createPostgresSessionRepository(pool: Pool): SessionRepository {
   return {
     async create(input: CreateSessionInput): Promise<Session> {
       const { rows } = await pool.query(
-        `INSERT INTO sessions (player_id, token_hash)
-         VALUES ($1, $2)
-         RETURNING id, player_id, token_hash, created_at, last_used_at, revoked_at`,
-        [input.playerId, input.tokenHash]
+        `INSERT INTO sessions (player_id, token_hash, expires_at)
+         VALUES ($1, $2, COALESCE($3, NOW() + INTERVAL '30 days'))
+         RETURNING id, player_id, token_hash, created_at, last_used_at, expires_at, revoked_at`,
+        [input.playerId, input.tokenHash, input.expiresAt ?? null]
       );
       return mapRow(rows[0]);
     },
 
     async findByTokenHash(hash: string): Promise<Session | null> {
       const { rows } = await pool.query(
-        `SELECT id, player_id, token_hash, created_at, last_used_at, revoked_at
+        `SELECT id, player_id, token_hash, created_at, last_used_at, expires_at, revoked_at
          FROM sessions
-         WHERE token_hash = $1 AND revoked_at IS NULL`,
+         WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > NOW()`,
         [hash]
       );
       if (rows.length === 0) return null;
@@ -37,7 +38,7 @@ export function createPostgresSessionRepository(pool: Pool): SessionRepository {
 
     async findById(id: string): Promise<Session | null> {
       const { rows } = await pool.query(
-        `SELECT id, player_id, token_hash, created_at, last_used_at, revoked_at
+        `SELECT id, player_id, token_hash, created_at, last_used_at, expires_at, revoked_at
          FROM sessions
          WHERE id = $1`,
         [id]
@@ -66,19 +67,19 @@ export function createPostgresSessionRepositoryWithClient(client: PoolClient): S
   return {
     async create(input: CreateSessionInput): Promise<Session> {
       const { rows } = await client.query(
-        `INSERT INTO sessions (player_id, token_hash)
-         VALUES ($1, $2)
-         RETURNING id, player_id, token_hash, created_at, last_used_at, revoked_at`,
-        [input.playerId, input.tokenHash]
+        `INSERT INTO sessions (player_id, token_hash, expires_at)
+         VALUES ($1, $2, COALESCE($3, NOW() + INTERVAL '30 days'))
+         RETURNING id, player_id, token_hash, created_at, last_used_at, expires_at, revoked_at`,
+        [input.playerId, input.tokenHash, input.expiresAt ?? null]
       );
       return mapRow(rows[0]);
     },
 
     async findByTokenHash(hash: string): Promise<Session | null> {
       const { rows } = await client.query(
-        `SELECT id, player_id, token_hash, created_at, last_used_at, revoked_at
+        `SELECT id, player_id, token_hash, created_at, last_used_at, expires_at, revoked_at
          FROM sessions
-         WHERE token_hash = $1 AND revoked_at IS NULL`,
+         WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > NOW()`,
         [hash]
       );
       if (rows.length === 0) return null;
@@ -87,7 +88,7 @@ export function createPostgresSessionRepositoryWithClient(client: PoolClient): S
 
     async findById(id: string): Promise<Session | null> {
       const { rows } = await client.query(
-        `SELECT id, player_id, token_hash, created_at, last_used_at, revoked_at
+        `SELECT id, player_id, token_hash, created_at, last_used_at, expires_at, revoked_at
          FROM sessions
          WHERE id = $1`,
         [id]

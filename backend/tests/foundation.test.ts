@@ -66,7 +66,13 @@ describe('configuration', () => {
       port: 4000,
       logLevel: 'debug',
       databaseUrl: 'postgresql://example/momentum',
-      databasePoolMax: 4
+      databasePoolMax: 4,
+      websocketMaxMessageBytes: 16384,
+      websocketMaxMessages: 60,
+      websocketRateWindowMs: 10000,
+      websocketAuthTimeoutMs: 5000,
+      websocketIdleTimeoutMs: 120000,
+      websocketMaxConnectionsPerPlayer: 4
     });
   });
 
