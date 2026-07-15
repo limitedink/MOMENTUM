@@ -1,120 +1,179 @@
 # MOMENTUM
 
-**[Play the public prototype](https://limitedink.github.io/MOMENTUM/)**
+> **A persistent multiplayer taskbar RPG built around one idea: always progressing together.**
 
-**Momentum** is a hybrid idle + active multiplayer RPG in development.
-Players train skills, earn resources, and face active boss encounters — blending the strategy of long-term idle progression with the intensity of real-time combat.
+[**Play the public prototype**](https://limitedink.github.io/MOMENTUM/)
 
-Inspired by games like **Old School RuneScape**, **Melvor Idle**, **Warframe**, and more. Momentum combines Long-term progression skill depth, idle/automation systems, multiplayer and action-oriented combat into one evolving experience.
+**Momentum** is an in-development idle RPG designed to live quietly alongside whatever else you are doing. While you work, study, browse, or watch videos, your character can keep training skills, gathering resources, crafting equipment, fighting, and contributing to shared goals.
 
----
+The long-term vision is a small persistent adventure shared with friends or matched players. Players should be able to see one another's presence, choose complementary activities, earn party bonuses, and move expeditions forward without needing everyone online or actively playing at the same time.
 
-## 🎯 Design Philosophy
+> [!NOTE]
+> The public build is an early gameplay prototype. Its party expedition is currently simulated locally. The desktop shell and multiplayer backend foundations exist, but live online multiplayer is not connected yet.
 
-- **Always Progressing** – Whether active or idle, players should feel forward momentum.
-- **Idle Meets Action** – Idle loops provide steady growth, while active combat offers rewarding bursts of skill expression and gameplay.
-- **Multiplayer First** – A shared world where cooperation, competition, and community matter.
-- **Depth + Grind** – Systems should feel layered and engaging, not just repetitive.
-- **Player Freedom** – Train what you want, when you want, with multiple viable paths to progression.
+Momentum takes inspiration from the long-term skill progression of **Old School RuneScape**, the idle systems of **Melvor Idle**. Its primary focus is bringing meaningful persistent multiplayer to the low-attention taskbar RPG format.
 
 ---
 
-## ✨ Features
+## Design pillars
 
-- **Idle Skilling** – Train skills like Mining, Smithing, Combat, and more (many planned).
-- **Combat Discipline** – Earn talent points from Combat milestones and build into Mobility, Assault, or Survival with mutually exclusive capstones.
-- **Active Boss Fights** – Step into an arena for real-time battles with WASD controls, dodges, ranged & melee combat.
-- **Run Records** – Arena summaries track weapon performance, clear times, damage, defensive actions, and best records.
-- **Various upgrade systems** – Base upgrades and skill-specific upgrades to boost progression.
-- **Global/Social Buffs** – Defeat bosses solo for limited-time multipliers and rare loot or with others for shared buffs special bonuses.
-- **Multiplayer (Planned)** – Cooperative gameplay, shared worlds, and persistent progression.
-- **Minigames (Planned)** – A variety of minigames for both singleplayer and multiplayer.
+- **Always progressing but better together:** Personal progress should also feel connected to a wider party journey.
+- **Quiet by default, active by choice:** The game should remain useful in the background while offering rewarding moments of direct play.
+- **Meaningful multiplayer:** Social presence, complementary activities, shared goals, and party bonuses should matter mechanically.
+- **Long-term mastery:** Skills, equipment, upgrades, specializations, and difficult goals should support a satisfying grind.
+- **Respect for player attention:** Momentum should invite check-ins rather than demand constant focus.
 
 ---
 
-## 🛠️ Tech Stack
+## Current prototype
 
-- **Frontend (Current):** HTML, CSS, JavaScript (vanilla) + Canvas API
-- **Frontend (Future):** Potential migration to **Phaser** (2D game framework) or **Three.js** (for 3D/visual depth)
-- **Backend (Planned):** Go (Golang) with WebSockets for real-time multiplayer
-- **Database (Planned):** PostgreSQL
+### Idle progression
 
+- Six trainable skills: **Mining, Smithing, Combat, Fishing, Cooking, and Woodchopping**
+- Parallel skill training with shared efficiency
+- A Honing slot that supercharges one selected skill
+- Level progression, skill upgrades, specializations, and account-wide upgrades
+- Versioned local saves, autosaving, and capped offline progress
+
+### Active gameplay
+
+- Real-time arena combat with movement, dashing, attacks, equipment, and loadout choices
+- Three progressive boss tiers with distinct stats, attacks, requirements, and rewards
+- Combat Discipline talent branches with mutually exclusive capstones
+- Active Fishing as an optional burst-reward activity that can also boost idle Fishing
+- Frontier Mastery, combat Directives, objectives, and an activity ledger
+
+### Items and economy
+
+- Resource production and processing across connected skills
+- Smithing failures, Scrap recycling, bait preparation, fish rarity, and multiple wood tiers
+- Craftable equipment and tools
+- Character inventory and configurable loadouts
+
+### Multiplayer client foundation
+
+- A local asynchronous Forest Expedition that continues while the player focuses elsewhere
+- Party activities, lanes, member presence, commands, snapshots, rewards, and reconnect behaviour
+- A transport boundary designed so the local simulation can later be replaced by an authoritative server transport
+- Separate canonical party state and client session state, including revisions, pending commands, reconnect status, identity, and latency
+
+### Platform foundation
+
+- Public browser build hosted through GitHub Pages
+- TypeScript and Vite application entrypoint
+- Tauri 2 desktop shell for the future taskbar-native version
+- Canvas-based active gameplay and SCSS interface styling
 
 ---
 
-## 🚀 Roadmap
+## Project status
 
-- [x] Idle skilling loop with XP and leveling
-- [x] Active arena combat prototype
-- [x] Upgrade systems (base + skill-specific)
-- [ ] More skills (Woodcutting, Fishing, Magic, etc.)
-- [ ] Expanded boss encounters and rewards
-- [ ] Core multiplayer backend in Go
-- [x] Local persistence (versioned browser saves)
+| Area | Status |
+| --- | --- |
+| Public browser prototype | Playable |
+| Core idle and active loops | Implemented |
+| Local party expedition | Implemented prototype |
+| Versioned saves and offline progress | Implemented |
+| Tauri desktop shell | Implemented foundation |
+| PostgreSQL backend and development auth | Implemented foundation |
+| Live server-backed parties | In development |
+| Persistent online multiplayer | Planned |
+| Steam release | Planned |
 
 ---
 
-## 📂 Project Setup
+## Architecture
 
-Clone the repository:
+```text
+Browser or Tauri client
+├── Gameplay runtime
+├── MomentumPartyClient
+│   ├── PartySnapshotStore
+│   ├── ClientSession
+│   └── MomentumPartyTransport
+│       ├── LocalPartyTransport today
+│       └── Authoritative server transport next
+└── Presentation and taskbar UI
+
+Fastify backend
+├── HTTP authentication routes
+├── WebSocket endpoint
+├── PostgreSQL repositories
+└── Versioned SQL migrations
+```
+
+The client already treats party snapshots as canonical server-owned state. Connection lifecycle, authenticated identity, pending command correlation, reconnect status, latency, and the last accepted revision remain in the client session rather than leaking into the shared party model.
+
+The current local transport is an adapter behind that boundary. Presentation code does not directly control its simulation clock, which keeps the UI ready for a real network transport.
+
+---
+
+## Backend foundation
+
+The backend is implemented in **TypeScript** with **Fastify**, **WebSockets**, and **PostgreSQL**. The current foundation includes:
+
+- Typed environment configuration and structured logging
+- `/healthz` liveness and `/readyz` database readiness endpoints
+- A `/v1/ws` WebSocket endpoint ready for the future party protocol
+- Automatic versioned PostgreSQL migrations at startup
+- Persistent player and session records
+- Opaque `dev_*` access tokens stored only as SHA-256 hashes
+- Bearer authentication, `GET /v1/me`, and current-session revocation
+- Unit tests and real PostgreSQL integration tests
+
+The backend does not yet run authoritative party simulation. Protocol negotiation, authenticated WebSocket sessions, party persistence, reconnect and resume semantics, command idempotency, authorization, rate limiting, and load testing remain future work.
+
+---
+
+## Tech stack
+
+- **Client:** TypeScript, JavaScript, Vite, SCSS, Canvas API
+- **Desktop:** Tauri 2
+- **Backend:** Node.js, TypeScript, Fastify, WebSockets
+- **Database:** PostgreSQL with versioned SQL migrations
+- **Testing:** Vitest and PostgreSQL integration tests
+- **Hosting:** GitHub Pages for the public prototype
+
+---
+
+## Local development
+
+### Browser client
 
 ```bash
 git clone https://github.com/limitedink/MOMENTUM.git
-cd momentum
-python3 -m http.server 8000
+cd MOMENTUM
+npm install
+npm run dev
 ```
 
-Open `http://localhost:8000` in a browser. No build step is required.
+Open the local URL printed by Vite, normally `http://localhost:5173`.
 
-## 🤝 Contributing
+### Desktop client
 
-Momentum is currently a solo dev project.
-In the future, collaboration and contributions may be welcome.
+Install the platform prerequisites for Tauri and Rust, then run:
 
-
-## Client architecture and backend readiness
-
-The current party feature is deliberately client-only, but its boundary is shaped like an authoritative multiplayer client. `PartySnapshot` is the canonical server-owned model. It contains party and expedition state only; connection status, authenticated identity, pending commands, reconnect state, latency, and the last accepted revision live in `ClientSession`.
-
-```text
-                         future authoritative server
-                                  │
-                 snapshots + command results (async messages)
-                                  │
-                         MomentumPartyTransport
-                                  │
-             ┌────────────────────┴────────────────────┐
-             │                                         │
-       PartySnapshotStore                         ClientSession
-       canonical server state                  lifecycle + identity
-       revision ordering                        pending/correlation
-             └────────────────────┬────────────────────┘
-                                  │
-                         MomentumPartyClient
-                         application command API
-                                  │
-                         taskbar presentation
-
-  LocalPartyTransport is only one adapter behind the same boundary.
-  Its elapsed-time and tick helpers are test-only adapter capabilities;
-  presentation code never calls them.
+```bash
+npm run tauri:dev
 ```
 
-### Responsibilities
+### Backend
 
-- **Transport:** asynchronous connect/disconnect, session identity, snapshot requests, command submission, and typed message streams. A future server transport can replace `LocalPartyTransport` without changing rendering or command code.
-- **Snapshot store:** validates and accepts only newer canonical snapshots. Legacy local-save aliases are adapted inside the local adapter and never enter the canonical model.
-- **Client session:** owns connection/reconnect lifecycle, authenticated player ID, current party ID, pending command correlation, command errors, latency, and `lastAcceptedRevision`.
-- **Client facade:** composes the store, session, and transport into the small application API consumed by the UI.
-- **Presentation:** renders validated snapshot data and session status. Server-provided names and events are escaped before insertion into HTML.
+Create a PostgreSQL database, copy the example environment file, and update `DATABASE_URL` when necessary:
 
-### Remaining work before backend implementation
+```bash
+cp backend/.env.example backend/.env
+npm --prefix backend install
+npm run backend:dev
+```
 
-The client is ready for a server transport, but the server itself still needs protocol/version negotiation, authentication, authorization, persistence, reconnect/resume semantics, command idempotency, authoritative simulation, rate limits, and integration/load tests. None of those backend concerns are implemented by this prototype refactor.
+The backend checks the database connection and applies pending migrations before listening on its configured host and port.
 
-### Verification
+---
 
-Run the repository checks before shipping a client change:
+## Verification
+
+Run the client checks:
 
 ```bash
 npm run typecheck
@@ -122,4 +181,41 @@ npm test
 npm run build
 ```
 
-Browser verification should confirm that the party panel starts in a connecting state, renders the last accepted snapshot while disconnected/reconnecting, keeps commands pending until an asynchronous confirmation/rejection arrives, and renders untrusted member names/events as text rather than markup.
+Run the backend checks:
+
+```bash
+npm run backend:typecheck
+npm run backend:test
+npm run backend:build
+```
+
+Database integration tests run when `DATABASE_URL` is available.
+
+---
+
+## Roadmap
+
+- [x] Core idle skilling, XP, levelling, upgrades, and offline progress
+- [x] Active arena combat with progressive boss tiers and run records
+- [x] Passive and active Fishing
+- [x] Crafting, equipment, inventory, and loadouts
+- [x] Combat talents, skill specializations, and Frontier Mastery
+- [x] Local asynchronous party expedition prototype
+- [x] Server-ready party client architecture
+- [x] Tauri desktop shell
+- [x] PostgreSQL migrations, persistent players, sessions, and development authentication
+- [ ] Connect the client to backend identity and sessions
+- [ ] Define and implement the versioned multiplayer protocol
+- [ ] Add authenticated WebSocket sessions and authoritative party commands
+- [ ] Persist parties, expeditions, characters, and shared progression
+- [ ] Add reconnect and resume support, idempotent commands, authorization, and rate limits
+- [ ] Expand social presence, shared goals, party bonuses, and cooperative content
+- [ ] Build the full taskbar-native desktop experience
+- [ ] Expand skills, encounters, equipment, progression, balance, and polish
+- [ ] Prepare distribution and a future Steam release
+
+---
+
+## Contributing
+
+Momentum is currently a solo development project. Feedback and bug reports are welcome through GitHub issues. Broader contribution guidelines may be added as the project matures.
