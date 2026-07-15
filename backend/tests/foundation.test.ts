@@ -72,7 +72,15 @@ describe('configuration', () => {
       websocketRateWindowMs: 10000,
       websocketAuthTimeoutMs: 5000,
       websocketIdleTimeoutMs: 120000,
-      websocketMaxConnectionsPerPlayer: 4
+      websocketMaxConnectionsPerPlayer: 4,
+      partyStateExpeditionDurationMs: 60000,
+      partyStateCommandWindowMs: 10000,
+      partyStateMaxCommands: 30,
+      partyStateContributionWindowMs: 10000,
+      partyStateMaxContributions: 10,
+      partyStateMaxContribution: 1000,
+      partyStateMaxCommandIdLength: 128,
+      partyStateMaxCommandPayloadBytes: 4096
     });
   });
 

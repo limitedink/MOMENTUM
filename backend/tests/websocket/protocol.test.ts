@@ -40,11 +40,34 @@ describe('websocket protocol', () => {
       ok: false,
       failure: 'unsupported_version'
     });
-    expect(parseClientMessage(envelope('party.command'), false)).toEqual({ ok: false, failure: 'unknown_message_type' });
+    expect(parseClientMessage(envelope('party.command'), false)).toEqual({ ok: false, failure: 'invalid_message' });
     expect(parseClientMessage(JSON.stringify({ protocolVersion: 1, type: 'ping', requestId: 'bad id', payload: {} }), false)).toEqual({
       ok: false,
       failure: 'invalid_message'
     });
+  });
+
+  it('accepts authoritative state reads and strict command envelopes without a party ID', () => {
+    expect(parseClientMessage(envelope('party.state.get'), false)).toEqual({
+      ok: true,
+      message: { protocolVersion: 1, type: 'party.state.get', requestId: 'request-1', payload: {} }
+    });
+    expect(parseClientMessage(envelope('party.command', {
+      commandId: 'command-1',
+      expectedRevision: 4,
+      command: { type: 'expedition.start', destination: 'forest' }
+    }), false).ok).toBe(true);
+    expect(parseClientMessage(envelope('party.command', {
+      partyId: 'spoofed-party',
+      commandId: 'command-1',
+      expectedRevision: 4,
+      command: { type: 'expedition.start', destination: 'forest' }
+    }), false).ok).toBe(false);
+    expect(parseClientMessage(envelope('party.command', {
+      commandId: 'command-2',
+      expectedRevision: 4,
+      command: { type: 'expedition.start', destination: 'mars' }
+    }), false).ok).toBe(true);
   });
 
   it('measures and decodes text frames without accepting binary frames', () => {

@@ -27,7 +27,7 @@ Inspired by games like **Old School RuneScape**, **Melvor Idle**, **Warframe**, 
 - **Run Records** – Arena summaries track weapon performance, clear times, damage, defensive actions, and best records.
 - **Various upgrade systems** – Base upgrades and skill-specific upgrades to boost progression.
 - **Global/Social Buffs** – Defeat bosses solo for limited-time multipliers and rare loot or with others for shared buffs special bonuses.
-- **Multiplayer foundation (Current)** – Persistent parties, authenticated sessions, party-aware WebSocket connections, and isolated asynchronous presence. Authoritative gameplay synchronization remains planned.
+- **Multiplayer foundation (Current)** – Persistent parties, authenticated sessions, party-aware WebSocket connections, isolated asynchronous presence, and the first persisted server-authoritative party expedition state loop. The live client still uses its local expedition transport.
 - **Minigames (Planned)** – A variety of minigames for both singleplayer and multiplayer.
 
 ---
@@ -75,10 +75,10 @@ In the future, collaboration and contributions may be welcome.
 
 ## Client architecture and backend readiness
 
-The client party gameplay simulation is deliberately local-only, but its boundary is shaped like an authoritative multiplayer client. The backend now provides persistent identity, parties, authenticated WebSocket sessions, and party presence; it does not yet provide authoritative expedition simulation. `PartySnapshot` is the canonical server-owned gameplay model. It contains party and expedition state only; connection status, authenticated identity, pending commands, reconnect state, latency, and the last accepted revision live in `ClientSession`.
+The client party gameplay simulation is deliberately local-only, but its boundary is shaped like an authoritative multiplayer client. The backend now provides persistent identity, parties, authenticated WebSocket sessions, party presence, and a small persisted authoritative expedition state loop; it does not yet provide full authoritative expedition simulation. The legacy local `PartySnapshot` remains the client simulation model. The backend's `party.state.snapshot` is a separate, smaller server-owned model; connection status, authenticated identity, pending commands, reconnect state, latency, and the last accepted revision live in `ClientSession`.
 
 ```text
-                         future authoritative server
+                  authoritative party state server
                                   │
                  snapshots + command results (async messages)
                                   │
@@ -109,15 +109,15 @@ The client party gameplay simulation is deliberately local-only, but its boundar
 - **Client facade:** composes the store, session, and transport into the small application API consumed by the UI.
 - **Presentation:** renders validated snapshot data and session status. Server-provided names and events are escaped before insertion into HTML.
 
-### Remaining work before authoritative multiplayer implementation
+### Remaining work before full authoritative multiplayer implementation
 
-The client is ready for a future server transport, while the backend currently provides protocol versioning, bearer/first-message authentication, persistent party authorization, connection limits, refresh semantics, presence, and integration tests. Remaining work includes a server transport adapter, reconnect/resume semantics, command idempotency, authoritative snapshots, activity synchronization, expedition simulation, and load testing.
+The backend state loop is ready for a future client transport, while `LocalPartyTransport` remains the active client adapter. Remaining work includes a server transport adapter, reconnect/resume semantics, client snapshot mapping, full activity synchronization, expedition simulation, rewards, and load testing.
 
 ### Authenticated WebSocket foundation
 
-`/v1/ws` prefers an `Authorization: Bearer dev_...` header during upgrade. Browser clients that cannot set upgrade headers may send one first `auth` message instead; tokens are never accepted in query parameters. Protocol version 1 supports `ping` and `party.refresh`, with server messages `connection.ready`, `pong`, `party.snapshot`, and `party.presence`.
+`/v1/ws` prefers an `Authorization: Bearer dev_...` header during upgrade. Browser clients that cannot set upgrade headers may send one first `auth` message instead; tokens are never accepted in query parameters. Protocol version 1 supports `ping`, `party.refresh`, `party.state.get`, and `party.command`, with server messages `connection.ready`, `pong`, `party.snapshot`, `party.presence`, `party.state.snapshot`, `party.state.error`, and `party.command.result`.
 
-Party scope is always resolved from the authenticated player's PostgreSQL membership. After a successful HTTP party create, join, or leave request, clients must send `party.refresh` on each existing socket. The current connection registry is in-memory and single-server; Redis and cross-instance fanout are intentionally deferred.
+Party scope is always resolved from the authenticated player's PostgreSQL membership. After a successful HTTP party create, join, or leave request, clients must send `party.refresh` on each existing socket before using authoritative state. State revisions are optimistic-concurrency guards, command IDs are persisted for idempotent retries, and expedition completion is reconciled when state is accessed. The current connection registry is in-memory and single-server; Redis and cross-instance fanout are intentionally deferred.
 
 ### Verification
 
