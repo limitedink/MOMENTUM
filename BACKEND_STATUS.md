@@ -1,6 +1,6 @@
 # Momentum Backend Status
 
-Updated after completing the authoritative client transport and first frontend mode/UI milestone.
+Updated after completing the authoritative client party-management and two-PC playtest milestone.
 
 ## Completed
 
@@ -19,6 +19,8 @@ Updated after completing the authoritative client transport and first frontend m
 - PostgreSQL-backed authorization revalidation, state/contribution/command cascade behavior, and real concurrent WebSocket/PostgreSQL integration coverage.
 - Browser-compatible client transport adapter with first-message authentication, party scope and presence handling, request/command correlation, newer-only state revisions, bounded reconnect, and command ID preservation.
 - Frontend development identity acquisition with persisted opaque session reuse, explicit local/authoritative party runtime modes, local fallback, and authoritative rendering of server status, revisions, contributions, and membership presence.
+- Frontend party management using the existing HTTP routes, including join-code validation, create/join/leave operations, member/leader display, presence-triggered membership refresh, and state re-request after membership changes.
+- Opt-in backend CORS origins and configurable Vite proxy target for same-LAN or direct browser development.
 
 ## WebSocket foundation
 
@@ -35,7 +37,7 @@ Updated after completing the authoritative client transport and first frontend m
 
 ## First incomplete stage
 
-Party creation/join/leave controls and richer membership management in the frontend, followed by a broader mapping of authoritative expedition actions. Full expedition simulation, rewards, and combat remain later stages; the existing party panel now deliberately distinguishes server-owned state from the local simulation.
+Broader mapping of authoritative expedition actions and a repeatable two-PC browser playtest across real LAN interfaces. Full expedition simulation, rewards, and combat remain later stages; the existing party panel deliberately distinguishes server-owned state from the local simulation.
 
 That stage should build on the state and party-presence foundation without adding matchmaking, chat, guilds, or other out-of-scope social systems.
 

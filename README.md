@@ -30,6 +30,7 @@ Momentum takes inspiration from the long-term skill progression of **Old School 
 ### Backend multiplayer foundation
 
 - Persistent players, sessions, parties, memberships, and authenticated party-aware WebSockets
+- Authenticated frontend party creation, join-code join, leave, member listing, leader display, and presence refresh
 - Server-authoritative party expedition state with revisions, PostgreSQL persistence, and command idempotency
 - A browser client identity/session adapter backed by the development player endpoint and `/v1/me`
 - Explicit local versus authoritative party runtime modes, with local fallback when development identity acquisition is unavailable
@@ -141,9 +142,10 @@ The backend is implemented in **TypeScript** with **Fastify**, **WebSockets**, a
 - Persistent player and session records
 - Opaque `dev_*` access tokens stored only as SHA-256 hashes
 - Bearer authentication, `GET /v1/me`, and current-session revocation
+- Explicit opt-in CORS origins for direct browser API targets; same-origin Vite proxying remains preferred for LAN development
 - Authoritative party state, revisions, idempotent commands, and real PostgreSQL integration tests
 
-The backend currently supports a small server-authoritative forest expedition state loop. The browser client can acquire development identity, select authoritative mode, and render that state through the existing party panel. Party creation/join/leave UI, full expedition simulation, rewards, and load testing remain future work.
+The backend currently supports a small server-authoritative forest expedition state loop. The browser client can acquire development identity, select authoritative mode, manage its current party, and render that state through the existing party panel. Full expedition simulation, rewards, and load testing remain future work.
 
 ---
 
@@ -193,6 +195,12 @@ The backend checks the database connection and applies pending migrations before
 
 The current backend protocol supports authenticated party state reads and commands. The browser client defaults to `LocalPartyTransport`, while `?partyTransport=authoritative` or `VITE_MOMENTUM_PARTY_MODE=authoritative` enables the deliberate authoritative rendering path.
 
+### Two-PC browser playtest
+
+For a same-LAN smoke test, keep PostgreSQL bound to the backend host only, run the backend with `HOST=0.0.0.0`, and run Vite with `--host 0.0.0.0`. Set `MOMENTUM_BACKEND_PROXY_URL=http://127.0.0.1:3000` on the frontend host and have both PCs open `http://<frontend-host-ip>:5173/?partyTransport=authoritative`. The Vite proxy keeps browser HTTP/WebSocket traffic same-origin and does not expose PostgreSQL. The full flow is documented in [docs/two-pc-authoritative-playtest.md](</Users/limitedink/workspace/github.com/gamedev/momentum/docs/two-pc-authoritative-playtest.md>).
+
+For a direct backend target, configure `VITE_MOMENTUM_BACKEND_URL` and the backend `CORS_ORIGIN` allowlist for the frontend origin. A production-like remote deployment should use HTTPS/WSS with a trusted certificate; development bearer tokens are not production identity.
+
 ---
 
 ## Verification
@@ -232,6 +240,7 @@ Database integration tests run when `DATABASE_URL` is available.
 - [x] Add authenticated WebSocket sessions and authoritative party commands
 - [x] Implement the browser-compatible authoritative client transport adapter
 - [x] Connect the client to backend identity and sessions, then migrate the party UI with an explicit local fallback
+- [x] Add authenticated frontend party management and two-PC authoritative smoke-test support
 - [ ] Persist parties, expeditions, characters, and shared progression
 - [x] Add reconnect and resume support, idempotent commands, authorization, and rate limits
 - [ ] Expand social presence, shared goals, party bonuses, and cooperative content
