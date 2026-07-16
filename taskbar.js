@@ -19,6 +19,7 @@
     reconnect:document.getElementById('partyReconnectBtn'),
     sync:document.getElementById('partySyncStatus'),
     tick:document.getElementById('partyTickLabel'),
+    management:document.getElementById('partyManagement'),
     lanes:document.getElementById('partyLanes'),
     members:document.getElementById('partyMembers'),
     actions:document.getElementById('partyActionRow'),
@@ -37,6 +38,8 @@
   let reconnectTimer = null;
   let previousTickForSummary = null;
   let lastRenderSignature = '';
+  let partyJoinCodeDraft = '';
+  let partyManagementBusy = false;
 
   function currentRuntimeState() {
     return partyClient.getState();
@@ -189,6 +192,7 @@
     const signature = `${storeState.session.lastAcceptedRevision}:${storeState.session.connection.status}:${pendingSignature}:${error}:${snapshot.elapsedTicks}:${expedition.status}:${expedition.pendingRewards?.id || 'clear'}:${player?.activity || ''}:${presentation.compact}`;
     if (!force && signature === lastRenderSignature) return;
     lastRenderSignature = signature;
+    elements.management.innerHTML = '';
 
     const connectionStatus = storeState.session.connection.status;
     if (elements.transportLabel) elements.transportLabel.textContent = currentRuntimeState().fallbackReason ? 'LOCAL FALLBACK TRANSPORT' : 'LOCAL PARTY TRANSPORT';
@@ -268,21 +272,65 @@
     const authoritative = runtimeState.authoritative;
     const currentPlayerId = runtimeState.identity.authenticatedPlayerId;
     const contributions = authoritative.state?.contributions || {};
-    const members = authoritative.scope.memberPlayerIds || [];
-    host.innerHTML = members.length ? members.map(playerId => {
+    const party = authoritative.party;
+    const members = party?.members?.length ? party.members.map(member => ({ playerId:member.playerId, isLeader:member.isLeader })) : (authoritative.scope.memberPlayerIds || []).map(playerId => ({ playerId, isLeader:playerId === authoritative.scope.leaderPlayerId }));
+    host.innerHTML = members.length ? members.map(member => {
+      const playerId = member.playerId;
       const presence = authoritative.presence[playerId];
       const status = presence?.status || (playerId === currentPlayerId ? 'online' : 'offline');
-      const leader = playerId === authoritative.scope.leaderPlayerId;
+      const leader = member.isLeader || playerId === authoritative.scope.leaderPlayerId;
       const label = playerId === currentPlayerId ? 'You' : `Player ${shortPlayerId(playerId)}`;
       return `<div class="party-member${playerId === currentPlayerId ? ' is-player' : ' is-authoritative-member'}"><span class="party-avatar">${playerId === currentPlayerId ? '◆' : '◌'}</span><span class="party-member-name"><strong>${escapeHtml(label)}${leader ? ' · LEADER' : ''}</strong><small>${status === 'online' ? 'Online' : 'Offline'} · ${Math.floor(Number(contributions[playerId]) || 0)} contribution</small></span><span class="party-presence">${status.toUpperCase()}</span></div>`;
     }).join('') : '<div class="small party-empty-state">No party membership is currently available.</div>';
+  }
+
+  function displayJoinCode(joinCode) {
+    return joinCode ? `${joinCode.slice(0, 5)}-${joinCode.slice(5)}` : '—';
+  }
+
+  function partyLeaderLabel(runtimeState) {
+    const party = runtimeState.authoritative.party;
+    const leaderId = party?.leaderId || runtimeState.authoritative.scope.leaderPlayerId;
+    if (!leaderId) return 'Awaiting party details';
+    return leaderId === runtimeState.identity.authenticatedPlayerId ? 'You' : `Player ${shortPlayerId(leaderId)}`;
+  }
+
+  function authoritativePartyManagementMarkup(runtimeState) {
+    const party = runtimeState.authoritative.party;
+    const disabled = partyManagementBusy ? ' disabled' : '';
+    if (!party) return `<div class="party-management-heading"><div><small>PARTY ACCESS · DEVELOPMENT</small><span>Create a party or enter a join code from another PC.</span></div><button class="btn btn-small" data-party-create${disabled}>Create party</button></div><div class="party-management-join"><input id="partyJoinCodeInput" type="text" inputmode="text" autocomplete="off" maxlength="11" placeholder="ABCDE-2345" value="${escapeHtml(partyJoinCodeDraft)}"${disabled}><button class="btn btn-small" data-party-join${disabled}>Join</button></div>`;
+    const members = party.members?.length || runtimeState.authoritative.scope.memberPlayerIds.length;
+    return `<div class="party-management-heading"><div><small>PARTY JOIN CODE</small><strong class="party-join-code">${escapeHtml(displayJoinCode(party.joinCode))}</strong><span>Leader: ${escapeHtml(partyLeaderLabel(runtimeState))} · ${members}/${party.maxMembers} members</span></div><button class="btn btn-small" data-party-leave${disabled}>Leave party</button></div>`;
+  }
+
+  function bindAuthoritativePartyManagement(host) {
+    const input = host.querySelector('#partyJoinCodeInput');
+    if (input) input.oninput = () => { partyJoinCodeDraft = input.value; };
+    const create = host.querySelector('[data-party-create]');
+    if (create) create.onclick = () => { void runPartyManagement(() => partyClient.createParty()); };
+    const join = host.querySelector('[data-party-join]');
+    if (join) join.onclick = () => { void runPartyManagement(() => partyClient.joinParty(partyJoinCodeDraft)); };
+    const leave = host.querySelector('[data-party-leave]');
+    if (leave) leave.onclick = () => { void runPartyManagement(() => partyClient.leaveParty()); };
+  }
+
+  async function runPartyManagement(action) {
+    if (partyManagementBusy) return;
+    partyManagementBusy = true;
+    render(true);
+    try {
+      await action();
+    } finally {
+      partyManagementBusy = false;
+      render(true);
+    }
   }
 
   function authoritativeActionMarkup(runtimeState, compact = false) {
     const activity = runtimeState.authoritative.state?.activity;
     if (!runtimeState.authoritative.scope.partyId) return '<div class="small party-authoritative-note">Join a party to unlock shared server progress.</div>';
     if (activity?.status === 'active') {
-      return `<button class="btn party-action" data-authoritative-contribute="1" ${!isConnected() || commandIsPending() ? 'disabled' : ''}><span>＋</span>${compact ? '' : 'Contribute 1'}</button><button class="btn party-action" data-authoritative-contribute="10" ${!isConnected() || commandIsPending() ? 'disabled' : ''}><span>✦</span>${compact ? '' : 'Contribute 10'}</button><div class="small party-authoritative-note">The server controls activity timing and completion.</div>`;
+      return `<button class="btn party-action" data-authoritative-contribute="1" ${!isConnected() || commandIsPending() ? 'disabled' : ''}><span aria-hidden="true">＋</span>${compact ? '' : 'Contribute 1'}</button><button class="btn party-action" data-authoritative-contribute="10" ${!isConnected() || commandIsPending() ? 'disabled' : ''}><span aria-hidden="true">✦</span>${compact ? '' : 'Contribute 10'}</button><div class="small party-authoritative-note">The server controls activity timing and completion.</div>`;
     }
     if (activity?.status === 'completed') return `<div class="small party-authoritative-note">Expedition complete. Reset is available to the party leader.</div>`;
     return `<div class="small party-authoritative-note">Start the shared forest expedition when your party is ready.</div>`;
@@ -300,7 +348,8 @@
     const connectionStatus = runtimeState.connection;
     const pending = authoritative.pendingCommandIds.join(',');
     const error = authoritative.lastError?.message || '';
-    const signature = `authoritative:${connectionStatus}:${authoritative.scope.partyId || 'none'}:${authoritativeState?.revision ?? 'none'}:${pending}:${error}:${presentation.compact}`;
+    const party = authoritative.party;
+    const signature = `authoritative:${connectionStatus}:${authoritative.scope.partyId || 'none'}:${party?.updatedAt || 'none'}:${party?.members.length || 0}:${authoritativeState?.revision ?? 'none'}:${pending}:${error}:${partyManagementBusy}:${presentation.compact}`;
     if (!force && signature === lastRenderSignature) return;
     lastRenderSignature = signature;
 
@@ -319,6 +368,8 @@
       elements.reconnect.disabled = [CONNECTION_STATES.CONNECTING, CONNECTION_STATES.RECONNECTING].includes(connectionStatus);
     }
     elements.tick.textContent = `Revision ${authoritativeState?.revision ?? '—'}`;
+    elements.management.innerHTML = authoritativePartyManagementMarkup(runtimeState);
+    bindAuthoritativePartyManagement(elements.management);
 
     const toggle = document.getElementById('partyExpeditionToggle');
     const canToggle = Boolean(authoritative.scope.partyId) && isConnected() && !pending;
@@ -410,6 +461,10 @@
     getMode:() => partyClient.getMode(),
     getRequestedMode:() => partyClient.getRequestedMode(),
     getCommandState:type => partyClient.getCommandState(type),
+    getParty:() => partyClient.getParty(),
+    createParty:() => partyClient.createParty(),
+    joinParty:joinCode => partyClient.joinParty(joinCode),
+    leaveParty:() => partyClient.leaveParty(),
     requestSnapshot,
     setActivity,
     startExpedition:() => partyClient.startExpedition(),

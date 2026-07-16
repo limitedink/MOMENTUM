@@ -23,6 +23,18 @@ export async function buildApp(
   const database = dependencies.database ?? createDatabasePool(config);
   const ownsDatabase = dependencies.database === undefined;
 
+  app.addHook('onRequest', async (request, reply) => {
+    const origin = request.headers.origin;
+    if (origin && config.corsOrigins.includes(origin)) {
+      reply
+        .header('access-control-allow-origin', origin)
+        .header('access-control-allow-headers', 'authorization, content-type')
+        .header('access-control-allow-methods', 'GET, POST, DELETE, OPTIONS')
+        .header('vary', 'Origin');
+    }
+    if (request.method === 'OPTIONS') reply.code(204).send();
+  });
+
   await app.register(websocket, {
     options: {
       // Leave a small transport margin so protocol-level validation can send

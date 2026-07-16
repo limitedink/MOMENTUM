@@ -65,6 +65,7 @@ describe('configuration', () => {
       host: '0.0.0.0',
       port: 4000,
       logLevel: 'debug',
+      corsOrigins: [],
       databaseUrl: 'postgresql://example/momentum',
       databasePoolMax: 4,
       websocketMaxMessageBytes: 16384,
@@ -86,5 +87,31 @@ describe('configuration', () => {
 
   it('rejects invalid numeric configuration', () => {
     expect(() => loadConfig({ PORT: 'not-a-port' })).toThrow('PORT must be a positive integer');
+  });
+
+  it('exposes opt-in CORS headers for a direct browser backend target', async () => {
+    const corsConfig = loadConfig({
+      NODE_ENV: 'test',
+      HOST: '127.0.0.1',
+      PORT: '3000',
+      LOG_LEVEL: 'silent',
+      CORS_ORIGIN: 'http://pc-a.test,http://pc-b.test',
+      DATABASE_URL: 'postgresql://localhost:5432/momentum_test',
+      DATABASE_POOL_MAX: '1'
+    });
+    const corsApp = await buildApp(corsConfig);
+    try {
+      const response = await corsApp.inject({
+        method: 'OPTIONS',
+        url: '/v1/parties',
+        headers: { origin: 'http://pc-a.test' }
+      });
+
+      expect(response.statusCode).toBe(204);
+      expect(response.headers['access-control-allow-origin']).toBe('http://pc-a.test');
+      expect(response.headers.vary).toBe('Origin');
+    } finally {
+      await corsApp.close();
+    }
   });
 });

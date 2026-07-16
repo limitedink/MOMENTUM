@@ -10,6 +10,7 @@ export interface AppConfig {
   host: string;
   port: number;
   logLevel: LogLevel;
+  corsOrigins: string[];
   databaseUrl: string;
   databasePoolMax: number;
   websocketMaxMessageBytes: number;
@@ -53,12 +54,17 @@ function parseLogLevel(value: string | undefined): LogLevel {
   return logLevel as LogLevel;
 }
 
+function parseCorsOrigins(value: string | undefined): string[] {
+  return (value ?? '').split(',').map(origin => origin.trim()).filter(Boolean);
+}
+
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
   return {
     nodeEnv: parseNodeEnv(environment.NODE_ENV),
     host: environment.HOST ?? '127.0.0.1',
     port: parsePositiveInteger('PORT', environment.PORT, 3000),
     logLevel: parseLogLevel(environment.LOG_LEVEL),
+    corsOrigins: parseCorsOrigins(environment.CORS_ORIGIN),
     databaseUrl: environment.DATABASE_URL ?? DEFAULT_DATABASE_URL,
     databasePoolMax: parsePositiveInteger('DATABASE_POOL_MAX', environment.DATABASE_POOL_MAX, 10),
     websocketMaxMessageBytes: parsePositiveInteger('WEBSOCKET_MAX_MESSAGE_BYTES', environment.WEBSOCKET_MAX_MESSAGE_BYTES, 16_384),

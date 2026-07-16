@@ -490,6 +490,14 @@ body.reduce-motion .settings-panel,body.reduce-motion .frontier-panel,body.reduc
 .party-member.is-authoritative-member { border-color:rgba(119,198,110,.3); }
 .party-empty-state,.party-authoritative-note { padding:7px 0; color:var(--muted); }
 .party-authoritative-note { flex-basis:100%; font-size:10px; }
+.party-management { display:grid; gap:7px; margin:8px 0; padding:8px; border:1px solid rgba(80,217,255,.25); background:rgba(6,10,22,.45); }
+.party-management-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.party-management-heading > div { display:grid; min-width:0; gap:2px; }
+.party-management-heading small { color:var(--cyan); font-size:9px; letter-spacing:.12em; }
+.party-management-heading span { color:var(--muted); font-size:10px; }
+.party-management-join { display:flex; gap:6px; }
+.party-management-join input { min-width:0; flex:1; border:1px solid var(--line); color:var(--text); background:#070b18; padding:7px 8px; font:inherit; letter-spacing:.12em; text-transform:uppercase; }
+.party-join-code { color:var(--text); font-size:16px; letter-spacing:.12em; }
 .party-members { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px; }
 .party-member { display:flex; min-width:0; align-items:center; gap:7px; padding:7px; border:1px solid var(--line); background:rgba(6,10,22,.4); }
 .party-member.is-player { border-color:rgba(80,217,255,.55); }
