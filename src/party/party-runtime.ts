@@ -1,7 +1,6 @@
 import {
   CONNECTION_STATES,
   type ClientSessionState,
-  type CommandType,
   type ConnectionState,
   type MomentumPartyClient,
   type MomentumPartyTransport,
@@ -15,6 +14,7 @@ import { createPartyClient } from './party-client';
 import { createAuthoritativeCommand, type AuthoritativeCommandResult, type AuthoritativePartyScope, type AuthoritativePartyTransport, type AuthoritativePartyTransportOptions, type AuthoritativePresence, type AuthoritativeServerError } from './authoritative-party-types';
 import { createAuthoritativePartyTransport } from './authoritative-party-transport';
 import { createBackendIdentityClient, getConfiguredBackendBaseUrl, type BackendIdentityClient, type BackendPlayerSession } from './backend-identity';
+import { createBackendPartyApi, type BackendParty, type BackendPartyApi, type BackendPartyApiOptions, BackendPartyApiError } from './backend-party-api';
 
 export const PARTY_RUNTIME_MODES = {
   LOCAL: 'local',
@@ -42,6 +42,7 @@ export interface AuthoritativePartyRuntimeState {
   };
   authoritative: {
     scope: AuthoritativePartyScope;
+    party: BackendParty | null;
     state: import('./authoritative-party-types').AuthoritativePartyState | null;
     presence: Record<string, AuthoritativePresence>;
     pendingCommandIds: string[];
@@ -66,6 +67,10 @@ export interface PartyRuntime {
   getSnapshot(): PartySnapshot | null;
   getSessionState(): ClientSessionState | null;
   getCommandState(type: string): { type: string; status: string } | ReturnType<MomentumPartyClient['getCommandState']>;
+  getParty(): BackendParty | null;
+  createParty(): Promise<BackendParty | null>;
+  joinParty(joinCode: string): Promise<BackendParty | null>;
+  leaveParty(): Promise<boolean>;
   requestSnapshot(): Promise<PartySnapshot | import('./authoritative-party-types').AuthoritativePartyState | null>;
   refreshParty(): Promise<AuthoritativePartyScope | null>;
   markPartyMembershipChanged(): void;
@@ -84,6 +89,7 @@ export interface PartyRuntimeOptions {
   mode?: PartyRuntimeMode;
   fallbackToLocal?: boolean;
   identityClient?: BackendIdentityClient;
+  partyApiFactory?: (options: BackendPartyApiOptions) => BackendPartyApi;
   authoritativeTransportFactory?: (options: AuthoritativePartyTransportOptions) => AuthoritativePartyTransport;
   localTransportFactory?: () => MomentumPartyTransport;
   backendBaseUrl?: string;
@@ -120,20 +126,32 @@ function localFallbackReason(error: unknown): string {
   return error instanceof Error ? error.message : 'Authoritative backend identity was unavailable.';
 }
 
+function partyApiError(error: unknown): AuthoritativeServerError {
+  if (error instanceof BackendPartyApiError) return { code: error.code, message: error.message };
+  return { code: 'party_request_failed', message: 'The party request could not be completed.' };
+}
+
+function cloneParty(party: BackendParty | null): BackendParty | null {
+  return party ? { ...party, members: party.members.map(member => ({ ...member })) } : null;
+}
+
 export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRuntime {
   const requestedMode = options.mode ?? resolvePartyRuntimeMode();
   const fallbackToLocal = options.fallbackToLocal ?? true;
   const identityClient = options.identityClient ?? createBackendIdentityClient({ baseUrl: options.backendBaseUrl ?? getConfiguredBackendBaseUrl() });
   const createAuthoritativeTransport = options.authoritativeTransportFactory ?? createAuthoritativePartyTransport;
+  const createPartyApi = options.partyApiFactory ?? createBackendPartyApi;
   const createLocalTransport = options.localTransportFactory ?? (() => createLocalMomentumPartyTransport());
 
   let mode: PartyRuntimeMode = requestedMode;
   let fallbackReason: string | null = null;
   let localClient: MomentumPartyClient | null = null;
   let authoritativeTransport: AuthoritativePartyTransport | null = null;
+  let partyApi: BackendPartyApi | null = null;
   let identity: BackendPlayerSession | null = null;
   let state: AuthoritativePartyRuntimeState['authoritative'] = {
     scope: { ...EMPTY_SCOPE, memberPlayerIds: [] },
+    party: null,
     state: null,
     presence: {},
     pendingCommandIds: [],
@@ -155,7 +173,14 @@ export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRunt
     authoritativeTransport = transport;
     unsubscribers.push(transport.subscribeToConnection(connection => notify('connection')));
     unsubscribers.push(transport.subscribeToPartyScope(scope => {
-      state = { ...state, scope: { ...scope, memberPlayerIds: [...scope.memberPlayerIds] } };
+      const partyChanged = state.scope.partyId !== scope.partyId;
+      state = {
+        ...state,
+        scope: { ...scope, memberPlayerIds: [...scope.memberPlayerIds] },
+        party: scope.partyId === null ? null : state.party,
+        state: partyChanged ? null : state.state,
+        presence: partyChanged ? {} : state.presence
+      };
       notify('party.scope');
     }));
     unsubscribers.push(transport.subscribeToState(nextState => {
@@ -165,6 +190,7 @@ export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRunt
     unsubscribers.push(transport.subscribeToPresence(presence => {
       state = { ...state, presence: { ...state.presence, [presence.playerId]: presence } };
       notify('party.presence');
+      if (getConnectionState() === CONNECTION_STATES.CONNECTED) void refreshParty().catch(() => undefined);
     }));
     unsubscribers.push(transport.subscribeToCommandResults(result => {
       state = { ...state, pendingCommandIds: state.pendingCommandIds.filter(id => id !== result.commandId), lastCommandResult: result };
@@ -194,6 +220,10 @@ export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRunt
 
     try {
       identity = await identityClient.acquire();
+      partyApi = createPartyApi({
+        baseUrl: options.backendBaseUrl ?? getConfiguredBackendBaseUrl(),
+        token: identity.token
+      });
       const transport = createAuthoritativeTransport({
         token: identity.token,
         authenticatedPlayerId: identity.playerId,
@@ -230,6 +260,7 @@ export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRunt
       },
       authoritative: {
         scope: { ...state.scope, memberPlayerIds: [...state.scope.memberPlayerIds] },
+        party: cloneParty(state.party),
         state: state.state,
         presence: { ...state.presence },
         pendingCommandIds: [...state.pendingCommandIds],
@@ -246,7 +277,10 @@ export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRunt
 
   async function connect(): Promise<boolean> {
     requireInitialized();
-    return mode === PARTY_RUNTIME_MODES.LOCAL ? localClient!.connect() : authoritativeTransport!.connect();
+    if (mode === PARTY_RUNTIME_MODES.LOCAL) return localClient!.connect();
+    const connected = await authoritativeTransport!.connect();
+    if (connected) await refreshPartyDetailsFromHttp();
+    return connected;
   }
 
   async function disconnect(): Promise<boolean> {
@@ -268,6 +302,10 @@ export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRunt
     return mode === PARTY_RUNTIME_MODES.LOCAL ? localClient?.getSessionState() ?? null : null;
   }
 
+  function getParty(): BackendParty | null {
+    return mode === PARTY_RUNTIME_MODES.AUTHORITATIVE ? cloneParty(state.party) : null;
+  }
+
   function getCommandState(type: string): { type: string; status: string } | ReturnType<MomentumPartyClient['getCommandState']> {
     if (mode === PARTY_RUNTIME_MODES.LOCAL) return localClient!.getCommandState(type);
     return { type, status: 'idle' };
@@ -286,17 +324,91 @@ export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRunt
     }
   }
 
+  async function refreshPartyDetailsFromHttp(): Promise<BackendParty | null> {
+    if (mode !== PARTY_RUNTIME_MODES.AUTHORITATIVE || !partyApi) return null;
+    try {
+      const party = await partyApi.getCurrentParty();
+      state = { ...state, party, lastError: null };
+      notify('party.details');
+      return party;
+    } catch (error) {
+      state = { ...state, lastError: partyApiError(error) };
+      notify('party.error');
+      return state.party;
+    }
+  }
+
   async function refreshParty(): Promise<AuthoritativePartyScope | null> {
     requireInitialized();
     if (mode === PARTY_RUNTIME_MODES.LOCAL) return null;
+    const party = await refreshPartyDetailsFromHttp();
     const scope = await authoritativeTransport!.refreshParty();
-    state = { ...state, scope: { ...scope, memberPlayerIds: [...scope.memberPlayerIds] }, lastError: null };
+    state = {
+      ...state,
+      party,
+      scope: { ...scope, memberPlayerIds: [...scope.memberPlayerIds] },
+      state: scope.partyId ? state.state : null,
+      presence: scope.partyId ? state.presence : {},
+      lastError: null
+    };
     notify('party.scope.refreshed');
+    if (scope.partyId) await requestSnapshot();
     return scope;
   }
 
   function markPartyMembershipChanged(): void {
     if (mode === PARTY_RUNTIME_MODES.AUTHORITATIVE) authoritativeTransport?.markPartyMembershipChanged();
+  }
+
+  async function createParty(): Promise<BackendParty | null> {
+    requireInitialized();
+    if (mode !== PARTY_RUNTIME_MODES.AUTHORITATIVE || !partyApi || !authoritativeTransport) return null;
+    try {
+      const party = await partyApi.createParty();
+      state = { ...state, party, lastError: null };
+      notify('party.created');
+      authoritativeTransport.markPartyMembershipChanged();
+      await refreshParty();
+      return cloneParty(state.party);
+    } catch (error) {
+      state = { ...state, lastError: partyApiError(error) };
+      notify('party.error');
+      return null;
+    }
+  }
+
+  async function joinParty(joinCode: string): Promise<BackendParty | null> {
+    requireInitialized();
+    if (mode !== PARTY_RUNTIME_MODES.AUTHORITATIVE || !partyApi || !authoritativeTransport) return null;
+    try {
+      const party = await partyApi.joinParty(joinCode);
+      state = { ...state, party, lastError: null };
+      notify('party.joined');
+      authoritativeTransport.markPartyMembershipChanged();
+      await refreshParty();
+      return cloneParty(state.party);
+    } catch (error) {
+      state = { ...state, lastError: partyApiError(error) };
+      notify('party.error');
+      return null;
+    }
+  }
+
+  async function leaveParty(): Promise<boolean> {
+    requireInitialized();
+    if (mode !== PARTY_RUNTIME_MODES.AUTHORITATIVE || !partyApi || !authoritativeTransport) return false;
+    try {
+      await partyApi.leaveParty();
+      state = { ...state, party: null, state: null, presence: {}, lastError: null };
+      notify('party.left');
+      authoritativeTransport.markPartyMembershipChanged();
+      await refreshParty();
+      return true;
+    } catch (error) {
+      state = { ...state, lastError: partyApiError(error) };
+      notify('party.error');
+      return false;
+    }
   }
 
   async function submitAuthoritative(command: Parameters<typeof createAuthoritativeCommand>[0], expectedRevision = state.state?.revision ?? 0): Promise<boolean> {
@@ -349,6 +461,10 @@ export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRunt
     getSnapshot,
     getSessionState,
     getCommandState,
+    getParty,
+    createParty,
+    joinParty,
+    leaveParty,
     requestSnapshot,
     refreshParty,
     markPartyMembershipChanged,

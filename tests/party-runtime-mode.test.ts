@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONNECTION_STATES, type AuthoritativePartyState, type ConnectionState } from '../src/party/party-types';
 import { createBackendIdentityClient, IDENTITY_STORAGE_KEY } from '../src/party/backend-identity';
+import type { BackendPartyApi } from '../src/party/backend-party-api';
 import { createPartyRuntime, PARTY_RUNTIME_MODES, resolvePartyRuntimeMode } from '../src/party/party-runtime';
 import { createLocalMomentumPartyTransport } from '../src/party/local-party-transport';
 import type {
@@ -48,6 +49,7 @@ function createFakeAuthoritativeTransport() {
   let currentScope = { ...scope, memberPlayerIds: [...scope.memberPlayerIds] };
   let membershipChanged = false;
   const commands: AuthoritativeCommand[] = [];
+  const operations: string[] = [];
   const connectionListeners = new Set<(value: typeof connection) => void>();
   const scopeListeners = new Set<(value: AuthoritativePartyScope) => void>();
   const stateListeners = new Set<(value: AuthoritativePartyState) => void>();
@@ -55,16 +57,17 @@ function createFakeAuthoritativeTransport() {
   const commandListeners = new Set<(value: AuthoritativeCommandResult) => void>();
   const errorListeners = new Set<(value: AuthoritativeServerError) => void>();
   const transport: AuthoritativePartyTransport = {
-    connect: async () => { connection = CONNECTION_STATES.CONNECTED; connectionListeners.forEach(listener => listener(connection)); return true; },
-    disconnect: async () => { connection = CONNECTION_STATES.DISCONNECTED; connectionListeners.forEach(listener => listener(connection)); return true; },
+    connect: async () => { operations.push('connect'); connection = CONNECTION_STATES.CONNECTED; connectionListeners.forEach(listener => listener(connection)); return true; },
+    disconnect: async () => { operations.push('disconnect'); connection = CONNECTION_STATES.DISCONNECTED; connectionListeners.forEach(listener => listener(connection)); return true; },
     getConnectionState: () => connection,
     getSessionIdentity: () => ({ authenticatedPlayerId: 'player-1', currentPartyId: currentScope.partyId }),
     getState: () => currentState,
     requestState: async () => {
+      operations.push('requestState');
       if (!currentState) throw new Error('state unavailable');
       return currentState;
     },
-    refreshParty: async () => { scopeListeners.forEach(listener => listener(currentScope)); return currentScope; },
+    refreshParty: async () => { operations.push('refreshParty'); scopeListeners.forEach(listener => listener(currentScope)); return currentScope; },
     markPartyMembershipChanged: () => { membershipChanged = true; },
     submitCommand: async command => {
       commands.push(command);
@@ -84,6 +87,7 @@ function createFakeAuthoritativeTransport() {
   return {
     transport,
     commands,
+    operations,
     wasMembershipChanged: () => membershipChanged,
     emitScope: (value: AuthoritativePartyScope) => { currentScope = value; scopeListeners.forEach(listener => listener(value)); },
     emitState: (value: AuthoritativePartyState) => { currentState = value; stateListeners.forEach(listener => listener(value)); },
@@ -140,7 +144,13 @@ describe('party runtime mode boundary', () => {
       mode: PARTY_RUNTIME_MODES.AUTHORITATIVE,
       fallbackToLocal: false,
       identityClient: { acquire: async () => ({ playerId: 'player-1', token: 'dev_token_1', sessionId: 'session-1' }) },
-      authoritativeTransportFactory: () => fake.transport
+      authoritativeTransportFactory: () => fake.transport,
+      partyApiFactory: () => ({
+        createParty: async () => ({ id: 'party-1', leaderId: 'player-1', joinCode: 'ABCD2345EF', maxMembers: 4, createdAt: '2026-07-15T00:00:00.000Z', updatedAt: '2026-07-15T00:00:00.000Z', members: [{ playerId: 'player-1', joinedAt: '2026-07-15T00:00:00.000Z', isLeader: true }] }),
+        getCurrentParty: async () => ({ id: 'party-1', leaderId: 'player-1', joinCode: 'ABCD2345EF', maxMembers: 4, createdAt: '2026-07-15T00:00:00.000Z', updatedAt: '2026-07-15T00:00:00.000Z', members: [{ playerId: 'player-1', joinedAt: '2026-07-15T00:00:00.000Z', isLeader: true }, { playerId: 'player-2', joinedAt: '2026-07-15T00:01:00.000Z', isLeader: false }] }),
+        joinParty: async () => ({ id: 'party-1', leaderId: 'player-1', joinCode: 'ABCD2345EF', maxMembers: 4, createdAt: '2026-07-15T00:00:00.000Z', updatedAt: '2026-07-15T00:00:00.000Z', members: [{ playerId: 'player-1', joinedAt: '2026-07-15T00:00:00.000Z', isLeader: true }, { playerId: 'player-2', joinedAt: '2026-07-15T00:01:00.000Z', isLeader: false }] }),
+        leaveParty: async () => undefined
+      } satisfies BackendPartyApi)
     });
 
     await expect(runtime.initialize()).resolves.toBe(true);
@@ -164,6 +174,11 @@ describe('party runtime mode boundary', () => {
     };
     fake.emitState(newerState);
     expect(runtime.getState()).toMatchObject({ authoritative: { state: { revision: 1, contributions: { 'player-1': 2 } } } });
+
+    await expect(runtime.joinParty('ABCD2345EF')).resolves.toMatchObject({ joinCode: 'ABCD2345EF', members: [{ playerId: 'player-1' }, { playerId: 'player-2' }] });
+    expect(runtime.getParty()).toMatchObject({ leaderId: 'player-1', members: [{ isLeader: true }, { playerId: 'player-2' }] });
+    expect(fake.operations).toContain('refreshParty');
+    expect(fake.operations).toContain('requestState');
 
     runtime.markPartyMembershipChanged();
     expect(fake.wasMembershipChanged()).toBe(true);
