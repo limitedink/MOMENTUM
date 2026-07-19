@@ -78,7 +78,17 @@ export interface ExpeditionResetCommand {
   type: 'expedition.reset';
 }
 
-export type PartyCommand = ExpeditionStartCommand | ExpeditionContributeCommand | ExpeditionResetCommand;
+export interface PartyActivitySetCommand {
+  type: 'party.activity.set';
+  activityId: string;
+}
+
+export interface ExpeditionRewardClaimCommand {
+  type: 'expedition.reward.claim';
+  rewardId: string;
+}
+
+export type PartyCommand = ExpeditionStartCommand | ExpeditionContributeCommand | ExpeditionResetCommand | PartyActivitySetCommand | ExpeditionRewardClaimCommand;
 
 export interface PartyCommandMessage {
   protocolVersion: typeof WEBSOCKET_PROTOCOL_VERSION;
@@ -102,10 +112,17 @@ export interface ConnectionReadyPayload {
   protocolVersion: typeof WEBSOCKET_PROTOCOL_VERSION;
 }
 
+export interface PartySnapshotMember {
+  playerId: string;
+  displayName: string;
+  isLeader: boolean;
+}
+
 export interface PartySnapshotPayload {
   partyId: string | null;
   leaderPlayerId: string | null;
   memberPlayerIds: string[];
+  members: PartySnapshotMember[];
   joinCode: string | null;
   serverTimestamp: number;
 }
@@ -128,6 +145,14 @@ export interface PartyStateSnapshotPayload {
     completesAt: string | null;
   };
   contributions: Record<string, number>;
+  memberActivities: Record<string, 'forest_patrol' | 'pine_chopping' | 'camp_cooking' | 'rest'>;
+  pendingRewards: Record<string, Array<{
+    id: string;
+    primaryActivity: 'forest_patrol' | 'pine_chopping' | 'camp_cooking' | 'rest';
+    primaryXp: number;
+    partyXp: Partial<Record<'forest_patrol' | 'pine_chopping' | 'camp_cooking' | 'rest', number>>;
+    rewards: { bossKeys: number; pineLogs: number; cookedFish: number; game: number };
+  }>>;
   updatedAt: string;
   serverTimestamp: number;
 }
@@ -204,6 +229,12 @@ function parsePartyCommand(value: unknown): PartyCommand | null {
   }
   if (value.type === 'expedition.reset' && hasExactKeys(value, ['type'])) {
     return value as unknown as ExpeditionResetCommand;
+  }
+  if (value.type === 'party.activity.set' && hasExactKeys(value, ['type', 'activityId']) && typeof value.activityId === 'string') {
+    return value as unknown as PartyActivitySetCommand;
+  }
+  if (value.type === 'expedition.reward.claim' && hasExactKeys(value, ['type', 'rewardId']) && typeof value.rewardId === 'string') {
+    return value as unknown as ExpeditionRewardClaimCommand;
   }
   return value as unknown as PartyCommand;
 }

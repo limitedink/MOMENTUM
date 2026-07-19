@@ -37,6 +37,7 @@ export interface AuthoritativePartyRuntimeState {
   connection: ConnectionState;
   identity: {
     authenticatedPlayerId: string | null;
+    displayName: string | null;
     currentPartyId: string | null;
     sessionId: string | null;
   };
@@ -91,7 +92,7 @@ export interface PartyRuntimeOptions {
   identityClient?: BackendIdentityClient;
   partyApiFactory?: (options: BackendPartyApiOptions) => BackendPartyApi;
   authoritativeTransportFactory?: (options: AuthoritativePartyTransportOptions) => AuthoritativePartyTransport;
-  localTransportFactory?: () => MomentumPartyTransport;
+  localTransportFactory?: (options?: { displayName?: string }) => MomentumPartyTransport;
   backendBaseUrl?: string;
   authoritativeWebSocketUrl?: string;
 }
@@ -100,6 +101,7 @@ const EMPTY_SCOPE: AuthoritativePartyScope = {
   partyId: null,
   leaderPlayerId: null,
   memberPlayerIds: [],
+  members: [],
   joinCode: null,
   serverTimestamp: 0
 };
@@ -135,13 +137,17 @@ function cloneParty(party: BackendParty | null): BackendParty | null {
   return party ? { ...party, members: party.members.map(member => ({ ...member })) } : null;
 }
 
+function cloneScope(scope: AuthoritativePartyScope): AuthoritativePartyScope {
+  return { ...scope, memberPlayerIds: [...scope.memberPlayerIds], members: scope.members.map(member => ({ ...member })) };
+}
+
 export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRuntime {
   const requestedMode = options.mode ?? resolvePartyRuntimeMode();
   const fallbackToLocal = options.fallbackToLocal ?? true;
   const identityClient = options.identityClient ?? createBackendIdentityClient({ baseUrl: options.backendBaseUrl ?? getConfiguredBackendBaseUrl() });
   const createAuthoritativeTransport = options.authoritativeTransportFactory ?? createAuthoritativePartyTransport;
   const createPartyApi = options.partyApiFactory ?? createBackendPartyApi;
-  const createLocalTransport = options.localTransportFactory ?? (() => createLocalMomentumPartyTransport());
+  const createLocalTransport = options.localTransportFactory ?? ((localOptions?: { displayName?: string }) => createLocalMomentumPartyTransport(localOptions));
 
   let mode: PartyRuntimeMode = requestedMode;
   let fallbackReason: string | null = null;
@@ -150,7 +156,7 @@ export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRunt
   let partyApi: BackendPartyApi | null = null;
   let identity: BackendPlayerSession | null = null;
   let state: AuthoritativePartyRuntimeState['authoritative'] = {
-    scope: { ...EMPTY_SCOPE, memberPlayerIds: [] },
+    scope: cloneScope(EMPTY_SCOPE),
     party: null,
     state: null,
     presence: {},
@@ -176,7 +182,7 @@ export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRunt
       const partyChanged = state.scope.partyId !== scope.partyId;
       state = {
         ...state,
-        scope: { ...scope, memberPlayerIds: [...scope.memberPlayerIds] },
+        scope: cloneScope(scope),
         party: scope.partyId === null ? null : state.party,
         state: partyChanged ? null : state.state,
         presence: partyChanged ? {} : state.presence
@@ -202,10 +208,10 @@ export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRunt
     }));
   }
 
-  async function initializeLocal(reason: string | null = null): Promise<boolean> {
+  async function initializeLocal(reason: string | null = null, displayName = 'You'): Promise<boolean> {
     mode = PARTY_RUNTIME_MODES.LOCAL;
     fallbackReason = reason;
-    localClient = createPartyClient(createLocalTransport());
+    localClient = createPartyClient(createLocalTransport({ displayName }));
     await localClient.initialize();
     unsubscribers.push(localClient.subscribe((_state, notifyReason) => notify(notifyReason)));
     initialized = true;
@@ -235,7 +241,8 @@ export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRunt
       return true;
     } catch (error) {
       if (!fallbackToLocal) return false;
-      return initializeLocal(localFallbackReason(error));
+      const fallbackDisplayName = identityClient.getLastRequestedDisplayName?.() || 'You';
+      return initializeLocal(localFallbackReason(error), fallbackDisplayName);
     }
   }
 
@@ -253,13 +260,14 @@ export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRunt
       requestedMode: PARTY_RUNTIME_MODES.AUTHORITATIVE,
       fallbackReason: null,
       connection: authoritativeTransport?.getConnectionState() ?? CONNECTION_STATES.DISCONNECTED,
-      identity: {
-        authenticatedPlayerId: identity?.playerId ?? authoritativeTransport?.getSessionIdentity().authenticatedPlayerId ?? null,
+        identity: {
+          authenticatedPlayerId: identity?.playerId ?? authoritativeTransport?.getSessionIdentity().authenticatedPlayerId ?? null,
+          displayName: identity?.displayName ?? null,
         currentPartyId: state.scope.partyId,
         sessionId: identity?.sessionId ?? null
       },
       authoritative: {
-        scope: { ...state.scope, memberPlayerIds: [...state.scope.memberPlayerIds] },
+        scope: cloneScope(state.scope),
         party: cloneParty(state.party),
         state: state.state,
         presence: { ...state.presence },
@@ -346,7 +354,7 @@ export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRunt
     state = {
       ...state,
       party,
-      scope: { ...scope, memberPlayerIds: [...scope.memberPlayerIds] },
+      scope: cloneScope(scope),
       state: scope.partyId ? state.state : null,
       presence: scope.partyId ? state.presence : {},
       lastError: null
@@ -468,14 +476,16 @@ export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRunt
     requestSnapshot,
     refreshParty,
     markPartyMembershipChanged,
-    setActivity: (activityId: PartyActivityId) => mode === PARTY_RUNTIME_MODES.LOCAL ? localClient!.setActivity(activityId) : unsupportedAuthoritativeAction(),
+    setActivity: (activityId: PartyActivityId) => mode === PARTY_RUNTIME_MODES.LOCAL
+      ? localClient!.setActivity(activityId)
+      : submitAuthoritative({ type: 'party.activity.set', activityId }),
     startExpedition: () => mode === PARTY_RUNTIME_MODES.LOCAL ? localClient!.startExpedition() : submitAuthoritative({ type: 'expedition.start', destination: 'forest' }),
     pauseExpedition: () => mode === PARTY_RUNTIME_MODES.LOCAL ? localClient!.pauseExpedition() : unsupportedAuthoritativeAction(),
     resumeExpedition: () => mode === PARTY_RUNTIME_MODES.LOCAL ? localClient!.resumeExpedition() : unsupportedAuthoritativeAction(),
     resetExpedition: () => mode === PARTY_RUNTIME_MODES.LOCAL ? unsupportedAuthoritativeAction() : submitAuthoritative({ type: 'expedition.reset' }),
     contribute: (amount = 1) => mode === PARTY_RUNTIME_MODES.LOCAL ? unsupportedAuthoritativeAction() : submitAuthoritative({ type: 'expedition.contribute', amount }),
     toggleExpedition,
-    claimReward: (rewardId?: string) => mode === PARTY_RUNTIME_MODES.LOCAL ? localClient!.claimReward(rewardId) : unsupportedAuthoritativeAction(),
+    claimReward: (rewardId?: string) => mode === PARTY_RUNTIME_MODES.LOCAL ? localClient!.claimReward(rewardId) : rewardId ? submitAuthoritative({ type: 'expedition.reward.claim', rewardId }) : Promise.resolve(false),
     subscribe: (listener: PartyRuntimeListener): Unsubscribe => { listeners.add(listener); return () => listeners.delete(listener); }
   });
 }

@@ -14,6 +14,7 @@ function serializeParty(value: PartyWithMembers) {
     updatedAt: value.party.updatedAt.toISOString(),
     members: value.members.map(member => ({
       playerId: member.playerId,
+      displayName: member.displayName,
       joinedAt: member.joinedAt.toISOString(),
       isLeader: member.playerId === value.party.leaderId
     }))

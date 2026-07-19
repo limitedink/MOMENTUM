@@ -242,13 +242,30 @@ export interface AuthoritativePartyState {
     completesAt: string | null;
   };
   contributions: Record<string, number>;
+  memberActivities: Record<string, PartyActivityId>;
+  pendingRewards: Record<string, PartyReward[]>;
   updatedAt: string;
   serverTimestamp: number;
 }
 
+export interface PartyReward {
+  id: string;
+  primaryActivity: PartyActivityId;
+  primaryXp: number;
+  partyXp: Partial<Record<PartyActivityId, number>>;
+  rewards: {
+    bossKeys: number;
+    pineLogs: number;
+    cookedFish: number;
+    game: number;
+  };
+}
+
 export interface ActivityDefinition {
   name: string;
+  rosterName: string;
   icon: string;
+  rewardFocus: string;
   output: Partial<Record<LaneId, number>>;
 }
 

@@ -1,4 +1,6 @@
 const IDENTITY_STORAGE_KEY = 'momentum-backend-dev-session-v1';
+const DEFAULT_DISPLAY_NAME = 'Player';
+const DISPLAY_NAME_MAX_LENGTH = 24;
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -8,18 +10,22 @@ interface StorageLike {
 
 export interface BackendPlayerSession {
   playerId: string;
+  displayName: string;
   token: string;
   sessionId: string | null;
 }
 
 export interface BackendIdentityClient {
   acquire(): Promise<BackendPlayerSession>;
+  getLastRequestedDisplayName?: () => string | null;
 }
 
 export interface BackendIdentityClientOptions {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
   storage?: StorageLike;
+  displayName?: string;
+  displayNameProvider?: () => string | Promise<string>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -47,7 +53,12 @@ function readStoredSession(storage: StorageLike | undefined): BackendPlayerSessi
     if (!isRecord(value) || typeof value.playerId !== 'string' || value.playerId.length === 0 ||
       typeof value.token !== 'string' || value.token.length === 0 ||
       !(value.sessionId === null || typeof value.sessionId === 'string')) return null;
-    return { playerId: value.playerId, token: value.token, sessionId: value.sessionId };
+    return {
+      playerId: value.playerId,
+      displayName: normalizeDisplayName(value.displayName) ?? DEFAULT_DISPLAY_NAME,
+      token: value.token,
+      sessionId: value.sessionId
+    };
   } catch {
     return null;
   }
@@ -74,11 +85,44 @@ function playerIdFromResponse(value: unknown): string | null {
   return value.player.id;
 }
 
+function displayNameFromResponse(value: unknown): string | null {
+  if (!isRecord(value) || !isRecord(value.player) || typeof value.player.displayName !== 'string') return null;
+  return normalizeDisplayName(value.player.displayName);
+}
+
 function sessionFromCreateResponse(value: unknown): BackendPlayerSession | null {
   const playerId = playerIdFromResponse(value);
+  const displayName = displayNameFromResponse(value);
   if (!playerId || !isRecord(value) || typeof value.token !== 'string' || value.token.length === 0 ||
-    typeof value.sessionId !== 'string' || value.sessionId.length === 0) return null;
-  return { playerId, token: value.token, sessionId: value.sessionId };
+    typeof value.sessionId !== 'string' || value.sessionId.length === 0 || !displayName) return null;
+  return { playerId, displayName, token: value.token, sessionId: value.sessionId };
+}
+
+function normalizeDisplayName(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  const characters = [...normalized];
+  if (characters.length < 1 || characters.length > DISPLAY_NAME_MAX_LENGTH) return null;
+  if (characters.some(character => /\p{Cc}/u.test(character))) return null;
+  return normalized;
+}
+
+async function requestedDisplayName(options: BackendIdentityClientOptions): Promise<string> {
+  const explicit = normalizeDisplayName(options.displayName);
+  if (explicit) return explicit;
+  if (options.displayNameProvider) {
+    const provided = normalizeDisplayName(await options.displayNameProvider());
+    if (provided) return provided;
+  }
+  if (typeof window !== 'undefined' && typeof window.prompt === 'function') {
+    try {
+      const provided = normalizeDisplayName(window.prompt('Choose a development display name (1–24 characters):', DEFAULT_DISPLAY_NAME));
+      if (provided) return provided;
+    } catch {
+      // Embedded browsers may not implement prompt(); use the safe development default.
+    }
+  }
+  return DEFAULT_DISPLAY_NAME;
 }
 
 async function responseJson(response: Response): Promise<unknown> {
@@ -93,21 +137,34 @@ export function createBackendIdentityClient(options: BackendIdentityClientOption
   const baseUrl = normalizeBaseUrl(options.baseUrl);
   const fetchImpl = options.fetchImpl ?? fetch;
   const storage = options.storage ?? browserStorage();
+  let lastRequestedDisplayName: string | null = null;
 
   async function acquire(): Promise<BackendPlayerSession> {
     const stored = readStoredSession(storage);
     if (stored) {
+      lastRequestedDisplayName = stored.displayName;
       try {
         const response = await fetchImpl(`${baseUrl}/v1/me`, { headers: { authorization: `Bearer ${stored.token}` } });
         const value = await responseJson(response);
-        if (response.ok && playerIdFromResponse(value) === stored.playerId) return stored;
+        const displayName = displayNameFromResponse(value);
+        if (response.ok && playerIdFromResponse(value) === stored.playerId) {
+          const refreshed = { ...stored, displayName: displayName ?? stored.displayName };
+          storeSession(storage, refreshed);
+          return refreshed;
+        }
       } catch {
         // Fall through to a fresh development identity.
       }
       clearStoredSession(storage);
     }
 
-    const response = await fetchImpl(`${baseUrl}/v1/dev/players`, { method: 'POST' });
+    const displayName = await requestedDisplayName(options);
+    lastRequestedDisplayName = displayName;
+    const response = await fetchImpl(`${baseUrl}/v1/dev/players`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ displayName })
+    });
     const value = await responseJson(response);
     if (!response.ok) throw new Error(`Backend identity acquisition failed with HTTP ${response.status}.`);
     const session = sessionFromCreateResponse(value);
@@ -116,7 +173,7 @@ export function createBackendIdentityClient(options: BackendIdentityClientOption
     return session;
   }
 
-  return Object.freeze({ acquire });
+  return Object.freeze({ acquire, getLastRequestedDisplayName: () => lastRequestedDisplayName });
 }
 
 export function getConfiguredBackendBaseUrl(): string {

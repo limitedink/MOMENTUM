@@ -36,7 +36,7 @@ describe.skipIf(!databaseUrl)('party integration (PostgreSQL)', () => {
   });
 
   async function createPlayer(): Promise<TestPlayer> {
-    const response = await app.inject({ method: 'POST', url: '/v1/dev/players' });
+    const response = await app.inject({ method: 'POST', url: '/v1/dev/players', payload: { displayName: `Player ${Date.now()}-${Math.random().toString(36).slice(2, 6)}`.slice(0, 24) } });
     expect(response.statusCode).toBe(201);
     const body = response.json();
     return { id: body.player.id, token: body.token };
@@ -77,7 +77,7 @@ describe.skipIf(!databaseUrl)('party integration (PostgreSQL)', () => {
     expect(party.joinCode).toMatch(/^[A-HJ-NP-Z2-9]{10}$/);
     expect(party.maxMembers).toBe(4);
     expect(party.members).toEqual([
-      expect.objectContaining({ playerId: player.id, isLeader: true })
+      expect.objectContaining({ playerId: player.id, displayName: expect.stringMatching(/^Player /), isLeader: true })
     ]);
 
     const current = await app.inject({
@@ -104,6 +104,10 @@ describe.skipIf(!databaseUrl)('party integration (PostgreSQL)', () => {
     });
     expect(joined.statusCode).toBe(200);
     expect(joined.json().party.members).toHaveLength(2);
+    expect(joined.json().party.members.map((member: { displayName: string }) => member.displayName)).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^Player /),
+      expect.stringMatching(/^Player /)
+    ]));
 
     const duplicateJoin = await app.inject({
       method: 'POST',

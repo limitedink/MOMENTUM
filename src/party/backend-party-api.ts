@@ -7,6 +7,7 @@ interface PartyApiRecord {
 
 export interface BackendPartyMember {
   playerId: string;
+  displayName: string;
   joinedAt: string;
   isLeader: boolean;
 }
@@ -65,6 +66,7 @@ function isRecord(value: unknown): value is PartyApiRecord {
 
 function isPartyMember(value: unknown): value is BackendPartyMember {
   return isRecord(value) && typeof value.playerId === 'string' && value.playerId.length > 0 &&
+    typeof value.displayName === 'string' && value.displayName.length >= 1 && value.displayName.length <= 24 &&
     typeof value.joinedAt === 'string' && typeof value.isLeader === 'boolean';
 }
 

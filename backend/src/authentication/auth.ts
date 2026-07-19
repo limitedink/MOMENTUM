@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply, FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
-import type { Player } from '../domain/players/player.js';
+import { normalizeDisplayName, type Player } from '../domain/players/player.js';
 import type { Session } from '../domain/sessions/session.js';
 import { createPostgresPlayerRepository } from '../domain/players/postgres-player-repository.js';
 import { createPostgresSessionRepository } from '../domain/sessions/postgres-session-repository.js';
@@ -50,6 +50,10 @@ function attachAuthContext(request: FastifyRequest, context: AuthContext): void 
   request.currentSession = context.session;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 export function createAuthHook(database: Pool) {
   return async function requireAuth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const context = await authenticateAuthorizationHeader(database, request.headers.authorization);
@@ -67,14 +71,24 @@ export async function registerAuthRoutes(app: FastifyInstance, database: Pool) {
 
   // POST /v1/dev/players - creates player + session, returns raw token once
   app.post('/v1/dev/players', async (request, reply) => {
-    const player = await players.create();
+    const body = isRecord(request.body) ? request.body : {};
+    const displayName = normalizeDisplayName(body.displayName);
+    if (!displayName) {
+      reply.code(400).send({
+        error: 'invalid_display_name',
+        message: 'Display name must be 1–24 characters and cannot contain control characters.'
+      });
+      return;
+    }
+
+    const player = await players.create({ displayName });
     const { generateAccessToken } = await import('../domain/tokens/token-service.js');
     const { raw, hash } = generateAccessToken();
 
     const session = await sessions.create({ playerId: player.id, tokenHash: hash });
 
     reply.code(201).send({
-      player: { id: player.id, createdAt: player.createdAt },
+      player: { id: player.id, displayName: player.displayName, createdAt: player.createdAt },
       token: raw,
       sessionId: session.id
     });
@@ -84,7 +98,7 @@ export async function registerAuthRoutes(app: FastifyInstance, database: Pool) {
   app.get('/v1/me', { preHandler: createAuthHook(database) }, async (request, reply) => {
     const player = request.currentPlayer!;
     reply.send({
-      player: { id: player.id, createdAt: player.createdAt }
+      player: { id: player.id, displayName: player.displayName, createdAt: player.createdAt }
     });
   });
 

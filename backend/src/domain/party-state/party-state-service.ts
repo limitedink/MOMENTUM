@@ -4,7 +4,10 @@ import { createPostgresPartyRepositoryWithClient } from '../parties/postgres-par
 import type { PartyWithMembers } from '../parties/party.js';
 import {
   PARTY_ACTIVITY_KIND,
+  PARTY_MEMBER_ACTIVITY_IDS,
   PartyStateError,
+  type PartyMemberActivityId,
+  type PartyReward,
   type PartyCommandResult,
   type PartyState,
   type PartyStateCommandInput,
@@ -48,6 +51,23 @@ interface ContributionRow extends QueryResultRow {
   amount: string;
 }
 
+interface MemberActivityRow extends QueryResultRow {
+  player_id: string;
+  activity_id: PartyState['memberActivities'][string];
+}
+
+interface ActivitySegmentRow extends QueryResultRow {
+  player_id: string;
+  activity_id: PartyMemberActivityId;
+  started_at: Date;
+  ended_at: Date | null;
+}
+
+interface RewardRow extends QueryResultRow {
+  player_id: string;
+  reward_json: unknown;
+}
+
 interface CommandRow extends QueryResultRow {
   party_id: string;
   command_id: string;
@@ -60,7 +80,12 @@ interface CommandRow extends QueryResultRow {
   error_code: PartyStateErrorCode | null;
 }
 
-function mapState(row: PartyStateRow, contributions: Record<string, number>): PartyState {
+function mapState(
+  row: PartyStateRow,
+  contributions: Record<string, number>,
+  memberActivities: PartyState['memberActivities'],
+  pendingRewards: Record<string, PartyReward[]>
+): PartyState {
   if (row.activity_kind !== PARTY_ACTIVITY_KIND) {
     throw new Error('Unsupported persisted party activity kind.');
   }
@@ -76,7 +101,42 @@ function mapState(row: PartyStateRow, contributions: Record<string, number>): Pa
       completesAt: row.completes_at
     },
     contributions,
+    memberActivities,
+    pendingRewards,
     updatedAt: row.updated_at
+  };
+}
+
+function rewardItemForActivity(activityId: PartyMemberActivityId): keyof PartyReward['rewards'] {
+  if (activityId === 'forest_patrol') return 'bossKeys';
+  if (activityId === 'pine_chopping') return 'pineLogs';
+  if (activityId === 'camp_cooking') return 'cookedFish';
+  return 'game';
+}
+
+function createActivityReward(
+  rewardId: string,
+  ownDurations: Record<PartyMemberActivityId, number>,
+  partyDurations: Record<PartyMemberActivityId, number>
+): PartyReward {
+  const primaryActivity = PARTY_MEMBER_ACTIVITY_IDS.reduce((best, activityId) =>
+    ownDurations[activityId] > ownDurations[best] ? activityId : best,
+    'rest' as PartyMemberActivityId
+  );
+  const primarySeconds = Math.max(1, Math.round(ownDurations[primaryActivity] / 1000));
+  const partyXp: Partial<Record<PartyMemberActivityId, number>> = {};
+  for (const activityId of PARTY_MEMBER_ACTIVITY_IDS) {
+    const xp = Math.max(0, Math.round(partyDurations[activityId] / 1000 * 0.25));
+    if (xp > 0) partyXp[activityId] = xp;
+  }
+  const rewards = { bossKeys: 0, pineLogs: 0, cookedFish: 0, game: 0 };
+  rewards[rewardItemForActivity(primaryActivity)] = Math.max(1, Math.floor(primarySeconds / 30));
+  return {
+    id: rewardId,
+    primaryActivity,
+    primaryXp: primarySeconds,
+    partyXp,
+    rewards
   };
 }
 
@@ -93,9 +153,11 @@ function commandErrorMessage(code: PartyStateErrorCode): string {
     case 'invalid_command': return 'The party command is not supported.';
     case 'invalid_destination': return 'The expedition destination is not supported.';
     case 'invalid_contribution': return 'The contribution amount is outside the allowed range.';
+    case 'invalid_activity': return 'That party activity is not available.';
     case 'activity_not_idle': return 'The expedition is not idle.';
     case 'activity_not_active': return 'The expedition is not active.';
     case 'activity_not_completed': return 'The expedition is not completed.';
+    case 'reward_not_available': return 'That expedition reward is no longer available.';
     case 'revision_conflict': return 'The party state revision is stale.';
     case 'not_party_leader': return 'Only the party leader can reset the expedition.';
     case 'duplicate_command_mismatch': return 'The command ID was already used with different content.';
@@ -142,8 +204,99 @@ function createStateRepository(client: PoolClient) {
     return contributions;
   }
 
+  async function listMemberActivities(partyId: string, members: string[]): Promise<PartyState['memberActivities']> {
+    await client.query(
+      `INSERT INTO party_member_activities (party_id, player_id)
+       SELECT party_id, player_id
+       FROM party_memberships
+       WHERE party_id = $1
+       ON CONFLICT (party_id, player_id) DO NOTHING`,
+      [partyId]
+    );
+    const { rows } = await client.query<MemberActivityRow>(
+      `SELECT player_id, activity_id
+       FROM party_member_activities
+       WHERE party_id = $1`,
+      [partyId]
+    );
+    const activities: PartyState['memberActivities'] = {};
+    for (const playerId of members) activities[playerId] = 'rest';
+    for (const row of rows) activities[row.player_id] = row.activity_id;
+    return activities;
+  }
+
+  async function listPendingRewards(partyId: string, members: string[]): Promise<Record<string, PartyReward[]>> {
+    const pendingRewards: Record<string, PartyReward[]> = {};
+    for (const playerId of members) pendingRewards[playerId] = [];
+    const { rows } = await client.query<RewardRow>(
+      `SELECT player_id, reward_json
+       FROM party_state_rewards
+       WHERE party_id = $1 AND claimed_at IS NULL
+       ORDER BY created_at ASC, reward_id ASC`,
+      [partyId]
+    );
+    for (const row of rows) {
+      if (!pendingRewards[row.player_id]) continue;
+      const reward = typeof row.reward_json === 'string' ? JSON.parse(row.reward_json) : row.reward_json;
+      if (reward && typeof reward === 'object' && !Array.isArray(reward)) pendingRewards[row.player_id].push(reward as PartyReward);
+    }
+    return pendingRewards;
+  }
+
   async function readState(row: PartyStateRow, members: string[]): Promise<PartyState> {
-    return mapState(row, await listContributions(row.party_id, members));
+    const [contributions, memberActivities, pendingRewards] = await Promise.all([
+      listContributions(row.party_id, members),
+      listMemberActivities(row.party_id, members),
+      listPendingRewards(row.party_id, members)
+    ]);
+    return mapState(row, contributions, memberActivities, pendingRewards);
+  }
+
+  async function createCompletionRewards(row: PartyStateRow, members: string[], memberActivities: PartyState['memberActivities']): Promise<void> {
+    if (!row.started_at || !row.completes_at) return;
+    const rewardId = `expedition-${row.party_id}-${row.started_at.getTime()}`;
+    const { rows } = await client.query<ActivitySegmentRow>(
+      `SELECT player_id, activity_id, started_at, ended_at
+       FROM party_state_activity_segments
+       WHERE party_id = $1
+         AND started_at < $3
+         AND (ended_at IS NULL OR ended_at > $2)
+       ORDER BY started_at ASC, id ASC`,
+      [row.party_id, row.started_at, row.completes_at]
+    );
+    const durationMs = Math.max(1, row.completes_at.getTime() - row.started_at.getTime());
+    const ownDurationsByPlayer = new Map<string, Record<PartyMemberActivityId, number>>();
+    const partyDurations: Record<PartyMemberActivityId, number> = { forest_patrol: 0, pine_chopping: 0, camp_cooking: 0, rest: 0 };
+    for (const playerId of members) {
+      const durations = { forest_patrol: 0, pine_chopping: 0, camp_cooking: 0, rest: 0 };
+      ownDurationsByPlayer.set(playerId, durations);
+    }
+    for (const segment of rows) {
+      const playerDurations = ownDurationsByPlayer.get(segment.player_id);
+      if (!playerDurations) continue;
+      const segmentStart = Math.max(row.started_at.getTime(), segment.started_at.getTime());
+      const segmentEnd = Math.min(row.completes_at.getTime(), segment.ended_at?.getTime() ?? row.completes_at.getTime());
+      const segmentDuration = Math.max(0, segmentEnd - segmentStart);
+      playerDurations[segment.activity_id] += segmentDuration;
+      partyDurations[segment.activity_id] += segmentDuration;
+    }
+    for (const playerId of members) {
+      const durations = ownDurationsByPlayer.get(playerId)!;
+      if (Object.values(durations).every(value => value === 0)) {
+        durations[memberActivities[playerId] || 'rest'] = durationMs;
+        partyDurations[memberActivities[playerId] || 'rest'] += durationMs;
+      }
+    }
+    for (const playerId of members) {
+      const durations = ownDurationsByPlayer.get(playerId)!;
+      const reward = createActivityReward(rewardId, durations, partyDurations);
+      await client.query(
+        `INSERT INTO party_state_rewards (party_id, player_id, reward_id, reward_json)
+         VALUES ($1, $2, $3, $4::jsonb)
+         ON CONFLICT (party_id, player_id, reward_id) DO NOTHING`,
+        [row.party_id, playerId, rewardId, JSON.stringify(reward)]
+      );
+    }
   }
 
   async function reconcile(row: PartyStateRow, members: string[]): Promise<{ row: PartyStateRow; state: PartyState; reconciled: boolean }> {
@@ -157,6 +310,8 @@ function createStateRepository(client: PoolClient) {
       );
       if (updated.rows.length > 0) {
         row = updated.rows[0];
+        const memberActivities = await listMemberActivities(row.party_id, members);
+        await createCompletionRewards(row, members, memberActivities);
         return { row, state: await readState(row, members), reconciled: true };
       }
     }
@@ -342,6 +497,11 @@ export function createPartyStateService(pool: Pool, config: PartyStateConfig): P
       } else if (input.command.type === 'expedition.reset') {
         if (party.party.leaderId !== playerId) errorCode = 'not_party_leader';
         else if (state.activity.status !== 'completed') errorCode = 'activity_not_completed';
+      } else if (input.command.type === 'party.activity.set') {
+        if (!PARTY_MEMBER_ACTIVITY_IDS.includes(input.command.activityId as typeof PARTY_MEMBER_ACTIVITY_IDS[number])) errorCode = 'invalid_activity';
+      } else if (input.command.type === 'expedition.reward.claim') {
+        if (typeof input.command.rewardId !== 'string' || input.command.rewardId.length < 1 || input.command.rewardId.length > 160 ||
+          !(state.pendingRewards[playerId] || []).some(reward => reward.id === input.command.rewardId)) errorCode = 'reward_not_available';
       } else {
         errorCode = 'invalid_command';
       }
@@ -374,6 +534,16 @@ export function createPartyStateService(pool: Pool, config: PartyStateConfig): P
            RETURNING party_id, revision, activity_kind, status, destination, started_at, completes_at, updated_at`,
           [party.party.id, config.expeditionDurationMs, input.expectedRevision]
         );
+        if (updated.rows.length > 0) {
+          const activityState = await repository.readState(updated.rows[0], memberIds);
+          for (const memberId of memberIds) {
+            await client.query(
+              `INSERT INTO party_state_activity_segments (party_id, player_id, activity_id, started_at)
+               VALUES ($1, $2, $3, $4)`,
+              [party.party.id, memberId, activityState.memberActivities[memberId] || 'rest', updated.rows[0].started_at]
+            );
+          }
+        }
       } else if (input.command.type === 'expedition.contribute') {
         updated = await client.query<PartyStateRow>(
           `UPDATE party_states
@@ -390,6 +560,55 @@ export function createPartyStateService(pool: Pool, config: PartyStateConfig): P
              DO UPDATE SET amount = party_state_contributions.amount + EXCLUDED.amount`,
             [party.party.id, playerId, input.command.amount]
           );
+        }
+      } else if (input.command.type === 'party.activity.set') {
+        updated = await client.query<PartyStateRow>(
+          `UPDATE party_states
+           SET revision = revision + 1
+           WHERE party_id = $1 AND revision = $2
+           RETURNING party_id, revision, activity_kind, status, destination, started_at, completes_at, updated_at`,
+          [party.party.id, input.expectedRevision]
+        );
+        if (updated.rows.length > 0) {
+          if (updated.rows[0].status === 'active') {
+            await client.query(
+              `UPDATE party_state_activity_segments
+               SET ended_at = NOW()
+               WHERE party_id = $1 AND player_id = $2 AND ended_at IS NULL`,
+              [party.party.id, playerId]
+            );
+            await client.query(
+              `INSERT INTO party_state_activity_segments (party_id, player_id, activity_id, started_at)
+               VALUES ($1, $2, $3, NOW())`,
+              [party.party.id, playerId, input.command.activityId]
+            );
+          }
+          await client.query(
+            `INSERT INTO party_member_activities (party_id, player_id, activity_id)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (party_id, player_id)
+             DO UPDATE SET activity_id = EXCLUDED.activity_id, updated_at = NOW()`,
+            [party.party.id, playerId, input.command.activityId]
+          );
+        }
+      } else if (input.command.type === 'expedition.reward.claim') {
+        const claimed = await client.query(
+          `UPDATE party_state_rewards
+           SET claimed_at = NOW()
+           WHERE party_id = $1 AND player_id = $2 AND reward_id = $3 AND claimed_at IS NULL
+           RETURNING reward_id`,
+          [party.party.id, playerId, input.command.rewardId]
+        );
+        if (claimed.rows.length > 0) {
+          updated = await client.query<PartyStateRow>(
+            `UPDATE party_states
+             SET revision = revision + 1
+             WHERE party_id = $1 AND revision = $2
+             RETURNING party_id, revision, activity_kind, status, destination, started_at, completes_at, updated_at`,
+            [party.party.id, input.expectedRevision]
+          );
+        } else {
+          updated = { rows: [] };
         }
       } else {
         updated = await client.query<PartyStateRow>(

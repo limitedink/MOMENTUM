@@ -1,4 +1,4 @@
-import type { AuthoritativePartyState, ConnectionState, Unsubscribe } from './party-types';
+import type { AuthoritativePartyState, ConnectionState, PartyActivityId, Unsubscribe } from './party-types';
 
 export type { AuthoritativePartyState } from './party-types';
 
@@ -7,7 +7,9 @@ export type AuthoritativePartyStatus = 'idle' | 'active' | 'completed';
 export type AuthoritativeCommandBody =
   | { type: 'expedition.start'; destination: 'forest' }
   | { type: 'expedition.contribute'; amount: number }
-  | { type: 'expedition.reset' };
+  | { type: 'expedition.reset' }
+  | { type: 'expedition.reward.claim'; rewardId: string }
+  | { type: 'party.activity.set'; activityId: PartyActivityId };
 
 export interface AuthoritativeCommand {
   commandId: string;
@@ -19,8 +21,15 @@ export interface AuthoritativePartyScope {
   partyId: string | null;
   leaderPlayerId: string | null;
   memberPlayerIds: string[];
+  members: AuthoritativePartyMember[];
   joinCode: string | null;
   serverTimestamp: number;
+}
+
+export interface AuthoritativePartyMember {
+  playerId: string;
+  displayName: string;
+  isLeader: boolean;
 }
 
 export interface AuthoritativeConnectionReady {

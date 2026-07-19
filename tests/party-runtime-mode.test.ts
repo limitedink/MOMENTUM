@@ -30,6 +30,7 @@ const scope: AuthoritativePartyScope = {
   partyId: 'party-1',
   leaderPlayerId: 'player-1',
   memberPlayerIds: ['player-1', 'player-2'],
+  members: [{ playerId: 'player-1', displayName: 'Alice', isLeader: true }, { playerId: 'player-2', displayName: 'Bob', isLeader: false }],
   joinCode: 'ABCD2345EF',
   serverTimestamp: 1000
 };
@@ -38,15 +39,17 @@ const authoritativeState: AuthoritativePartyState = {
   partyId: 'party-1',
   revision: 0,
   activity: { kind: 'expedition', status: 'idle', destination: null, startedAt: null, completesAt: null },
-  contributions: { 'player-1': 0, 'player-2': 0 },
-  updatedAt: '2026-07-15T00:00:00.000Z',
+      contributions: { 'player-1': 0, 'player-2': 0 },
+      memberActivities: { 'player-1': 'forest_patrol', 'player-2': 'rest' },
+      pendingRewards: { 'player-1': [], 'player-2': [] },
+      updatedAt: '2026-07-15T00:00:00.000Z',
   serverTimestamp: 1000
 };
 
 function createFakeAuthoritativeTransport() {
   let connection: ConnectionState = CONNECTION_STATES.DISCONNECTED;
   let currentState: AuthoritativePartyState | null = null;
-  let currentScope = { ...scope, memberPlayerIds: [...scope.memberPlayerIds] };
+  let currentScope = { ...scope, memberPlayerIds: [...scope.memberPlayerIds], members: scope.members.map(member => ({ ...member })) };
   let membershipChanged = false;
   const commands: AuthoritativeCommand[] = [];
   const operations: string[] = [];
@@ -104,14 +107,15 @@ describe('backend player/session identity', () => {
     const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const path = String(input);
       calls.push(`${init?.method ?? 'GET'} ${path}`);
-      if (path.endsWith('/v1/dev/players')) return response({ player: { id: 'player-1' }, token: 'dev_token_1', sessionId: 'session-1' }, 201);
-      return response({ player: { id: 'player-1' } });
+      if (path.endsWith('/v1/dev/players')) return response({ player: { id: 'player-1', displayName: 'Alice' }, token: 'dev_token_1', sessionId: 'session-1' }, 201);
+      return response({ player: { id: 'player-1', displayName: 'Alice' } });
     };
-    const client = createBackendIdentityClient({ baseUrl: 'http://backend.test', storage, fetchImpl });
+    const client = createBackendIdentityClient({ baseUrl: 'http://backend.test', storage, fetchImpl, displayNameProvider: () => 'Alice' });
 
-    await expect(client.acquire()).resolves.toEqual({ playerId: 'player-1', token: 'dev_token_1', sessionId: 'session-1' });
-    await expect(client.acquire()).resolves.toEqual({ playerId: 'player-1', token: 'dev_token_1', sessionId: 'session-1' });
+    await expect(client.acquire()).resolves.toEqual({ playerId: 'player-1', displayName: 'Alice', token: 'dev_token_1', sessionId: 'session-1' });
+    await expect(client.acquire()).resolves.toEqual({ playerId: 'player-1', displayName: 'Alice', token: 'dev_token_1', sessionId: 'session-1' });
     expect(calls).toEqual(['POST http://backend.test/v1/dev/players', 'GET http://backend.test/v1/me']);
+    expect(storage.values[IDENTITY_STORAGE_KEY]).toContain('Alice');
     expect(storage.values[IDENTITY_STORAGE_KEY]).toContain('dev_token_1');
   });
 
@@ -122,11 +126,11 @@ describe('backend player/session identity', () => {
       calls.push(`${init?.method ?? 'GET'} ${String(input)}`);
       return String(input).endsWith('/v1/me')
         ? response({ error: 'unauthorized' }, 401)
-        : response({ player: { id: 'new-player' }, token: 'new-token', sessionId: 'new-session' }, 201);
+        : response({ player: { id: 'new-player', displayName: 'Bob' }, token: 'new-token', sessionId: 'new-session' }, 201);
     };
     const client = createBackendIdentityClient({ storage, fetchImpl });
 
-    await expect(client.acquire()).resolves.toEqual({ playerId: 'new-player', token: 'new-token', sessionId: 'new-session' });
+    await expect(client.acquire()).resolves.toEqual({ playerId: 'new-player', displayName: 'Bob', token: 'new-token', sessionId: 'new-session' });
     expect(calls).toEqual(['GET /v1/me', 'POST /v1/dev/players']);
   });
 });
@@ -143,12 +147,12 @@ describe('party runtime mode boundary', () => {
     const runtime = createPartyRuntime({
       mode: PARTY_RUNTIME_MODES.AUTHORITATIVE,
       fallbackToLocal: false,
-      identityClient: { acquire: async () => ({ playerId: 'player-1', token: 'dev_token_1', sessionId: 'session-1' }) },
+      identityClient: { acquire: async () => ({ playerId: 'player-1', displayName: 'Alice', token: 'dev_token_1', sessionId: 'session-1' }) },
       authoritativeTransportFactory: () => fake.transport,
       partyApiFactory: () => ({
-        createParty: async () => ({ id: 'party-1', leaderId: 'player-1', joinCode: 'ABCD2345EF', maxMembers: 4, createdAt: '2026-07-15T00:00:00.000Z', updatedAt: '2026-07-15T00:00:00.000Z', members: [{ playerId: 'player-1', joinedAt: '2026-07-15T00:00:00.000Z', isLeader: true }] }),
-        getCurrentParty: async () => ({ id: 'party-1', leaderId: 'player-1', joinCode: 'ABCD2345EF', maxMembers: 4, createdAt: '2026-07-15T00:00:00.000Z', updatedAt: '2026-07-15T00:00:00.000Z', members: [{ playerId: 'player-1', joinedAt: '2026-07-15T00:00:00.000Z', isLeader: true }, { playerId: 'player-2', joinedAt: '2026-07-15T00:01:00.000Z', isLeader: false }] }),
-        joinParty: async () => ({ id: 'party-1', leaderId: 'player-1', joinCode: 'ABCD2345EF', maxMembers: 4, createdAt: '2026-07-15T00:00:00.000Z', updatedAt: '2026-07-15T00:00:00.000Z', members: [{ playerId: 'player-1', joinedAt: '2026-07-15T00:00:00.000Z', isLeader: true }, { playerId: 'player-2', joinedAt: '2026-07-15T00:01:00.000Z', isLeader: false }] }),
+        createParty: async () => ({ id: 'party-1', leaderId: 'player-1', joinCode: 'ABCD2345EF', maxMembers: 4, createdAt: '2026-07-15T00:00:00.000Z', updatedAt: '2026-07-15T00:00:00.000Z', members: [{ playerId: 'player-1', displayName: 'Alice', joinedAt: '2026-07-15T00:00:00.000Z', isLeader: true }] }),
+        getCurrentParty: async () => ({ id: 'party-1', leaderId: 'player-1', joinCode: 'ABCD2345EF', maxMembers: 4, createdAt: '2026-07-15T00:00:00.000Z', updatedAt: '2026-07-15T00:00:00.000Z', members: [{ playerId: 'player-1', displayName: 'Alice', joinedAt: '2026-07-15T00:00:00.000Z', isLeader: true }, { playerId: 'player-2', displayName: 'Bob', joinedAt: '2026-07-15T00:01:00.000Z', isLeader: false }] }),
+        joinParty: async () => ({ id: 'party-1', leaderId: 'player-1', joinCode: 'ABCD2345EF', maxMembers: 4, createdAt: '2026-07-15T00:00:00.000Z', updatedAt: '2026-07-15T00:00:00.000Z', members: [{ playerId: 'player-1', displayName: 'Alice', joinedAt: '2026-07-15T00:00:00.000Z', isLeader: true }, { playerId: 'player-2', displayName: 'Bob', joinedAt: '2026-07-15T00:01:00.000Z', isLeader: false }] }),
         leaveParty: async () => undefined
       } satisfies BackendPartyApi)
     });
@@ -195,12 +199,14 @@ describe('party runtime mode boundary', () => {
     const storage = storageWith(null);
     const runtime = createPartyRuntime({
       mode: PARTY_RUNTIME_MODES.AUTHORITATIVE,
-      identityClient: { acquire: async () => { throw new Error('backend unavailable'); } },
-      localTransportFactory: () => createLocalMomentumPartyTransport({ authenticatedPlayerId: 'local-player', connectDelay: 0, commandDelay: 0, storage })
+      identityClient: { acquire: async () => { throw new Error('backend unavailable'); }, getLastRequestedDisplayName: () => 'Alice' },
+      localTransportFactory: options => createLocalMomentumPartyTransport({ ...options, authenticatedPlayerId: 'local-player', connectDelay: 0, commandDelay: 0, storage })
     });
 
     await expect(runtime.initialize()).resolves.toBe(true);
     expect(runtime.getState()).toMatchObject({ mode: 'local', requestedMode: 'authoritative', fallbackReason: 'backend unavailable' });
+    expect(runtime.getSnapshot()?.party.members).toHaveLength(1);
+    expect(runtime.getSnapshot()?.party.members[0].name).toBe('Alice');
     await runtime.destroy();
   });
 });

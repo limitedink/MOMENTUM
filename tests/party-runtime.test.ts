@@ -92,7 +92,8 @@ describe('asynchronous local transport', () => {
       const latestPromise = transport.requestSnapshot();
       await vi.advanceTimersByTimeAsync(1);
       const latest = await latestPromise;
-      expect(latest.expedition.pendingRewards).not.toBeNull();
+      expect(latest.party.members).toHaveLength(1);
+      expect(latest.party.members.every(member => member.type !== 'ghost')).toBe(true);
     } finally {
       vi.useRealTimers();
     }
@@ -101,7 +102,8 @@ describe('asynchronous local transport', () => {
   it('normalizes legacy saves only at the local adapter boundary', () => {
     const legacy = normalizePartySave({ revision: 12, party: [{ id: 'player', activity: 'forest_patrol' }, { id: 'alex', activity: 'pine_chopping' }], pendingRewards: { expedition: 2, pineLogs: 20, cookedFish: 3 } }, 'session-player');
     expect(legacy.party[0].id).toBe('session-player');
-    expect(legacy.party.map(member => member.id)).toContain('sofia');
+    expect(legacy.party.map(member => member.id)).not.toContain('sofia');
+    expect(legacy.party).toHaveLength(1);
     expect(legacy.pendingRewards?.id).toBe('forest-expedition-2');
   });
 

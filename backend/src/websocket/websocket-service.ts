@@ -58,6 +58,11 @@ function partySnapshotPayload(party: PartyWithMembers | null): PartySnapshotPayl
     partyId: party?.party.id ?? null,
     leaderPlayerId: party?.party.leaderId ?? null,
     memberPlayerIds: party?.members.map(member => member.playerId) ?? [],
+    members: party?.members.map(member => ({
+      playerId: member.playerId,
+      displayName: member.displayName,
+      isLeader: member.playerId === party.party.leaderId
+    })) ?? [],
     joinCode: party?.party.joinCode ?? null,
     serverTimestamp: Date.now()
   };
@@ -79,6 +84,8 @@ function partyStateSnapshotPayload(state: PartyState): PartyStateSnapshotPayload
       completesAt: state.activity.completesAt?.toISOString() ?? null
     },
     contributions: state.contributions,
+    memberActivities: state.memberActivities,
+    pendingRewards: state.pendingRewards,
     updatedAt: state.updatedAt.toISOString(),
     serverTimestamp: Date.now()
   };

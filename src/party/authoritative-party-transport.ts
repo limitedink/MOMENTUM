@@ -129,9 +129,11 @@ function errorMessage(code: string): string {
     case 'invalid_command': return 'That authoritative command is unavailable.';
     case 'invalid_destination': return 'That expedition destination is unavailable.';
     case 'invalid_contribution': return 'That contribution amount is invalid.';
+    case 'invalid_activity': return 'That party activity is unavailable.';
     case 'activity_not_idle': return 'The expedition is not idle.';
     case 'activity_not_active': return 'The expedition is not active.';
     case 'activity_not_completed': return 'The expedition is not completed.';
+    case 'reward_not_available': return 'That expedition reward is no longer available.';
     case 'not_party_leader': return 'Only the party leader can reset the expedition.';
     case 'rate_limited': return 'Party commands are temporarily rate limited.';
     case 'transport_disconnected': return 'The authoritative party connection is disconnected.';
@@ -168,6 +170,12 @@ function isSupportedCommand(value: unknown): value is AuthoritativeCommand {
   }
   if (value.command.type === 'expedition.contribute') {
     return hasExactKeys(value.command, ['type', 'amount']) && typeof value.command.amount === 'number' && Number.isSafeInteger(value.command.amount) && value.command.amount >= 1 && value.command.amount <= 10;
+  }
+  if (value.command.type === 'party.activity.set') {
+    return hasExactKeys(value.command, ['type', 'activityId']) && ['forest_patrol', 'pine_chopping', 'camp_cooking', 'rest'].includes(String(value.command.activityId));
+  }
+  if (value.command.type === 'expedition.reward.claim') {
+    return hasExactKeys(value.command, ['type', 'rewardId']) && typeof value.command.rewardId === 'string' && value.command.rewardId.length > 0 && value.command.rewardId.length <= 160;
   }
   return value.command.type === 'expedition.reset' && hasExactKeys(value.command, ['type']);
 }
@@ -211,6 +219,7 @@ export function createAuthoritativePartyTransport(options: AuthoritativePartyTra
     partyId: null,
     leaderPlayerId: null,
     memberPlayerIds: [],
+    members: [],
     joinCode: null,
     serverTimestamp: 0
   };
@@ -352,8 +361,8 @@ export function createAuthoritativePartyTransport(options: AuthoritativePartyTra
 
   function acceptScope(scope: AuthoritativePartyScope): void {
     resetPartyStateIfScopeChanged(scope.partyId);
-    currentScope = { ...scope, memberPlayerIds: [...scope.memberPlayerIds] };
-    scopeListeners.forEach(listener => listener({ ...currentScope, memberPlayerIds: [...currentScope.memberPlayerIds] }));
+    currentScope = { ...scope, memberPlayerIds: [...scope.memberPlayerIds], members: scope.members.map(member => ({ ...member })) };
+    scopeListeners.forEach(listener => listener({ ...currentScope, memberPlayerIds: [...currentScope.memberPlayerIds], members: currentScope.members.map(member => ({ ...member })) }));
   }
 
   function acceptState(candidate: AuthoritativePartyState, requestId: string | null): void {
@@ -372,8 +381,8 @@ export function createAuthoritativePartyTransport(options: AuthoritativePartyTra
     const previousRevision = authoritativeState?.revision;
     const accepted = previousRevision === undefined || candidate.revision > previousRevision;
     if (accepted) {
-      authoritativeState = { ...candidate, activity: { ...candidate.activity }, contributions: { ...candidate.contributions } };
-      stateListeners.forEach(listener => listener({ ...authoritativeState!, activity: { ...authoritativeState!.activity }, contributions: { ...authoritativeState!.contributions } }));
+      authoritativeState = { ...candidate, activity: { ...candidate.activity }, contributions: { ...candidate.contributions }, pendingRewards: Object.fromEntries(Object.entries(candidate.pendingRewards || {}).map(([playerId, rewards]) => [playerId, rewards.map(reward => ({ ...reward, partyXp: { ...reward.partyXp }, rewards: { ...reward.rewards } }))])) };
+      stateListeners.forEach(listener => listener({ ...authoritativeState!, activity: { ...authoritativeState!.activity }, contributions: { ...authoritativeState!.contributions }, pendingRewards: Object.fromEntries(Object.entries(authoritativeState!.pendingRewards).map(([playerId, rewards]) => [playerId, rewards.map(reward => ({ ...reward, partyXp: { ...reward.partyXp }, rewards: { ...reward.rewards } }))])) }));
     }
 
     if (!requestId) return;
@@ -441,6 +450,7 @@ export function createAuthoritativePartyTransport(options: AuthoritativePartyTra
           partyId: ready.partyId,
           leaderPlayerId: null,
           memberPlayerIds: ready.memberPlayerIds,
+          members: ready.memberPlayerIds.map(playerId => ({ playerId, displayName: '', isLeader: false })),
           joinCode: null,
           serverTimestamp: ready.serverTimestamp
         });

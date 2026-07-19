@@ -18,8 +18,8 @@ const party = {
   createdAt: '2026-07-15T00:00:00.000Z',
   updatedAt: '2026-07-15T00:00:00.000Z',
   members: [
-    { playerId: 'player-1', joinedAt: '2026-07-15T00:00:00.000Z', isLeader: true },
-    { playerId: 'player-2', joinedAt: '2026-07-15T00:01:00.000Z', isLeader: false }
+    { playerId: 'player-1', displayName: 'Alice', joinedAt: '2026-07-15T00:00:00.000Z', isLeader: true },
+    { playerId: 'player-2', displayName: 'Bob', joinedAt: '2026-07-15T00:01:00.000Z', isLeader: false }
   ]
 };
 

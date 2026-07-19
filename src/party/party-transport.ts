@@ -21,14 +21,14 @@ export const DEFINITIONS = {
     { id: 'supplies', name: 'Travel Supplies', target: 100, color: 'var(--gold)' }
   ],
   activities: {
-    forest_patrol: { name: 'Forest Patrol', icon: '⚔', output: { threat: 2, supplies: 0.25 } },
-    pine_chopping: { name: 'Pine Woodchopping', icon: '▥', output: { timber: 3, supplies: 0.2 } },
-    camp_cooking: { name: 'Camp Cooking', icon: '♨', output: { supplies: 2 } },
-    rest: { name: 'Resting', icon: '·', output: {} }
+    forest_patrol: { name: 'Patrol', rosterName: 'On Patrol', icon: '⚔', rewardFocus: 'Combat XP + Boss Keys', output: { threat: 2, supplies: 0.25 } },
+    pine_chopping: { name: 'Foraging', rosterName: 'Foraging', icon: '▥', rewardFocus: 'Woodchopping XP + Pine Logs', output: { timber: 3, supplies: 0.2 } },
+    camp_cooking: { name: 'Cooking', rosterName: 'Cooking', icon: '♨', rewardFocus: 'Cooking XP + Cooked Fish', output: { supplies: 2 } },
+    rest: { name: 'Trapping', rosterName: 'Trapping', icon: '⌖', rewardFocus: 'Hunting XP + Game', output: {} }
   }
 } as const satisfies {
   lanes: readonly LaneDefinition[];
-  activities: Readonly<Record<PartyActivityId, { name: string; icon: string; output: Record<string, number> }>>;
+  activities: Readonly<Record<PartyActivityId, { name: string; rosterName: string; icon: string; rewardFocus: string; output: Record<string, number> }>>;
 };
 
 const COMMAND_ALIASES: Readonly<Record<string, CommandType>> = {

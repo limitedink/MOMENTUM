@@ -1,5 +1,7 @@
 export const PARTY_ACTIVITY_KIND = 'expedition' as const;
 export const PARTY_ACTIVITY_DESTINATIONS = ['forest'] as const;
+export const PARTY_MEMBER_ACTIVITY_IDS = ['forest_patrol', 'pine_chopping', 'camp_cooking', 'rest'] as const;
+export type PartyMemberActivityId = (typeof PARTY_MEMBER_ACTIVITY_IDS)[number];
 
 export type PartyActivityStatus = 'idle' | 'active' | 'completed';
 export type PartyActivityDestination = (typeof PARTY_ACTIVITY_DESTINATIONS)[number];
@@ -15,7 +17,22 @@ export interface PartyState {
     completesAt: Date | null;
   };
   contributions: Record<string, number>;
+  memberActivities: Record<string, PartyMemberActivityId>;
+  pendingRewards: Record<string, PartyReward[]>;
   updatedAt: Date;
+}
+
+export interface PartyReward {
+  id: string;
+  primaryActivity: PartyMemberActivityId;
+  primaryXp: number;
+  partyXp: Partial<Record<PartyMemberActivityId, number>>;
+  rewards: {
+    bossKeys: number;
+    pineLogs: number;
+    cookedFish: number;
+    game: number;
+  };
 }
 
 export interface PartyStateCommandInput {
@@ -25,6 +42,8 @@ export interface PartyStateCommandInput {
     type: string;
     destination?: unknown;
     amount?: unknown;
+    activityId?: unknown;
+    rewardId?: unknown;
   };
 }
 
@@ -36,9 +55,11 @@ export type PartyStateErrorCode =
   | 'invalid_command'
   | 'invalid_destination'
   | 'invalid_contribution'
+  | 'invalid_activity'
   | 'activity_not_idle'
   | 'activity_not_active'
   | 'activity_not_completed'
+  | 'reward_not_available'
   | 'revision_conflict'
   | 'duplicate_command_mismatch'
   | 'rate_limited'

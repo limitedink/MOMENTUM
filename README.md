@@ -30,9 +30,9 @@ Momentum takes inspiration from the long-term skill progression of **Old School 
 ### Backend multiplayer foundation
 
 - Persistent players, sessions, parties, memberships, and authenticated party-aware WebSockets
-- Authenticated frontend party creation, join-code join, leave, member listing, leader display, and presence refresh
-- Server-authoritative party expedition state with revisions, PostgreSQL persistence, and command idempotency
-- A browser client identity/session adapter backed by the development player endpoint and `/v1/me`
+- Authenticated frontend party creation, join-code join, leave, named member listing, separate You/Leader badges, and presence refresh
+- Server-authoritative party expedition state with revisions, PostgreSQL persistence, passive activity rewards, and command idempotency
+- A browser client identity/session adapter backed by the development player endpoint and `/v1/me`; development identities request a validated 1–24 character display name
 - Explicit local versus authoritative party runtime modes, with local fallback when development identity acquisition is unavailable
 - The default/public client still uses the local expedition transport; authoritative mode is opt-in while the server command set is intentionally small
 
@@ -62,7 +62,7 @@ Momentum takes inspiration from the long-term skill progression of **Old School 
 ### Multiplayer client foundation
 
 - A local asynchronous Forest Expedition that continues while the player focuses elsewhere
-- Party activities, lanes, member presence, commands, snapshots, rewards, and reconnect behaviour
+- Party activities, lanes, member presence, commands, snapshots, passive activity rewards, and reconnect behaviour
 - A transport boundary designed so the local simulation can later be replaced by an authoritative server transport
 - Separate canonical party state and client session state, including revisions, pending commands, reconnect status, identity, and latency
 
@@ -111,7 +111,7 @@ Fastify backend
 └── Versioned SQL migrations
 ```
 
-The client already treats party snapshots as canonical server-owned state. Connection lifecycle, authenticated identity, pending command correlation, reconnect status, latency, and the last accepted revision remain in the client session rather than leaking into the shared party model.
+The client already treats party snapshots as canonical server-owned state. Connection lifecycle, authenticated identity, pending command correlation, reconnect status, latency, and the last accepted revision remain in the client session rather than leaking into the shared party model. The server records activity-time segments while an expedition is active, so changing from Patrol to Foraging, Cooking, or Trapping preserves time already spent and shifts only future reward generation.
 
 The current local transport is an adapter behind that boundary. Presentation code does not directly control its simulation clock, which keeps the UI ready for a real network transport.
 
@@ -121,13 +121,13 @@ The current local transport is an adapter behind that boundary. Presentation cod
 
 The adapter accepts only newer state revisions; equal or stale snapshots are harmless. It preserves caller-supplied `commandId` values when retrying commands after a transient disconnect, and safely ignores duplicate or unknown command results. Reconnect uses bounded exponential backoff and stops for authentication or permanent protocol failures. Callers must mark known HTTP membership changes with `markPartyMembershipChanged()` and refresh the party scope before requesting state again.
 
-Only the server-supported forest expedition commands are sent: `expedition.start`, `expedition.contribute`, and `expedition.reset`. Existing local pause, resume, reward, and other simulation commands remain local-only and are rejected by this adapter rather than being remapped. The adapter is tested independently of the existing `LocalPartyTransport` and is now selected by the frontend party runtime when authoritative mode is enabled.
+The server-supported forest expedition commands are `expedition.start`, activity selection, `expedition.reward.claim`, and leader-only `expedition.reset`. Expedition progress is passive; there are no contribution buttons. Existing local pause, resume, and other simulation commands remain local-only and are rejected by this adapter rather than being remapped. The adapter is tested independently of the existing `LocalPartyTransport` and is now selected by the frontend party runtime when authoritative mode is enabled.
 
 ### Party runtime modes
 
-The frontend runtime resolves its mode in this order: the `partyTransport=authoritative` or `partyTransport=local` query parameter, then `VITE_MOMENTUM_PARTY_MODE`, then local mode. Authoritative mode acquires a development player/session, connects the authenticated WebSocket transport, and renders only server-owned party state, revisions, contributions, and presence. It does not present local-only pause, reward, or activity controls as if they were authoritative. If identity acquisition fails and fallback is enabled, the runtime switches to `LocalPartyTransport` and exposes the reason in its state.
+The frontend runtime resolves its mode in this order: the `partyTransport=authoritative` or `partyTransport=local` query parameter, then `VITE_MOMENTUM_PARTY_MODE`, then local mode. Authoritative mode acquires a development player/session, connects the authenticated WebSocket transport, and renders server-owned party state, elapsed progress, activity focus, rewards, and presence. Patrol primarily generates Combat XP and Boss Keys; Foraging generates Woodchopping XP and Pine Logs; Cooking generates Cooking XP and Cooked Fish; Trapping generates Hunting XP and Game. Every member also receives shared XP from the activities their party performed. If identity acquisition fails and fallback is enabled, the runtime switches to `LocalPartyTransport` and exposes the reason in its state.
 
-For local development, run the backend and Vite dev server, then open `/` with `?partyTransport=authoritative`. `VITE_MOMENTUM_BACKEND_URL` may point the client at a different backend; the Vite development proxy forwards `/v1` and WebSocket traffic to `http://127.0.0.1:3000` by default. The development identity token is stored in browser local storage for reuse and is not a production authentication design.
+For local development, run the backend and Vite dev server, then open `/` with `?partyTransport=authoritative`. `VITE_MOMENTUM_BACKEND_URL` may point the client at a different backend; `MOMENTUM_BACKEND_PROXY_URL` configures the Vite development proxy for `/v1` and WebSocket traffic, defaulting to `http://127.0.0.1:3000`. The development identity token and display name are stored in browser local storage for reuse and are not a production authentication design. See [`docs/two-pc-authoritative-playtest.md`](docs/two-pc-authoritative-playtest.md) for LAN commands.
 
 ---
 
@@ -143,9 +143,9 @@ The backend is implemented in **TypeScript** with **Fastify**, **WebSockets**, a
 - Opaque `dev_*` access tokens stored only as SHA-256 hashes
 - Bearer authentication, `GET /v1/me`, and current-session revocation
 - Explicit opt-in CORS origins for direct browser API targets; same-origin Vite proxying remains preferred for LAN development
-- Authoritative party state, revisions, idempotent commands, and real PostgreSQL integration tests
+- Authoritative party state, revisions, idempotent commands, passive activity segments, claimable rewards, and real PostgreSQL integration tests
 
-The backend currently supports a small server-authoritative forest expedition state loop. The browser client can acquire development identity, select authoritative mode, manage its current party, and render that state through the existing party panel. Full expedition simulation, rewards, and load testing remain future work.
+The backend currently supports a server-authoritative forest expedition state loop. The browser client can acquire development identity, select authoritative mode, manage its current party, render elapsed progress, select activity focus, and claim each member's completion reward. Combat, Hunting, and future skill-specific reward depth can continue to expand on top of this reward ledger.
 
 ---
 

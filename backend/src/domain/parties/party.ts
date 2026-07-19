@@ -12,6 +12,7 @@ export interface Party {
 export interface PartyMembership {
   partyId: string;
   playerId: string;
+  displayName: string;
   joinedAt: Date;
 }
 

@@ -39,6 +39,7 @@ function statePayload(revision: number, partyId = PARTY_ID) {
       completesAt: revision > 0 ? '2026-07-15T00:01:00.000Z' : null
     },
     contributions: { [PLAYER_ID]: revision > 1 ? 2 : 0 },
+    memberActivities: { [PLAYER_ID]: 'forest_patrol', 'player-2': 'rest' },
     updatedAt: '2026-07-15T00:00:00.000Z',
     serverTimestamp: 1000 + revision
   };
@@ -124,6 +125,7 @@ describe('authoritative party WebSocket transport', () => {
       partyId: PARTY_ID,
       leaderPlayerId: PLAYER_ID,
       memberPlayerIds: [PLAYER_ID, 'player-2'],
+      members: [{ playerId: PLAYER_ID, displayName: 'Alice', isLeader: true }, { playerId: 'player-2', displayName: 'Bob', isLeader: false }],
       joinCode: 'ABCD2345EF',
       serverTimestamp: 1001
     }, refresh.requestId);
@@ -171,6 +173,7 @@ describe('authoritative party WebSocket transport', () => {
       partyId: PARTY_ID,
       leaderPlayerId: PLAYER_ID,
       memberPlayerIds: [PLAYER_ID],
+      members: [{ playerId: PLAYER_ID, displayName: 'Alice', isLeader: true }],
       joinCode: 'ABCD2345EF',
       serverTimestamp: 1002
     }, refresh.requestId);
@@ -246,6 +249,7 @@ describe('authoritative party WebSocket transport', () => {
       partyId: PARTY_ID,
       leaderPlayerId: PLAYER_ID,
       memberPlayerIds: [PLAYER_ID],
+      members: [{ playerId: PLAYER_ID, displayName: 'Alice', isLeader: true }],
       joinCode: 'ABCD2345EF',
       serverTimestamp: 1003
     }, refresh.requestId);

@@ -106,7 +106,7 @@ describe.skipIf(!databaseUrl)('authoritative party state (PostgreSQL)', () => {
   });
 
   async function createPlayer(): Promise<Player> {
-    const response = await app.inject({ method: 'POST', url: '/v1/dev/players' });
+    const response = await app.inject({ method: 'POST', url: '/v1/dev/players', payload: { displayName: `Player ${Date.now()}-${Math.random().toString(36).slice(2, 6)}`.slice(0, 24) } });
     expect(response.statusCode).toBe(201);
     const body = response.json();
     return { id: body.player.id, token: body.token };

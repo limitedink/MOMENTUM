@@ -20,6 +20,7 @@ interface PartyRow extends QueryResultRow {
 interface MembershipRow extends QueryResultRow {
   party_id: string;
   player_id: string;
+  display_name: string;
   joined_at: Date;
 }
 
@@ -38,6 +39,7 @@ function mapMembership(row: MembershipRow): PartyMembership {
   return {
     partyId: row.party_id,
     playerId: row.player_id,
+    displayName: row.display_name,
     joinedAt: row.joined_at
   };
 }
@@ -50,10 +52,11 @@ function createRepository(query: <T extends QueryResultRow = QueryResultRow>(tex
 
   async function listMembers(partyId: string): Promise<PartyMembership[]> {
     const { rows } = await query<MembershipRow>(
-      `SELECT party_id, player_id, joined_at
-       FROM party_memberships
-       WHERE party_id = $1
-       ORDER BY joined_at ASC, player_id ASC`,
+      `SELECT pm.party_id, pm.player_id, p.display_name, pm.joined_at
+       FROM party_memberships pm
+       INNER JOIN players p ON p.id = pm.player_id
+       WHERE pm.party_id = $1
+       ORDER BY pm.joined_at ASC, pm.player_id ASC`,
       [partyId]
     );
     return rows.map(mapMembership);
@@ -123,13 +126,15 @@ function createRepository(query: <T extends QueryResultRow = QueryResultRow>(tex
     },
 
     async addMember(partyId: string, playerId: string): Promise<PartyMembership> {
-      const { rows } = await query<MembershipRow>(
+      await query(
         `INSERT INTO party_memberships (party_id, player_id)
-         VALUES ($1, $2)
-         RETURNING party_id, player_id, joined_at`,
+         VALUES ($1, $2)`,
         [partyId, playerId]
       );
-      return mapMembership(rows[0]);
+      const members = await listMembers(partyId);
+      const member = members.find(value => value.playerId === playerId);
+      if (!member) throw new Error('Party membership disappeared after insertion.');
+      return member;
     },
 
     async removeMember(partyId: string, playerId: string): Promise<void> {

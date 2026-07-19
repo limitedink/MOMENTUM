@@ -38,6 +38,7 @@ type LocalTransportOptions = {
   commandDelay?: number;
   connectDelay?: number;
   authenticatedPlayerId?: string;
+  displayName?: string;
   storage?: LocalStorageLike;
 };
 
@@ -68,13 +69,11 @@ type LocalTransport = MomentumPartyTransport & {
 
 const DEFAULT_AUTHENTICATED_PLAYER_ID = 'local-player';
 const LEGACY_AUTHENTICATED_PLAYER_ID = 'player';
+const LEGACY_GHOST_IDS = new Set(['faith', 'sofia', 'maya']);
 
-function createDefaultParty(authenticatedPlayerId: string): PartyMember[] {
+function createDefaultParty(authenticatedPlayerId: string, displayName = 'You'): PartyMember[] {
   return [
-  { id: authenticatedPlayerId, name: 'You', type: 'human', affinity: 'balanced', activity: 'forest_patrol', efficiency: 1, lastActivityTick: 0, totals: { threat: 0, timber: 0, supplies: 0 } },
-  { id: 'faith', name: 'Faith', type: 'ghost', affinity: 'timber', activity: 'pine_chopping', efficiency: 1.2, lastActivityTick: 0, totals: { threat: 0, timber: 0, supplies: 0 } },
-  { id: 'sofia', name: 'Sofia', type: 'ghost', affinity: 'supplies', activity: 'camp_cooking', efficiency: 0.9, lastActivityTick: 0, totals: { threat: 0, timber: 0, supplies: 0 } },
-  { id: 'maya', name: 'Maya', type: 'ghost', affinity: 'patrol', activity: 'forest_patrol', efficiency: 0.8, lastActivityTick: 0, totals: { threat: 0, timber: 0, supplies: 0 } }
+  { id: authenticatedPlayerId, name: displayName, type: 'human', affinity: 'balanced', activity: 'forest_patrol', efficiency: 1, lastActivityTick: 0, totals: { threat: 0, timber: 0, supplies: 0 } }
   ];
 }
 
@@ -94,11 +93,11 @@ function activityIsValid(value: unknown): value is PartyMember['activity'] {
   return typeof value === 'string' && value in DEFINITIONS.activities;
 }
 
-function cloneDefaultParty(authenticatedPlayerId = DEFAULT_AUTHENTICATED_PLAYER_ID): PartyMember[] {
-  return clone(createDefaultParty(authenticatedPlayerId));
+function cloneDefaultParty(authenticatedPlayerId = DEFAULT_AUTHENTICATED_PLAYER_ID, displayName = 'You'): PartyMember[] {
+  return clone(createDefaultParty(authenticatedPlayerId, displayName));
 }
 
-function createDefaultState(authenticatedPlayerId: string): LocalPartyState {
+function createDefaultState(authenticatedPlayerId: string, displayName = 'You'): LocalPartyState {
   return {
     version: 1,
     elapsedTicks: 0,
@@ -110,7 +109,7 @@ function createDefaultState(authenticatedPlayerId: string): LocalPartyState {
     pendingRewards: null,
     claimedRewards: [],
     lastContributions: null,
-    party: cloneDefaultParty(authenticatedPlayerId),
+    party: cloneDefaultParty(authenticatedPlayerId, displayName),
     ledger: [],
     notable: [],
     partyId: 'local-party'
@@ -163,14 +162,17 @@ function normalizeMember(value: unknown, fallback: PartyMember, authenticatedPla
   };
 }
 
-export function normalizePartySave(value: unknown, authenticatedPlayerId = DEFAULT_AUTHENTICATED_PLAYER_ID): LocalPartySave {
-  const defaults = createDefaultState(authenticatedPlayerId);
+export function normalizePartySave(value: unknown, authenticatedPlayerId = DEFAULT_AUTHENTICATED_PLAYER_ID, displayName = 'You'): LocalPartySave {
+  const defaults = createDefaultState(authenticatedPlayerId, displayName);
   const raw = isRecord(value) ? value : {};
   const rawParty = Array.isArray(raw.party) ? raw.party : [];
   const party = rawParty.length > 0
-    ? rawParty.map((member, index) => normalizeMember(member, createDefaultParty(authenticatedPlayerId)[index] || createDefaultParty(authenticatedPlayerId)[0], authenticatedPlayerId))
-    : cloneDefaultParty(authenticatedPlayerId);
-  if (!party.some(member => member.id === authenticatedPlayerId)) party.unshift(clone(createDefaultParty(authenticatedPlayerId)[0]));
+    ? rawParty.map((member, index) => normalizeMember(member, createDefaultParty(authenticatedPlayerId, displayName)[index] || createDefaultParty(authenticatedPlayerId, displayName)[0], authenticatedPlayerId))
+    : cloneDefaultParty(authenticatedPlayerId, displayName);
+  party.splice(0, party.length, ...party.filter(member => member.type !== 'ghost' && !LEGACY_GHOST_IDS.has(member.id)));
+  if (!party.some(member => member.id === authenticatedPlayerId)) party.unshift(clone(createDefaultParty(authenticatedPlayerId, displayName)[0]));
+  const authenticatedMember = party.find(member => member.id === authenticatedPlayerId);
+  if (authenticatedMember && displayName !== 'You') authenticatedMember.name = displayName;
 
   const claimedRewards = normalizeClaimedRewards(raw.claimedRewards);
   const claimedIds = new Set(claimedRewards.map(reward => reward.id));
@@ -183,7 +185,7 @@ export function normalizePartySave(value: unknown, authenticatedPlayerId = DEFAU
     at: numberOr(event.at, Date.now())
   })) : [];
   const notable = Array.isArray(raw.notable) ? raw.notable.filter((item): item is string => typeof item === 'string').slice(0, 10) : [];
-  const lastContributions = Array.isArray(raw.lastContributions) ? raw.lastContributions.filter(isRecord).slice(0, 30).map(item => ({
+  const lastContributions = Array.isArray(raw.lastContributions) ? raw.lastContributions.filter(item => isRecord(item) && party.some(member => member.id === item.id)).slice(0, 30).map(item => ({
     id: typeof item.id === 'string' ? item.id : 'unknown',
     name: typeof item.name === 'string' ? item.name : 'Party member',
     activity: activityIsValid(item.activity) ? item.activity : 'rest',
@@ -212,12 +214,12 @@ export function normalizePartySave(value: unknown, authenticatedPlayerId = DEFAU
   };
 }
 
-function loadState(storage: LocalStorageLike, authenticatedPlayerId: string): LocalPartyState {
+function loadState(storage: LocalStorageLike, authenticatedPlayerId: string, displayName: string): LocalPartyState {
   try {
     const stored = storage.getItem(STORAGE_KEY);
-    return normalizePartySave(stored ? JSON.parse(stored) as unknown : null, authenticatedPlayerId);
+    return normalizePartySave(stored ? JSON.parse(stored) as unknown : null, authenticatedPlayerId, displayName);
   } catch {
-    return createDefaultState(authenticatedPlayerId);
+    return createDefaultState(authenticatedPlayerId, displayName);
   }
 }
 
@@ -275,8 +277,9 @@ export function createLocalMomentumPartyTransport(options: LocalTransportOptions
   const commandDelay = Math.max(0, Number(options.commandDelay ?? DEFAULT_COMMAND_DELAY_MS) || 0);
   const connectDelay = Math.max(0, Number(options.connectDelay ?? DEFAULT_CONNECT_DELAY_MS) || 0);
   const authenticatedPlayerId = typeof options.authenticatedPlayerId === 'string' && options.authenticatedPlayerId.length > 0 ? options.authenticatedPlayerId : DEFAULT_AUTHENTICATED_PLAYER_ID;
+  const displayName = typeof options.displayName === 'string' && options.displayName.trim().length > 0 ? options.displayName.trim() : 'You';
   const storage = options.storage || globalThis.localStorage;
-  const state = loadState(storage, authenticatedPlayerId);
+  const state = loadState(storage, authenticatedPlayerId, displayName);
   const snapshotListeners = new Set<(snapshot: PartySnapshot) => void>();
   const connectionListeners = new Set<(status: ConnectionState) => void>();
   const resultListeners = new Set<(result: PartyCommandResult) => void>();
@@ -363,28 +366,9 @@ export function createLocalMomentumPartyTransport(options: LocalTransportOptions
     return buildSnapshot(state);
   }
 
-  function updateGhostActivities(): void {
-    state.party.filter(member => member.type === 'ghost').forEach(member => {
-      const cycleLength = member.affinity === 'timber' ? 18 : member.affinity === 'supplies' ? 22 : 26;
-      const cycle = Math.floor(state.elapsedTicks / cycleLength);
-      const plans: PartyMember['activity'][] = member.affinity === 'timber'
-        ? ['pine_chopping', 'pine_chopping', 'forest_patrol', 'rest']
-        : member.affinity === 'supplies'
-          ? ['camp_cooking', 'camp_cooking', 'pine_chopping', 'rest']
-          : ['forest_patrol', 'forest_patrol', 'camp_cooking', 'rest'];
-      const nextActivity = plans[cycle % plans.length];
-      if (nextActivity !== member.activity) {
-        member.activity = nextActivity;
-        member.lastActivityTick = state.elapsedTicks;
-        addEvent(`${member.name} is now ${DEFINITIONS.activities[nextActivity].name.toLowerCase()}.`);
-      }
-    });
-  }
-
   function applySimulationTick(): boolean {
     if (state.expeditionStatus !== 'active' || state.completedExpeditions >= 999999) return false;
     state.elapsedTicks += 1;
-    updateGhostActivities();
     state.party.forEach(member => {
       const activity = DEFINITIONS.activities[member.activity] || DEFINITIONS.activities.rest;
       Object.entries(activity.output).forEach(([lane, base]) => {

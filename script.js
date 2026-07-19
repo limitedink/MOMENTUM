@@ -39,6 +39,8 @@ let basicBait = 0;
 let uncommonFish = 0;
 let fishingBuffSecs = 0;
 let burntFish = 0;
+let huntingXp = 0;
+let trappedGame = 0;
 const woodInventory = { pine:0, oak:0, yew:0, ancient:0 };
 let selectedTree = 'pine';
 const TREE_TYPES = [
@@ -499,6 +501,13 @@ function renderOperations(force = false) {
 function masteryStars() { return completedDirectives.size; }
 function frontierUnlocked() { return arenaWins[2] > 0; }
 
+function frontierEntryCost(tierId) { return ARENA_TIERS[tierId - 1]?.keyCost || 0; }
+
+function frontierKeyStatus(cost) {
+  const available = Math.floor(keys);
+  return available >= cost ? `${cost} Boss Keys ready` : `Need ${cost} Boss Keys · ${cost - available} more required`;
+}
+
 function earnedCombatTalentPoints() {
   const combatLevel = skills.find(skill => skill.id === 'Combat').lvl;
   return COMBAT_TALENT_LEVELS.filter(level => combatLevel >= level).length;
@@ -566,6 +575,44 @@ function addXpSilently(skill, amount) {
     skill.xp = skill.next;
   }
 }
+
+window.MomentumGameRewards = Object.freeze({
+  claimPartyReward(reward) {
+    if (!reward || typeof reward !== 'object') return false;
+    const activityToSkill = { forest_patrol:'Combat', pine_chopping:'Woodchopping', camp_cooking:'Cooking' };
+    const addPartyXp = (activityId, amount) => {
+      const xp = Math.max(0, Number(amount) || 0);
+      if (!xp) return;
+      const skillId = activityToSkill[activityId];
+      if (skillId) {
+        const skill = skills.find(candidate => candidate.id === skillId);
+        if (skill) { skill.xp += xp; tryLevelUp(skill); }
+      } else if (activityId === 'rest') {
+        huntingXp += xp;
+      }
+    };
+    Object.entries(reward.partyXp || {}).forEach(([activityId, xp]) => addPartyXp(activityId, xp));
+    addPartyXp(reward.primaryActivity, reward.primaryXp);
+    const itemRewards = reward.rewards || {};
+    const bossKeys = Math.max(0, Number(itemRewards.bossKeys) || 0);
+    const pineLogs = Math.max(0, Number(itemRewards.pineLogs) || 0);
+    const cookedFish = Math.max(0, Number(itemRewards.cookedFish) || 0);
+    const game = Math.max(0, Number(itemRewards.game) || 0);
+    keys += bossKeys;
+    woodInventory.pine += pineLogs;
+    skills.find(skill => skill.id === 'Woodchopping').qty += pineLogs;
+    skills.find(skill => skill.id === 'Cooking').qty += cookedFish;
+    trappedGame += game;
+    const summary = [
+      bossKeys && `+${bossKeys} Boss Keys`, pineLogs && `+${pineLogs} Pine Logs`,
+      cookedFish && `+${cookedFish} Cooked Fish`, game && `+${game} Game`
+    ].filter(Boolean).join(' · ');
+    showToast(`Party reward claimed${summary ? ` · ${summary}` : ''}`, 4200);
+    logActivity(`Party reward claimed: ${summary || 'activity experience'}`, 'party');
+    saveGame();
+    return true;
+  }
+});
 
 
 // Handles level ups and clamps to MAX_SKILL_LEVEL
@@ -706,7 +753,7 @@ let selectedArenaStyle = null;
    SAVE / LOAD
 ===================================== */
 const SAVE_KEY = 'momentum-save';
-const SAVE_VERSION = 12;
+const SAVE_VERSION = 13;
 const AUTO_SAVE_MS = 10_000;
 let resetInProgress = false;
 
@@ -726,6 +773,7 @@ function createSaveData() {
     basicBait,
     uncommonFish,
     fishingBuffSecs,
+    partyRewards:{ huntingXp, trappedGame },
     globalBuff: { ...globalBuff },
     baseMult,
     keyRateMult,
@@ -775,7 +823,7 @@ function loadGame() {
 
   try {
     const save = JSON.parse(raw);
-    if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, SAVE_VERSION].includes(save.version)) return false;
+    if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, SAVE_VERSION].includes(save.version)) return false;
 
     save.skills.forEach(savedSkill => {
       const skill = skills.find(s => s.id === savedSkill.id);
@@ -798,6 +846,8 @@ function loadGame() {
     basicBait = save.version >= 5 ? save.basicBait ?? 0 : 0;
     uncommonFish = save.version >= 5 ? save.uncommonFish ?? 0 : 0;
     fishingBuffSecs = save.version >= 5 ? save.fishingBuffSecs ?? 0 : 0;
+    huntingXp = save.version >= 13 ? Math.max(0, Number(save.partyRewards?.huntingXp) || 0) : 0;
+    trappedGame = save.version >= 13 ? Math.max(0, Number(save.partyRewards?.trappedGame) || 0) : 0;
     globalBuff = { ...save.globalBuff };
     baseMult = save.baseMult;
     keyRateMult = save.keyRateMult;
@@ -1270,7 +1320,7 @@ function renderTalents() {
 function renderFrontier() {
   const unlocked = frontierUnlocked();
   const stars = masteryStars();
-  frontierSummary.textContent = unlocked ? `${stars}/6 Mastery Stars · ${stars >= 6 ? 'Gauntlet unlocked' : 'Complete Directives to advance'}` : 'Defeat Apex to unlock authored combat Directives.';
+  frontierSummary.textContent = unlocked ? `${stars}/6 Mastery Stars · Boss Keys ${Math.floor(keys)} · ${stars >= 6 ? 'Gauntlet unlocked' : 'Complete Directives to advance'}` : 'Defeat Apex to unlock authored combat Directives.';
   document.getElementById('openFrontierBtn').disabled = !unlocked;
   document.getElementById('openFrontierBtn').textContent = unlocked ? `Open Frontier (${stars}/6 Stars)` : 'Frontier Locked';
   if (!unlocked) return;
@@ -1279,10 +1329,19 @@ function renderFrontier() {
   directiveList.innerHTML = FRONTIER_DIRECTIVES.map(directive => {
     const complete = completedDirectives.has(directive.id);
     const record = directiveRecords[directive.id];
-    return `<article class="directive-card${complete ? ' is-complete' : ''}"><div class="directive-tier">${ARENA_TIERS[directive.tierId - 1].name}</div><h3>${directive.name}</h3><p>${directive.description}</p><div class="small">${complete ? '★ Complete' : '☆ Mastery Star available'}${record?.bestTime ? ` · Best ${formatRunTime(record.bestTime)}` : ''}</div><button class="btn" data-directive="${directive.id}">Prepare Directive</button></article>`;
+    const keyCost = frontierEntryCost(directive.tierId);
+    const keyStatus = frontierKeyStatus(keyCost);
+    const canAfford = Math.floor(keys) >= keyCost;
+    return `<article class="directive-card${complete ? ' is-complete' : ''}${canAfford ? '' : ' is-key-locked'}"><div class="directive-tier">${ARENA_TIERS[directive.tierId - 1].name}</div><h3>${directive.name}</h3><p>${directive.description}</p><div class="directive-cost"><strong>Entry</strong><span>${keyCost} Boss Keys</span></div><div class="small">${complete ? '★ Complete' : '☆ Mastery Star available'} · ${keyStatus}${record?.bestTime ? ` · Best ${formatRunTime(record.bestTime)}` : ''}</div><button class="btn" data-directive="${directive.id}">${canAfford ? 'Prepare Directive' : `Need ${keyCost} Keys`}</button></article>`;
   }).join('');
   directiveList.querySelectorAll('[data-directive]').forEach(button => button.onclick = () => {
     const directive = FRONTIER_DIRECTIVES.find(candidate => candidate.id === button.dataset.directive);
+    if (!directive) return;
+    const keyCost = frontierEntryCost(directive.tierId);
+    if (Math.floor(keys) < keyCost) {
+      showToast(`Not enough Boss Keys for ${directive.name}: ${keyCost} required, ${Math.floor(keys)} available. You need ${keyCost - Math.floor(keys)} more.`, 4200);
+      return;
+    }
     selectedDirective = directive.id;
     selectedArenaTier = directive.tierId;
     renderArenaTierOptions();
@@ -1309,8 +1368,10 @@ function renderFrontier() {
   kitchenList.classList.toggle('is-locked', stars < 4);
   kitchenList.querySelectorAll('button').forEach(button => { if (stars < 4) button.disabled = true; });
 
-  startGauntletBtn.disabled = stars < 6 || Math.floor(keys) < ARENA_TIERS.reduce((sum, tier) => sum + tier.keyCost, 0);
-  startGauntletBtn.textContent = stars < 6 ? 'Locked — 6 Stars' : `Prepare Gauntlet (${ARENA_TIERS.reduce((sum, tier) => sum + tier.keyCost, 0)} Keys)`;
+  const gauntletCost = ARENA_TIERS.reduce((sum, tier) => sum + tier.keyCost, 0);
+  const enoughGauntletKeys = Math.floor(keys) >= gauntletCost;
+  startGauntletBtn.disabled = stars < 6 || !enoughGauntletKeys;
+  startGauntletBtn.textContent = stars < 6 ? 'Locked — 6 Stars' : enoughGauntletKeys ? `Prepare Gauntlet (${gauntletCost} Keys)` : `Need ${gauntletCost} Keys · ${gauntletCost - Math.floor(keys)} more`;
 }
 
 function applyCombatPreset(index) {
@@ -1461,7 +1522,14 @@ function renderArenaPreparation() {
 
 function openArenaPreparation() {
   const tier = currentArenaTier();
-  if (!arenaTierAvailable(tier, true)) return;
+  if (!arenaTierAvailable(tier)) {
+    showToast(`Requirements not met: ${evaluateRequirements(tier.requirements.filter(requirement => requirement.type !== 'resource')).missing.join(' · ')}`, 4200);
+    return;
+  }
+  if (Math.floor(keys) < tier.keyCost) {
+    showToast(`Not enough Boss Keys for ${tier.name}: ${tier.keyCost} required, ${Math.floor(keys)} available. You need ${tier.keyCost - Math.floor(keys)} more.`, 4200);
+    return;
+  }
   preparedArenaTier = tier;
   if (!ARENA_STYLES.map(arenaStyleState).some(state => state.style.id === selectedArenaStyle && state.available)) selectedArenaStyle = null;
   renderArenaPreparation();
@@ -1593,6 +1661,13 @@ function renderLoadout() {
 /* =====================================
    UI RENDERERS
 ===================================== */
+function restoreViewportAfterSkillToggle(scrollPosition) {
+  if (!scrollPosition) return;
+  const restore = () => window.scrollTo({ left:scrollPosition.left, top:scrollPosition.top, behavior:'auto' });
+  requestAnimationFrame(restore);
+  setTimeout(restore, 0);
+}
+
 function renderSkills() {
   skillsDiv.innerHTML = '';
   skills.forEach(s=>{
@@ -1603,9 +1678,14 @@ function renderSkills() {
     const chk = document.createElement('input');
     chk.type = 'checkbox';
     chk.checked = s.active;
+    let skillToggleScroll = null;
+    const rememberSkillScroll = () => { skillToggleScroll = { left:window.scrollX, top:window.scrollY }; };
+    chk.addEventListener('pointerdown', rememberSkillScroll, { passive:true });
+    chk.addEventListener('keydown', event => { if (event.key === ' ' || event.key === 'Enter') rememberSkillScroll(); });
     chk.onchange = ()=> {
       s.active = chk.checked;
       startWarmup();
+      restoreViewportAfterSkillToggle(skillToggleScroll || { left:window.scrollX, top:window.scrollY });
     };
 
     const lbl = document.createElement('label');
@@ -1728,7 +1808,6 @@ function setGameView(view) {
   field.forEach(selector => document.querySelector(selector)?.classList.add('view-field'));
   hub.forEach(selector => document.querySelector(selector)?.classList.add('view-hub'));
   document.querySelector('.operations-board')?.classList.toggle('view-field-emphasis', currentGameView === 'field');
-  window.scrollTo({ top:0, behavior:gameSettings.reduceMotion ? 'auto' : 'smooth' });
 }
 
 function updateObjective() {
@@ -1863,6 +1942,7 @@ skills.forEach(s=>{
       <section><h3>Provisions</h3><div class="resource-chip"><span>Raw Fish</span><strong>${skills.find(s=>s.id==='Fishing').qty.toFixed(1)}</strong></div><div class="resource-chip"><span>Cooked Fish</span><strong>${skills.find(s=>s.id==='Cooking').qty.toFixed(1)}</strong></div><div class="resource-chip"><span>Basic Bait</span><strong>${basicBait}</strong></div><div class="resource-chip"><span>Uncommon Fish</span><strong>${uncommonFish}</strong></div></section>
       <section><h3>Timber</h3><div class="resource-chip"><span>Pine</span><strong>${woodInventory.pine.toFixed(0)}</strong></div><div class="resource-chip"><span>Oak</span><strong>${woodInventory.oak.toFixed(0)}</strong></div><div class="resource-chip"><span>Yew</span><strong>${woodInventory.yew.toFixed(0)}</strong></div><div class="resource-chip"><span>Ancient</span><strong>${woodInventory.ancient.toFixed(0)}</strong></div></section>
       <section><h3>Frontier</h3><div class="resource-chip"><span>Boss Keys</span><strong>${Math.floor(keys)}</strong></div><div class="resource-chip"><span>Rare Gems</span><strong>${rareGems}</strong></div><div class="resource-chip"><span>Fishing Boost</span><strong>${fishingBuffSecs > 0 ? `${Math.ceil(fishingBuffSecs)}s` : 'None'}</strong></div><div class="resource-chip"><span>Burnt Fish</span><strong>${burntFish.toFixed(1)}</strong></div></section>
+      <section><h3>Party Rewards</h3><div class="resource-chip"><span>Hunting XP</span><strong>${Math.floor(huntingXp)}</strong></div><div class="resource-chip"><span>Game</span><strong>${trappedGame}</strong></div></section>
     </div>
   `;
   recycleScrapBtn.disabled = scrap < scrapRecycleCost();
@@ -2109,7 +2189,7 @@ function finishGauntlet(reason) {
 function prepareGauntlet() {
   if (masteryStars() < 6) return;
   const cost = ARENA_TIERS.reduce((sum, tier) => sum + tier.keyCost, 0);
-  if (Math.floor(keys) < cost) { showToast(`Requires ${cost} Boss Keys`); return; }
+  if (Math.floor(keys) < cost) { showToast(`Not enough Boss Keys for the Frontier Gauntlet: ${cost} required, ${Math.floor(keys)} available. You need ${cost - Math.floor(keys)} more.`, 4200); return; }
   selectedDirective = null;
   selectedArenaTier = 1;
   activeGauntlet = { preparing:true };
@@ -2218,4 +2298,3 @@ resultOk.onclick = () => {
   resultModal.style.display = 'none';
   lastFightResult = null;
 };
-

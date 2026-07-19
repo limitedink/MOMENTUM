@@ -102,7 +102,7 @@ describe.skipIf(!databaseUrl)('authenticated party WebSockets (PostgreSQL)', () 
   });
 
   async function createPlayer(): Promise<Player> {
-    const response = await app.inject({ method: 'POST', url: '/v1/dev/players' });
+    const response = await app.inject({ method: 'POST', url: '/v1/dev/players', payload: { displayName: `Player ${Date.now()}-${Math.random().toString(36).slice(2, 6)}`.slice(0, 24) } });
     expect(response.statusCode).toBe(201);
     const body = response.json();
     return { id: body.player.id, token: body.token, sessionId: body.sessionId };
@@ -373,6 +373,9 @@ describe.skipIf(!databaseUrl)('authenticated party WebSockets (PostgreSQL)', () 
     subjectConnection.socket.send(envelope('party.refresh'));
     const joinedSnapshot = await subjectConnection.harness.next(message => message.type === 'party.snapshot');
     expect(joinedSnapshot.payload).toEqual(expect.objectContaining({ partyId: party.id, leaderPlayerId: leader.id, joinCode: party.joinCode }));
+    expect(joinedSnapshot.payload.members).toEqual(expect.arrayContaining([
+      expect.objectContaining({ playerId: leader.id, displayName: expect.any(String), isLeader: true })
+    ]));
     const joinedPresence = await leaderConnection.harness.next(message => message.type === 'party.presence');
     expect(joinedPresence.payload).toEqual(expect.objectContaining({ playerId: subject.id, status: 'online' }));
 
