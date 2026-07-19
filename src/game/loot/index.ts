@@ -1,0 +1,29 @@
+import { calculateItemStats, getItemDefinition, getRarity, getSkillToolDefinition, inspectItem, listSkillTools, lootDefinitions, lootTables, rarityDefinitions, rollLoot, salvageItem, skillToolDefinitions, updateCollectionProgress, validateEquipItem } from './loot-registry';
+import { ARENA_LOOT_TABLES, COMBAT_LOOT_DEFINITIONS, PARTY_BOSS_LOOT_TABLE, RARITY_DEFINITIONS, SKILL_TOOL_DEFINITIONS } from './loot-definitions';
+
+export const momentumLootFramework = Object.freeze({
+  rollLoot,
+  inspectItem,
+  calculateItemStats,
+  validateEquipItem,
+  salvageItem,
+  updateCollectionProgress,
+  getRarity,
+  getItemDefinition,
+  getSkillToolDefinition,
+  listSkillTools,
+  lootTables,
+  lootDefinitions,
+  rarityDefinitions,
+  skillToolDefinitions,
+  arenaTables: ARENA_LOOT_TABLES,
+  partyBossTable: PARTY_BOSS_LOOT_TABLE,
+  rarities: RARITY_DEFINITIONS,
+  skillTools: SKILL_TOOL_DEFINITIONS
+});
+
+if (typeof window !== 'undefined') window.MomentumLootFramework = momentumLootFramework;
+
+export * from './loot-types';
+export * from './loot-definitions';
+export * from './loot-registry';

@@ -19,15 +19,46 @@ const XP_BAL = {
   cap: 100          // max level
 };
 
+const SKILL_FRAMEWORK = window.MomentumSkillFramework;
+const SKILL_REGISTRY = SKILL_FRAMEWORK?.registry;
+const LOOT_FRAMEWORK = window.MomentumLootFramework;
+
 const MAX_SKILL_LEVEL = 100;   // set to 99, 100, 120, 500, 1000... your call
 const skills = [
   { id:'Mining',   basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
   { id:'Smithing', basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
+  { id:'Crafting', basePerSec: 0.35, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
   { id:'Combat',   basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
   { id:'Fishing',  basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
   { id:'Cooking',  basePerSec: 1 / 2.5, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
-  { id:'Woodchopping', basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
-]
+  { id:'Woodcutting', basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
+];
+
+const UI_ICONS = {
+  skill: {
+    Mining:[0,0], Smithing:[50,0], Combat:[100,0], Crafting:[50,100], Music:[100,100],
+    Fishing:[0,100], Cooking:[50,100], Woodcutting:[100,100]
+  },
+  resource: {
+    Ore:[0,0], Bars:[33.333,0], Scrap:[66.667,0], 'Raw Fish':[100,0],
+    'Cooked Fish':[0,33.333], 'Burnt Fish':[33.333,33.333], 'Pine Logs':[66.667,33.333], 'Oak Logs':[100,33.333],
+    'Yew Logs':[0,66.667], 'Ancient Logs':[33.333,66.667], 'Basic Bait':[66.667,66.667], 'Uncommon Fish':[100,66.667],
+    'Rare Gems':[0,100], 'Smoked Rations':[33.333,100], 'Surgefin Rations':[66.667,100]
+  },
+  loadout: {
+    melee:[0,0], ranged:[33.333,0], gun:[66.667,0], magic:[100,0],
+    armor:[0,100], tool:[33.333,100], food:[66.667,100], empty:[100,100]
+  }
+};
+function iconMarkup(sheet, key, extraClass = '') {
+  const position = UI_ICONS[sheet]?.[key];
+  if (!position) return '';
+  return `<span class="game-icon icon-${sheet} ${extraClass}" style="--icon-x:${position[0]}%;--icon-y:${position[1]}%" aria-hidden="true"></span>`;
+}
+function resourceChipMarkup(label, value, iconKey = label) {
+  const icon = iconMarkup('resource', iconKey, 'resource-icon') || '<span class="resource-fallback" aria-hidden="true">◆</span>';
+  return `<div class="resource-chip">${icon}<span>${label}</span><strong>${value}</strong></div>`;
+}
 
 let unlockedNormalSlots = 6;
 let hone = null;
@@ -43,6 +74,16 @@ let huntingXp = 0;
 let trappedGame = 0;
 const woodInventory = { pine:0, oak:0, yew:0, ancient:0 };
 let selectedTree = 'pine';
+let craftingSelectedRecipe = 'ironBlade';
+let craftingActiveBonus = { multiplier:1, expiresAt:0 };
+let craftingAssembly = null;
+let lootInventory = [];
+let skillToolInventory = [];
+let salvageMaterials = 0;
+let collectionProgress = {};
+let selectedLootFilter = 'all';
+let selectedLootItemId = null;
+let latestLootReward = null;
 const TREE_TYPES = [
   { id:'pine', name:'Pine', level:1, seconds:2.5, perSec:1 / 2.5 },
   { id:'oak', name:'Oak', level:30, seconds:4, perSec:1 / 4 },
@@ -80,6 +121,75 @@ let arenaTierUnlocked = 1;
 let selectedArenaTier = 1;
 let arenaWins = [0, 0, 0];
 
+function getSkillToolDefinition(toolId) {
+  return LOOT_FRAMEWORK?.getSkillToolDefinition(toolId) || null;
+}
+
+function skillToolsFor(skillId) {
+  return skillToolInventory
+    .map(instance => getSkillToolDefinition(instance.toolId))
+    .filter(tool => tool && tool.skillId === skillId);
+}
+
+function selectedSkillTool(skillId) {
+  const skill = skills.find(candidate => candidate.id === skillId);
+  const available = skillToolsFor(skillId);
+  if (!skill || !available.length) return null;
+  const selected = available.find(tool => tool.id === skill.selectedToolId);
+  if (selected) return selected;
+  const fallback = [...available].sort((a, b) => b.tier - a.tier)[0];
+  skill.selectedToolId = fallback.id;
+  return fallback;
+}
+
+function hasSkillTool(skillId) {
+  return Boolean(selectedSkillTool(skillId));
+}
+
+function ensureSkillState(skillId) {
+  const existing = skills.find(skill => skill.id === skillId);
+  if (existing) return existing;
+  const definition = SKILL_REGISTRY?.get(skillId);
+  const created = {
+    id: skillId,
+    basePerSec: definition?.baseActionsPerSecond || RATE_BASE,
+    active: false,
+    qty: 0,
+    lvl: 1,
+    xp: 0,
+    next: xpToNext(1),
+    progress: 0,
+    selectedToolId: null
+  };
+  skills.push(created);
+  return created;
+}
+
+function ensureMusicSkill() {
+  return hasSkillTool('Music') ? ensureSkillState('Music') : skills.find(skill => skill.id === 'Music') || null;
+}
+
+function addSkillTool(toolId, acquiredAt = Date.now()) {
+  const definition = getSkillToolDefinition(toolId);
+  if (!definition || skillToolInventory.some(instance => instance.toolId === toolId)) return false;
+  skillToolInventory.push({ instanceId: `skill-tool:${toolId}:${acquiredAt}`, toolId, acquiredAt });
+  const skill = ensureSkillState(definition.skillId);
+  if (!skill.selectedToolId) skill.selectedToolId = toolId;
+  ensureMusicSkill();
+  return true;
+}
+
+function removeSkillTool(instanceId) {
+  const index = skillToolInventory.findIndex(instance => instance.instanceId === instanceId);
+  if (index < 0) return false;
+  const [removed] = skillToolInventory.splice(index, 1);
+  const definition = getSkillToolDefinition(removed.toolId);
+  const skill = skills.find(candidate => candidate.id === definition?.skillId);
+  if (skill && !skillToolsFor(skill.id).some(tool => tool.id === skill.selectedToolId)) skill.selectedToolId = skillToolsFor(skill.id)[0]?.id || null;
+  if (skill && !skillToolsFor(skill.id).length) skill.active = false;
+  return true;
+}
+
 
 
 let lastFightResult = null;   // stores result after arena closes
@@ -108,6 +218,9 @@ const statusEl = document.getElementById('status');
 const objectiveTitle = document.getElementById('objectiveTitle');
 const objectiveDetail = document.getElementById('objectiveDetail');
 const objectiveProgressFill = document.getElementById('objectiveProgressFill');
+const objectiveActionBtn = document.getElementById('objectiveActionBtn');
+const operationsBoard = document.getElementById('operationsBoard');
+const operationsToggle = document.getElementById('operationsToggle');
 const operationsList = document.getElementById('operationsList');
 const operationsCount = document.getElementById('operationsCount');
 const saveStatus = document.getElementById('saveStatus');
@@ -125,6 +238,17 @@ const fishingCatchZone = document.getElementById('fishingCatchZone');
 const fishingCatchFill = document.getElementById('fishingCatchFill');
 const fishingTensionFill = document.getElementById('fishingTensionFill');
 const fishingTime = document.getElementById('fishingTime');
+const startFishingCastBtn = document.getElementById('startFishingCast');
+const prepareBaitBtn = document.getElementById('prepareBaitBtn');
+const closeFishingBtn = document.getElementById('closeFishing');
+const craftingModal = document.getElementById('craftingModal');
+const craftingActivityStatus = document.getElementById('craftingActivityStatus');
+const craftingAssemblyBar = document.getElementById('craftingAssemblyBar');
+const craftingAssemblyMarker = document.getElementById('craftingAssemblyMarker');
+const craftingAssemblyTarget = document.getElementById('craftingAssemblyTarget');
+const startCraftingAssemblyBtn = document.getElementById('startCraftingAssembly');
+const hitCraftingAssemblyBtn = document.getElementById('hitCraftingAssembly');
+const closeCraftingBtn = document.getElementById('closeCrafting');
 
 const baseUpModal = document.getElementById('baseUpModal');
 const skillUpModal = document.getElementById('skillUpModal');
@@ -133,6 +257,9 @@ const gearList = document.getElementById('gearList');
 const loadoutModal = document.getElementById('loadoutModal');
 const loadoutSlots = document.getElementById('loadoutSlots');
 const inventoryList = document.getElementById('inventoryList');
+const lootInventoryList = document.getElementById('lootInventoryList');
+const lootFilterSelect = document.getElementById('lootFilterSelect');
+const lootDetail = document.getElementById('lootDetail');
 const baseUpList  = document.getElementById('baseUpList');
 const skillUpList = document.getElementById('skillUpList');
 const talentModal = document.getElementById('talentModal');
@@ -170,6 +297,7 @@ const arenaFoodStatus = document.getElementById('arenaFoodStatus');
 const arenaTalentStatus = document.getElementById('arenaTalentStatus');
 const arenaControls = document.getElementById('arenaControls');
 const arenaTip = document.getElementById('arenaTip');
+const closeArenaBtn = document.getElementById('closeArena');
 const offlineModal = document.getElementById('offlineModal');
 const offlineSummary = document.getElementById('offlineSummary');
 const offlineOk = document.getElementById('offlineOk');
@@ -293,14 +421,15 @@ function celebrateFireworks(opts = {}) {
 
 // Default combo for level ups
 function celebrateLevelUp() {
+  if (document.body.classList.contains('reduce-motion') || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   celebrateRain({
-    streamsPerFrame: 1,     // ↓ these two = more gaps in the shower
-    particlesPerStream: 4,
-    durationMs: 1100
+    streamsPerFrame: 1,
+    particlesPerStream: 2,
+    durationMs: 650
   });
   celebrateFireworks({
-    bursts: 8,
-    particlesPerBurst: 120  // ↑ this for denser fireworks
+    bursts: 3,
+    particlesPerBurst: 65
   });
 }
 
@@ -313,17 +442,37 @@ function celebrateLevelUp() {
 
 
 
+const activeToasts = new Map();
+function dismissToast(text, el) {
+  if (!el?.isConnected) return;
+  clearTimeout(el._dismissTimer);
+  el.classList.remove('show');
+  activeToasts.delete(text);
+  setTimeout(()=> el.remove(), 220);
+}
 function showToast(text, ms=2000) {
   const host = document.getElementById('toastHost');
+  const existing = activeToasts.get(text);
+  if (existing?.isConnected) {
+    existing._count = (existing._count || 1) + 1;
+    existing.textContent = `${text} ×${existing._count}`;
+    clearTimeout(existing._dismissTimer);
+    existing._dismissTimer = setTimeout(() => dismissToast(text, existing), ms);
+    return;
+  }
   const el = document.createElement('div');
   el.className = 'toast';
   el.textContent = text;
+  el._count = 1;
   host.appendChild(el);
+  activeToasts.set(text, el);
+  while (host.children.length > 4) {
+    const oldest = host.firstElementChild;
+    const oldestKey = [...activeToasts.entries()].find(([,candidate]) => candidate === oldest)?.[0];
+    if (oldestKey) dismissToast(oldestKey, oldest); else oldest.remove();
+  }
   requestAnimationFrame(()=> el.classList.add('show'));
-  setTimeout(()=>{
-    el.classList.remove('show');
-    setTimeout(()=> el.remove(), 220);
-  }, ms);
+  el._dismissTimer = setTimeout(() => dismissToast(text, el), ms);
 }
 
 function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
@@ -388,6 +537,17 @@ const SKILL_MILESTONES = {
     { level:10, label:'Plated Vest recipe' },
     { level:15, label:'Smithing specialization' }
   ],
+  Crafting: [
+    { level:1, label:'Assembly target selection' },
+    { level:4, label:'Forge Gauntlet recipe' },
+    { level:6, label:'Plated Vest recipe' },
+    { level:15, label:'Crafting specialization' }
+  ],
+  Music: [
+    { level:5, label:'Drums instrument' },
+    { level:12, label:'Piano instrument' },
+    { level:20, label:'Harp instrument' }
+  ],
   Combat: [
     { level:5, label:'Initiate Arena + Talent Point' },
     { level:10, label:'Vanguard Arena + Talent Point' },
@@ -406,8 +566,8 @@ const SKILL_MILESTONES = {
     { level:15, label:'Cooking specializations' },
     { level:30, label:'Experienced cook' }
   ],
-  Woodchopping: [
-    { level:15, label:'Woodchopping specializations' },
+  Woodcutting: [
+    { level:15, label:'Woodcutting specializations' },
     { level:30, label:'Oak trees' },
     { level:75, label:'Yew trees' },
     { level:90, label:'Ancient trees' }
@@ -458,8 +618,8 @@ let smokedRations = 0;
 let surgefinRations = 0;
 let activeGauntlet = null;
 let gauntletRecord = { attempts:0, clears:0, bestTime:null };
-const skillSpecializations = { Mining:null, Smithing:null, Fishing:null, Cooking:null, Woodchopping:null };
-const specializationProgress = { Mining:0, Fishing:0, Cooking:0, Woodchopping:0, WoodUpgrade:0 };
+const skillSpecializations = { Mining:null, Smithing:null, Fishing:null, Cooking:null, Woodcutting:null, Crafting:null };
+const specializationProgress = { Mining:0, Fishing:0, Cooking:0, Woodcutting:0, Crafting:0, WoodUpgrade:0 };
 let gameSettings = { muted:false, volume:0.6, reduceMotion:false };
 let currentGameView = 'hub';
 const claimedOperations = new Set();
@@ -486,7 +646,10 @@ function renderOperations(force = false) {
   if (!force && signature === operationsRenderSignature) return;
   operationsRenderSignature = signature;
   operationsCount.textContent = `${claimedOperations.size}/${OPERATIONS.length} claimed`;
-  operationsList.innerHTML = visible.length ? visible.map(state => `<article class="operation${state.complete ? ' is-complete' : ''}"><div><strong>${state.operation.name}</strong><p>${state.operation.detail}</p><span class="operation-reward">Reward: ${state.operation.reward}</span></div><div class="operation-state"><span>${state.value}/${state.target}</span><div class="operation-meter"><i style="width:${Math.min(100,state.value/state.target*100)}%"></i></div><button class="btn" data-claim-operation="${state.operation.id}" ${state.complete ? '' : 'disabled'}>${state.complete ? 'Claim' : 'In progress'}</button></div></article>`).join('') : '<div class="operations-complete"><strong>All current Operations complete.</strong><span>Push records, Mastery, and specializations while the next frontier is prepared.</span></div>';
+  operationsList.innerHTML = visible.length ? visible.map(state => {
+    const percent = Math.min(100,state.value/state.target*100);
+    return `<article class="operation${state.complete ? ' is-complete' : ''}"><div><strong>${state.operation.name}</strong><p>${state.operation.detail}</p><span class="operation-reward">Reward: ${state.operation.reward}</span></div><div class="operation-state"><span>${state.value}/${state.target}</span><div class="operation-meter" role="progressbar" aria-label="${state.operation.name} progress" aria-valuemin="0" aria-valuemax="${state.target}" aria-valuenow="${state.value}"><i style="width:${percent}%"></i></div><button class="btn" data-claim-operation="${state.operation.id}" ${state.complete ? '' : 'disabled'}>${state.complete ? `Claim ${state.operation.reward}` : 'In progress'}</button></div></article>`;
+  }).join('') : '<div class="operations-complete"><strong>All current Operations complete.</strong><span>Push records, Mastery, and specializations while the next frontier is prepared.</span></div>';
   operationsList.querySelectorAll('[data-claim-operation]').forEach(button => button.onclick = () => {
     const operation = OPERATIONS.find(candidate => candidate.id === button.dataset.claimOperation);
     if (!operation || claimedOperations.has(operation.id)) return;
@@ -527,6 +690,8 @@ function evaluateRequirements(requirements = []) {
     if (requirement.type === 'resource') {
       const amount = requirement.resource === 'Ore' ? skills.find(skill => skill.id === 'Mining').qty
         : requirement.resource === 'Bars' ? skills.find(skill => skill.id === 'Smithing').qty
+        : requirement.resource === 'Pine Logs' ? woodInventory.pine
+        : requirement.resource === 'Crafted Components' ? skills.find(skill => skill.id === 'Crafting').qty
         : requirement.resource === 'Boss Keys' ? Math.floor(keys)
         : requirement.resource === 'Rare Gems' ? rareGems
         : requirement.resource === 'Raw Fish' ? skills.find(skill => skill.id === 'Fishing').qty
@@ -579,7 +744,7 @@ function addXpSilently(skill, amount) {
 window.MomentumGameRewards = Object.freeze({
   claimPartyReward(reward) {
     if (!reward || typeof reward !== 'object') return false;
-    const activityToSkill = { forest_patrol:'Combat', pine_chopping:'Woodchopping', camp_cooking:'Cooking' };
+    const activityToSkill = { forest_patrol:'Combat', pine_chopping:'Woodcutting', pine_cutting:'Woodcutting', camp_cooking:'Cooking' };
     const addPartyXp = (activityId, amount) => {
       const xp = Math.max(0, Number(amount) || 0);
       if (!xp) return;
@@ -600,7 +765,8 @@ window.MomentumGameRewards = Object.freeze({
     const game = Math.max(0, Number(itemRewards.game) || 0);
     keys += bossKeys;
     woodInventory.pine += pineLogs;
-    skills.find(skill => skill.id === 'Woodchopping').qty += pineLogs;
+    const woodcutting = skills.find(skill => skill.id === 'Woodcutting') || skills.find(skill => skill.id === 'Woodchopping');
+    if (woodcutting) woodcutting.qty += pineLogs;
     skills.find(skill => skill.id === 'Cooking').qty += cookedFish;
     trappedGame += game;
     const summary = [
@@ -671,6 +837,9 @@ const SKILL_UPS = {
   Smithing: [
    { id:'forge1', name:'Forge Bellows', desc:'+8 percent speed', cost:{ bars:90 }, apply(){ const s=skills.find(x=>x.id==='Smithing'); s.basePerSec = clampPerSec(s.basePerSec * 1.08); } },
   ],
+  Crafting: [
+    { id:'assemblyJig', name:'Assembly Jig', desc:'Crafting actions run 10% faster.', cost:{ bars:90 }, apply(){ const s=skills.find(x=>x.id==='Crafting'); s.basePerSec = clampPerSec(s.basePerSec * 1.10); } },
+  ],
   Combat: [
     { id:'ammo1', name:'Hardened Rounds', desc:'+3 bullet damage', cost:{ bars:120 }, apply(){ BULLET_DAMAGE += 3; } },
   ],
@@ -679,10 +848,10 @@ const SKILL_UPS = {
     { id:'heatControl2', name:'Heat Control II', desc:'Failed cooks have a 25% chance to preserve the Raw Fish', requirements:[{type:'skillLevel',skill:'Cooking',value:20}], cost:{ ore:220, bars:40 }, apply(){} },
     { id:'stove1', name:'Efficient Stove', desc:'10% faster Cooking attempts', cost:{ ore:160, bars:30 }, apply(){ const skill=skills.find(candidate=>candidate.id==='Cooking'); skill.basePerSec=clampPerSec(skill.basePerSec*1.10); } }
   ],
-  Woodchopping: [
-    { id:'axe1', name:'Sharpened Axe', desc:'10% faster Woodchopping', cost:{ ore:120, bars:30 }, apply(){} },
-    { id:'logSplitter', name:'Log Splitter', desc:'Every eighth chop produces one bonus log', requirements:[{type:'skillLevel',skill:'Woodchopping',value:20}], cost:{ ore:240, bars:70 }, apply(){} },
-    { id:'axe2', name:'Tempered Axe', desc:'A further 12% faster Woodchopping', requirements:[{type:'skillLevel',skill:'Woodchopping',value:40}], cost:{ ore:400, bars:140 }, apply(){} }
+  Woodcutting: [
+    { id:'axe1', name:'Sharpened Axe', desc:'10% faster Woodcutting', cost:{ ore:120, bars:30 }, apply(){} },
+    { id:'logSplitter', name:'Log Splitter', desc:'Every eighth chop produces one bonus log', requirements:[{type:'skillLevel',skill:'Woodcutting',value:20}], cost:{ ore:240, bars:70 }, apply(){} },
+    { id:'axe2', name:'Tempered Axe', desc:'A further 12% faster Woodcutting', requirements:[{type:'skillLevel',skill:'Woodcutting',value:40}], cost:{ ore:400, bars:140 }, apply(){} }
   ]
 };
 const ownedSkillUps = new Set();
@@ -730,6 +899,105 @@ let equippedTool = null;
 let equipment = { melee:null, ranged:null, gun:'pulseSidearm', magic:null, armor:null, tool:null, food:null };
 const weaponRefinements = { pulseSidearm:0, ironBlade:0 };
 const MAX_WEAPON_REFINEMENT = 5;
+
+function lootDefinitionFor(instance) {
+  return LOOT_FRAMEWORK?.getItemDefinition(instance?.definitionId) || null;
+}
+
+function lootRarityFor(instance) {
+  return LOOT_FRAMEWORK?.getRarity(instance?.rarity) || { id:'common', name:'Common', color:'#9aa4b2', glow:'none', affixCount:0, statMultiplier:1 };
+}
+
+function materializeLootItem(instance) {
+  const definition = lootDefinitionFor(instance);
+  if (!definition) return null;
+  const stats = LOOT_FRAMEWORK.calculateItemStats(definition, instance);
+  const rarity = lootRarityFor(instance);
+  const item = {
+    id: instance.instanceId,
+    name: `${definition.name} · ${rarity.name}`,
+    slot: definition.slot,
+    damage: stats.damage || 0,
+    attackInterval: Math.max(0.12, stats.attackInterval || (definition.slot === 'gun' ? 0.25 : 0.55)),
+    accuracy: stats.accuracy || 0,
+    maxHit: stats.maxHit || 0,
+    range: stats.range || (definition.slot === 'gun' ? 0 : 64),
+    swingArcDeg: definition.slot === 'melee' ? 100 : undefined,
+    projectileSpeed: definition.slot === 'gun' ? 400 : undefined,
+    lifetime: definition.slot === 'gun' ? 3 : undefined,
+    hp: stats.hp || 0,
+    bossDamage: stats.bossDamage || 0,
+    critChance: stats.critChance || 0,
+    playstyle: definition.description,
+    trait: `${definition.signatureName}: ${definition.signatureDescription}`,
+    detail: `${definition.signatureName}: ${definition.signatureDescription}`,
+    rarityId: instance.rarity,
+    lootInstanceId: instance.instanceId,
+    dynamicLoot: true
+  };
+  ITEMS[instance.instanceId] = item;
+  if (typeof ownedItems !== 'undefined') ownedItems.add(instance.instanceId);
+  return item;
+}
+
+function rehydrateLootInventory() {
+  lootInventory.forEach(instance => materializeLootItem(instance));
+}
+
+function equippedLootIds() {
+  return Object.values(equipment).filter(Boolean);
+}
+
+function inspectLoot(instanceId) {
+  const instance = lootInventory.find(candidate => candidate.instanceId === instanceId);
+  return instance ? LOOT_FRAMEWORK?.inspectItem(instance) : null;
+}
+
+function awardLootResolution(resolution) {
+  if (!resolution) return null;
+  salvageMaterials += resolution.salvage;
+  collectionProgress = LOOT_FRAMEWORK?.updateCollectionProgress(collectionProgress, resolution) || collectionProgress;
+  if (resolution.item) {
+    lootInventory.push(resolution.item);
+    materializeLootItem(resolution.item);
+    latestLootReward = resolution.item;
+  }
+  return resolution.item;
+}
+
+function lootLabel(instance) {
+  const definition = lootDefinitionFor(instance);
+  const rarity = lootRarityFor(instance);
+  return `${rarity.name} ${definition?.name || 'Unknown item'}`;
+}
+
+function lootResultMarkup(resolution) {
+  if (!resolution) return '';
+  const item = resolution.item;
+  const collection = `${resolution.collectionProgress} collection progress · ${resolution.salvage} Salvage`;
+  if (!item) return `<div class="loot-reward-summary"><strong>Combat cache secured</strong><span>${collection}</span></div>`;
+  const inspection = inspectLoot(item.instanceId);
+  const rarity = lootRarityFor(item);
+  return `<article class="loot-reveal rarity-${item.rarity}" style="--loot-color:${rarity.color}"><div class="eyebrow">LOOT DROP</div><strong>${lootLabel(item)}</strong><span>${inspection?.signature || ''}</span><small>${item.affixes.length} affixes · ${collection}</small></article>`;
+}
+
+function salvageLootItem(instanceId) {
+  const result = LOOT_FRAMEWORK?.salvageItem(lootInventory, instanceId, equippedLootIds());
+  if (!result?.accepted) {
+    if (result?.reason) showToast(result.reason);
+    return false;
+  }
+  lootInventory = lootInventory.filter(instance => instance.instanceId !== instanceId);
+  delete ITEMS[instanceId];
+  ownedItems.delete(instanceId);
+  salvageMaterials += result.value;
+  selectedLootItemId = null;
+  showToast(`Salvaged ${result.value} materials`);
+  logActivity(`Salvaged ${lootLabel(result.item)} · +${result.value} Salvage`, 'loot');
+  renderLoadout();
+  saveGame();
+  return true;
+}
 function weaponDamage(item) {
   return item.damage + (weaponRefinements[item.id] || 0) * 2;
 }
@@ -738,7 +1006,7 @@ function gearRateMult(skillId) {
   if (skillId === 'Smithing' && equipment.tool === 'forgeGauntlet') return 1.25;
   return 1;
 }
-function playerMaxHp() { return equipment.armor === 'platedVest' ? 125 : 100; }
+function playerMaxHp() { return 100 + (ITEMS[equipment.armor]?.hp || 0); }
 function equippedGun() { return ITEMS[equipment.gun] || ITEMS.pulseSidearm; }
 
 const ARENA_STYLES = [
@@ -753,7 +1021,7 @@ let selectedArenaStyle = null;
    SAVE / LOAD
 ===================================== */
 const SAVE_KEY = 'momentum-save';
-const SAVE_VERSION = 13;
+const SAVE_VERSION = 14;
 const AUTO_SAVE_MS = 10_000;
 let resetInProgress = false;
 
@@ -761,8 +1029,8 @@ function createSaveData() {
   return {
     version: SAVE_VERSION,
     savedAt: Date.now(),
-    skills: skills.map(({ id, basePerSec, active, qty, lvl, xp, progress }) => ({
-      id, basePerSec, active, qty, lvl, xp, progress
+    skills: skills.map(({ id, basePerSec, active, qty, lvl, xp, progress, selectedToolId }) => ({
+      id, basePerSec, active, qty, lvl, xp, progress, selectedToolId
     })),
     unlockedNormalSlots,
     hone,
@@ -794,11 +1062,16 @@ function createSaveData() {
       gauntletRecord:{ ...gauntletRecord }
     },
     foodInventory:{ smokedRations, surgefinRations, burntFish },
-    woodchopping:{ selectedTree, inventory:{ ...woodInventory } },
+    woodcutting:{ selectedTree, inventory:{ ...woodInventory } },
     skillSpecializations:{ ...skillSpecializations },
     specializationProgress:{ ...specializationProgress },
     settings:{ ...gameSettings },
     claimedOperations:[...claimedOperations],
+    crafting:{ selectedRecipe:craftingSelectedRecipe },
+    lootInventory: lootInventory.map(instance => ({ ...instance, affixes: instance.affixes.map(affix => ({ ...affix })) })),
+    salvageMaterials,
+    collectionProgress:{ ...collectionProgress },
+    skillTools: skillToolInventory.map(instance => ({ ...instance })),
     arenaTierUnlocked,
     selectedArenaTier,
     arenaWins: [...arenaWins]
@@ -823,10 +1096,10 @@ function loadGame() {
 
   try {
     const save = JSON.parse(raw);
-    if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, SAVE_VERSION].includes(save.version)) return false;
+    if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, SAVE_VERSION].includes(save.version)) return false;
 
     save.skills.forEach(savedSkill => {
-      const skill = skills.find(s => s.id === savedSkill.id);
+      const skill = skills.find(s => s.id === savedSkill.id) || (savedSkill.id === 'Music' ? ensureSkillState('Music') : null);
       if (!skill) return;
       skill.basePerSec = savedSkill.basePerSec;
       skill.active = savedSkill.active;
@@ -835,6 +1108,7 @@ function loadGame() {
       skill.xp = savedSkill.xp;
       skill.next = xpToNext(skill.lvl);
       skill.progress = savedSkill.progress;
+      skill.selectedToolId = savedSkill.selectedToolId || null;
     });
 
     unlockedNormalSlots = Math.max(save.unlockedNormalSlots, skills.length);
@@ -863,6 +1137,12 @@ function loadGame() {
     ownedItems.add('pulseSidearm');
     ownedGear.forEach(id => ownedItems.add(id));
     if (save.version >= 6) save.ownedItems.forEach(id => { if (ITEMS[id]) ownedItems.add(id); });
+    lootInventory = save.version >= 14 && Array.isArray(save.lootInventory) ? save.lootInventory.filter(instance => LOOT_FRAMEWORK?.inspectItem(instance)) : [];
+    salvageMaterials = save.version >= 14 ? Math.max(0, Number(save.salvageMaterials) || 0) : 0;
+    collectionProgress = save.version >= 14 && save.collectionProgress && typeof save.collectionProgress === 'object' ? Object.fromEntries(Object.entries(save.collectionProgress).map(([id, value]) => [id, Math.max(0, Number(value) || 0)])) : {};
+    skillToolInventory = save.version >= 14 && Array.isArray(save.skillTools) ? save.skillTools.filter(instance => getSkillToolDefinition(instance.toolId)).map(instance => ({ instanceId:String(instance.instanceId), toolId:String(instance.toolId), acquiredAt:Number(instance.acquiredAt) || Date.now() })) : [];
+    rehydrateLootInventory();
+    skillToolInventory.forEach(instance => ensureSkillState(getSkillToolDefinition(instance.toolId).skillId));
     const legacyTool = save.version >= 3 && ownedGear.has(save.equippedTool) ? save.equippedTool : null;
     equipment = save.version >= 6 ? { ...equipment, ...save.equipment } : { melee:null, ranged:null, gun:'pulseSidearm', magic:null, armor:ownedGear.has('platedVest')?'platedVest':null, tool:legacyTool, food:null };
     LOADOUT_SLOTS.forEach(slot => { if (equipment[slot] && !ownedItems.has(equipment[slot]) && equipment[slot] !== 'rawFish') equipment[slot] = null; });
@@ -895,10 +1175,12 @@ function loadGame() {
     }
     if (save.version >= 10) {
       burntFish = Math.max(0, Number(save.foodInventory?.burntFish) || 0);
-      Object.keys(woodInventory).forEach(id => { woodInventory[id] = Math.max(0, Number(save.woodchopping?.inventory?.[id]) || 0); });
-      const woodLevel = skills.find(skill => skill.id === 'Woodchopping').lvl;
-      selectedTree = TREE_TYPES.some(tree => tree.id === save.woodchopping?.selectedTree && woodLevel >= tree.level) ? save.woodchopping.selectedTree : 'pine';
+      Object.keys(woodInventory).forEach(id => { woodInventory[id] = Math.max(0, Number(save.woodcutting?.inventory?.[id]) || 0); });
+      const woodLevel = skills.find(skill => skill.id === 'Woodcutting').lvl;
+      selectedTree = TREE_TYPES.some(tree => tree.id === save.woodcutting?.selectedTree && woodLevel >= tree.level) ? save.woodcutting.selectedTree : 'pine';
     }
+    const knownCraftingRecipeIds = new Set((SKILL_FRAMEWORK?.craftingRecipes || []).map(recipe => recipe.id));
+    craftingSelectedRecipe = knownCraftingRecipeIds.has(save.crafting?.selectedRecipe) ? save.crafting.selectedRecipe : 'ironBlade';
     if (equipment.food === 'rawFish') equipment.food = null;
     arenaTierUnlocked = save.version >= 4 ? save.arenaTierUnlocked : 1;
     selectedArenaTier = save.version >= 4 ? Math.min(save.selectedArenaTier, arenaTierUnlocked) : 1;
@@ -1022,26 +1304,30 @@ const SPECIALIZATIONS = {
     batch:{ name:'Batch Cooking', description:'Attempt up to two Raw Fish each action at the normal success chance.' },
     flamekeeper:{ name:'Flamekeeper', description:'Each burn adds 15 percentage points to the next attempt; success resets the bonus.' }
   },
-  Woodchopping: {
+  Woodcutting: {
     forester:{ name:'Forester', description:'Every fifth successful chop produces one bonus log.' },
-    arborist:{ name:'Arborist', description:'Earn 50% more Woodchopping XP without changing log output.' },
+    arborist:{ name:'Arborist', description:'Earn 50% more Woodcutting XP without changing log output.' },
     trailblazer:{ name:'Trailblazer', description:'Chop 25% faster, but 20% of actions produce no log; ideal for leveling quickly.' }
+  },
+  Crafting: {
+    precision:{ name:'Precision Assembly', description:'Crafting actions never consume an extra component on a failed active assembly.' },
+    improvisation:{ name:'Improvisation', description:'Active assembly bonuses last 25% longer.' }
   }
 };
 
 // Per skill tuning. All equal by default.
 const SKILL_CFG = {
-  Mining: { xpPerAction: 20, onAction(s){
+  Mining: { xpPerAction: 20, onAction(s, options){
     if (skillSpecializations.Mining === 'vein') {
       specializationProgress.Mining += 1;
-      if (specializationProgress.Mining >= 5) { specializationProgress.Mining = 0; s.qty += 7; logActivity('Vein Mining released +7 Ore', 'specialization'); }
+      if (specializationProgress.Mining >= 5) { specializationProgress.Mining = 0; s.qty += 7; if (!options.silent) logActivity('Vein Mining released +7 Ore', 'specialization'); }
     } else s.qty += 1;
   } },
   Smithing: {
     xpPerAction: 20,
     waitingLabel:'waiting for Ore',
     canAct(){ return skills.find(s=>s.id==='Mining').qty >= SMELT_ORE_COST; },
-    onAction(s){
+    onAction(s, options){
       const mining = skills.find(x=>x.id==='Mining');
       mining.qty -= SMELT_ORE_COST;
       const failed = skillSpecializations.Smithing !== 'precision' && Math.random() < SMELT_FAIL_CHANCE;
@@ -1050,14 +1336,14 @@ const SKILL_CFG = {
         if (skillSpecializations.Smithing === 'reclamation') {
           while (scrap >= scrapRecycleCost()) { scrap -= scrapRecycleCost(); mining.qty += 1; }
         }
-        showToast(`Smelt failed: Scrap recovered`, 1200);
+      if (!options.silent) showToast(`Smelt failed: Scrap recovered`, 1200);
       } else s.qty += 1;
     }
   },
-  Fishing: { xpPerAction: 20, onAction(s){
+  Fishing: { xpPerAction: 20, onAction(s, options){
     if (skillSpecializations.Fishing === 'baitcraft') {
       specializationProgress.Fishing += 1;
-      if (specializationProgress.Fishing >= 5) { specializationProgress.Fishing = 0; basicBait += 1; logActivity('Baitcraft produced +1 Basic Bait', 'specialization'); }
+      if (specializationProgress.Fishing >= 5) { specializationProgress.Fishing = 0; basicBait += 1; if (!options.silent) logActivity('Baitcraft produced +1 Basic Bait', 'specialization'); }
       else s.qty += 1;
     } else s.qty += 1;
   } },
@@ -1087,16 +1373,16 @@ const SKILL_CFG = {
       s.lastOutcome = { text:`Last attempt: ${details.join(' · ')}`, kind:failures ? successes ? 'mixed' : 'failure' : 'success', at:Date.now() };
     }
   },
-  Woodchopping: {
+  Woodcutting: {
     xpPerAction:20,
     onAction(s){
-      specializationProgress.Woodchopping += 1;
+      specializationProgress.Woodcutting += 1;
       specializationProgress.WoodUpgrade += 1;
-      const missed = skillSpecializations.Woodchopping === 'trailblazer' && Math.random() < 0.20;
+      const missed = skillSpecializations.Woodcutting === 'trailblazer' && Math.random() < 0.20;
       let logs = missed ? 0 : 1;
-      if (skillSpecializations.Woodchopping === 'forester' && specializationProgress.Woodchopping % 5 === 0) logs += 1;
+      if (skillSpecializations.Woodcutting === 'forester' && specializationProgress.Woodcutting % 5 === 0) logs += 1;
       if (ownedSkillUps.has('logSplitter') && specializationProgress.WoodUpgrade % 8 === 0) logs += 1;
-      if (skillSpecializations.Woodchopping === 'arborist') s.xp += 10;
+      if (skillSpecializations.Woodcutting === 'arborist') s.xp += 10;
       woodInventory[selectedTree] += logs;
       s.qty += logs;
     }
@@ -1105,12 +1391,90 @@ const SKILL_CFG = {
     const keysPerAction = 0.10 * keyRateMult;
     keys += keysPerAction;
     // no s.qty for Combat right now
-  } }
+  } },
+  Crafting: {
+    xpPerAction: 20,
+    waitingLabel:'waiting for Bars and Pine Logs',
+    canAct(){
+      const bars = skills.find(skill => skill.id === 'Smithing')?.qty || 0;
+      const logs = woodInventory.pine || 0;
+      return bars >= 1 && logs >= 1;
+    },
+    onAction(s){
+      const resources = { Bars:skills.find(skill => skill.id === 'Smithing')?.qty || 0, 'Pine Logs':woodInventory.pine || 0 };
+      const definition = SKILL_REGISTRY?.get('Crafting');
+      if (!definition) return;
+      const activeMultiplier = craftingActiveBonus.expiresAt > performance.now() ? craftingActiveBonus.multiplier : 1;
+      const result = SKILL_FRAMEWORK.resolveSkillAction(definition, {
+        skill:{ id:'Crafting', level:s.lvl, xp:s.xp, nextXp:s.next, active:s.active, progress:s.progress, quantity:s.qty, specializationId:skillSpecializations.Crafting },
+        resources,
+        mode:activeMultiplier > 1 ? 'active' : 'idle',
+        activeMultiplier,
+        random:Math.random
+      });
+      if (!result.accepted) return;
+      skills.find(skill => skill.id === 'Smithing').qty -= result.consumed.Bars || 0;
+      woodInventory.pine -= result.consumed['Pine Logs'] || 0;
+      s.qty += result.produced['Crafted Components'] || 0;
+      if (result.produced['Crafted Components']) s.lastOutcome = { text:`Assembled +${result.produced['Crafted Components']} component`, kind:'success', at:Date.now() };
+    }
+  },
+  Music: {
+    xpPerAction: 20,
+    waitingLabel:'waiting for a valid instrument',
+    canAct(){ return hasSkillTool('Music'); },
+    onAction(s){ s.qty += 1; }
+  }
 };
 // Safe getter if you add new skills later
 function getSkillCfg(id){
   return SKILL_CFG[id] || { xpPerAction: 10, onAction(s){ /* no op */ } };
 }
+
+function craftingRecipeFor(itemId) {
+  return SKILL_FRAMEWORK?.craftingRecipes?.find(recipe => recipe.equipmentId === itemId) || null;
+}
+
+function skillToolRecipeFor(toolId) {
+  return SKILL_FRAMEWORK?.craftingRecipes?.find(recipe => recipe.skillToolId === toolId) || null;
+}
+
+function recipeRequirements(recipe) {
+  if (!recipe) return [];
+  return [
+    { type:'skillLevel', skill:'Crafting', value:recipe.requiredLevel },
+    ...Object.entries(recipe.inputs).map(([resource, value]) => ({ type:'resource', resource, value }))
+  ];
+}
+
+function recipeInputLabel(recipe) {
+  return recipe ? Object.entries(recipe.inputs).map(([resource, amount]) => `${amount} ${resource}`).join(' · ') : 'Legacy recipe';
+}
+
+function payCraftingRecipe(recipe) {
+  if (!recipe) return false;
+  const requirementState = evaluateRequirements(recipeRequirements(recipe));
+  if (!requirementState.met) return false;
+  const smithing = skills.find(skill => skill.id === 'Smithing');
+  const crafting = skills.find(skill => skill.id === 'Crafting');
+  Object.entries(recipe.inputs).forEach(([resource, amount]) => {
+    if (resource === 'Bars') smithing.qty -= amount;
+    if (resource === 'Crafted Components') crafting.qty -= amount;
+    if (resource === 'Pine Logs') woodInventory.pine -= amount;
+  });
+  return true;
+}
+
+function processSkillAction(skill, options = {}) {
+  const cfg = getSkillCfg(skill.id);
+  if (cfg.canAct && !cfg.canAct()) return false;
+  cfg.onAction(skill, options);
+  skill.xp += cfg.xpPerAction;
+  if (!options.silent) queueSkillXpDrop(skill, cfg.xpPerAction);
+  if (!options.silent) tryLevelUp(skill);
+  return true;
+}
+
 function cookingSuccessChance(level) {
   const upgrade = ownedSkillUps.has('heatControl1') ? 0.10 : 0;
   const spec = skillSpecializations.Cooking === 'careful' ? 0.20 : 0;
@@ -1118,19 +1482,21 @@ function cookingSuccessChance(level) {
   return Math.min(0.99, 0.30 + Math.max(0, level - 1) * 0.007 + upgrade + spec + streak);
 }
 function skillActionRate(skill) {
-  if (skill.id === 'Woodchopping') {
+  if (skill.id === 'Woodcutting') {
     let rate = TREE_TYPES.find(tree => tree.id === selectedTree)?.perSec || 1 / 2.5;
     if (ownedSkillUps.has('axe1')) rate *= 1.10;
     if (ownedSkillUps.has('axe2')) rate *= 1.12;
-    if (skillSpecializations.Woodchopping === 'trailblazer') rate *= 1.40;
+    if (skillSpecializations.Woodcutting === 'trailblazer') rate *= 1.40;
     return rate;
   }
   if (skill.id === 'Cooking' && skillSpecializations.Cooking === 'careful') return skill.basePerSec * 0.75;
+  if (skill.id === 'Music') return skill.basePerSec * (selectedSkillTool('Music')?.xpMultiplier || 1);
   return skill.basePerSec;
 }
 function effectiveProductionRate(skill, efficiency, honing, buff = 1) {
-  const sharedEfficiency = skill.id === 'Cooking' || skill.id === 'Woodchopping' ? 1 : efficiency;
-  return clampPerSec(skillActionRate(skill) * sharedEfficiency * honing * baseMult * buff * gearRateMult(skill.id) * fishingRateMult(skill.id));
+  const sharedEfficiency = skill.id === 'Cooking' || skill.id === 'Woodcutting' ? 1 : efficiency;
+  const activeBonus = skill.id === 'Crafting' && craftingActiveBonus.expiresAt > performance.now() ? craftingActiveBonus.multiplier : 1;
+  return clampPerSec(skillActionRate(skill) * sharedEfficiency * honing * baseMult * buff * activeBonus * gearRateMult(skill.id) * fishingRateMult(skill.id));
 }
 
 function productiveSkills() {
@@ -1151,7 +1517,8 @@ function applyOfflineProgress(savedAt) {
     bars: skills.find(skill => skill.id === 'Smithing').qty,
     fish: skills.find(skill => skill.id === 'Fishing').qty,
     cookedFish: skills.find(skill => skill.id === 'Cooking').qty,
-    logs: skills.find(skill => skill.id === 'Woodchopping').qty,
+    craftedComponents: skills.find(skill => skill.id === 'Crafting').qty,
+    logs: skills.find(skill => skill.id === 'Woodcutting').qty,
     burntFish,
     keys,
     scrap
@@ -1173,58 +1540,15 @@ function applyOfflineProgress(savedAt) {
       if (actions <= 0) continue;
       skill.progress -= actions;
 
-      if (skill.id === 'Mining') {
-        if (skillSpecializations.Mining === 'vein') {
-          const total = specializationProgress.Mining + actions;
-          skill.qty += Math.floor(total / 5) * 7;
-          specializationProgress.Mining = total % 5;
-        } else skill.qty += actions;
-      }
-      if (skill.id === 'Smithing') {
-        actions = Math.min(actions, Math.floor(skills.find(candidate => candidate.id === 'Mining').qty));
-        const ore = skills.find(candidate => candidate.id === 'Mining');
-        ore.qty -= actions;
-        const failures = skillSpecializations.Smithing === 'precision' ? 0 : actions * SMELT_FAIL_CHANCE;
-        scrap += failures * (skillSpecializations.Smithing === 'reclamation' ? 2 : 1);
-        if (skillSpecializations.Smithing === 'reclamation') {
-          const recycled = Math.floor(scrap / scrapRecycleCost());
-          scrap -= recycled * scrapRecycleCost();
-          ore.qty += recycled;
+      let processed = 0;
+      while (processed < actions) {
+        if (!processSkillAction(skill, { silent:true, offline:true })) {
+          skill.progress = 0;
+          break;
         }
-        skill.qty += actions - failures;
+        processed += 1;
       }
-      if (skill.id === 'Fishing') {
-        if (skillSpecializations.Fishing === 'baitcraft') {
-          const total = specializationProgress.Fishing + actions;
-          const baitActions = Math.floor(total / 5);
-          basicBait += baitActions;
-          skill.qty += actions - baitActions;
-          specializationProgress.Fishing = total % 5;
-        } else skill.qty += actions;
-      }
-      if (skill.id === 'Cooking') {
-        const rawFish = skills.find(candidate => candidate.id === 'Fishing');
-        const fishPerAction = skillSpecializations.Cooking === 'batch' ? 2 : 1;
-        const fishAttempts = Math.min(actions * fishPerAction, Math.floor(rawFish.qty));
-        rawFish.qty -= fishAttempts;
-        const successes = fishAttempts * cookingSuccessChance(skill.lvl);
-        const failures = fishAttempts - successes;
-        skill.qty += successes;
-        burntFish += failures;
-        if (ownedSkillUps.has('heatControl2')) rawFish.qty += failures * 0.25;
-      }
-      if (skill.id === 'Woodchopping') {
-        let logs = actions;
-        if (skillSpecializations.Woodchopping === 'trailblazer') logs *= 0.8;
-        if (skillSpecializations.Woodchopping === 'forester') logs += Math.floor((specializationProgress.Woodchopping + actions) / 5);
-        if (ownedSkillUps.has('logSplitter')) logs += Math.floor((specializationProgress.WoodUpgrade + actions) / 8);
-        specializationProgress.Woodchopping = (specializationProgress.Woodchopping + actions) % 5;
-        specializationProgress.WoodUpgrade = (specializationProgress.WoodUpgrade + actions) % 8;
-        if (skillSpecializations.Woodchopping === 'arborist') addXpSilently(skill, actions * 10);
-        woodInventory[selectedTree] += logs; skill.qty += logs;
-      }
-      if (skill.id === 'Combat') keys += actions * 0.10 * keyRateMult;
-      addXpSilently(skill, actions * getSkillCfg(skill.id).xpPerAction);
+      addXpSilently(skill, 0);
     }
 
     globalBuff.secs = Math.max(0, globalBuff.secs - dt);
@@ -1239,7 +1563,8 @@ function applyOfflineProgress(savedAt) {
     bars: skills.find(skill => skill.id === 'Smithing').qty - before.bars,
     fish: skills.find(skill => skill.id === 'Fishing').qty - before.fish,
     cookedFish: skills.find(skill => skill.id === 'Cooking').qty - before.cookedFish,
-    logs: skills.find(skill => skill.id === 'Woodchopping').qty - before.logs,
+    craftedComponents: skills.find(skill => skill.id === 'Crafting').qty - before.craftedComponents,
+    logs: skills.find(skill => skill.id === 'Woodcutting').qty - before.logs,
     burntFish: burntFish - before.burntFish,
     keys: keys - before.keys,
     scrap: scrap - before.scrap
@@ -1252,7 +1577,7 @@ function showOfflineSummary() {
   const hours = Math.floor(summary.seconds / 3600);
   const minutes = Math.floor((summary.seconds % 3600) / 60);
   const rows = [
-    ['Ore', summary.ore], ['Bars', summary.bars], ['Raw Fish', summary.fish], ['Cooked Fish', summary.cookedFish], ['Burnt Fish', summary.burntFish], ['Logs', summary.logs],
+    ['Ore', summary.ore], ['Bars', summary.bars], ['Raw Fish', summary.fish], ['Cooked Fish', summary.cookedFish], ['Crafted Components', summary.craftedComponents], ['Burnt Fish', summary.burntFish], ['Logs', summary.logs],
     ['Boss Keys', summary.keys], ['Scrap', summary.scrap]
   ].filter(([, amount]) => amount > 0.001);
   offlineSummary.innerHTML = `<p>Away for ${hours ? `${hours}h ` : ''}${minutes}m${summary.capped ? ` (${offlineMaxSeconds() / 3600}h cap reached)` : ''}.</p>${rows.length ? rows.map(([name, amount]) => `<div><span>${name}</span><strong>+${amount.toFixed(1)}</strong></div>`).join('') : '<p>No active skills produced resources.</p>'}`;
@@ -1422,11 +1747,15 @@ function renderSpecializations() {
   });
 }
 
+function reduceMotionEnabled() {
+  return gameSettings.reduceMotion || Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+}
+
 function applySettings() {
   muteAudio.checked = gameSettings.muted;
   audioVolume.value = gameSettings.volume;
   reduceMotion.checked = gameSettings.reduceMotion;
-  document.body.classList.toggle('reduce-motion', gameSettings.reduceMotion);
+  document.body.classList.toggle('reduce-motion', reduceMotionEnabled());
   window.MomentumAudio.configure(gameSettings);
 }
 
@@ -1479,7 +1808,9 @@ function captureArenaWeapon(state) {
     lifetime: weapon.lifetime,
     range: weapon.range,
     swingArcDeg: weapon.swingArcDeg,
-    trait: weapon.trait
+    trait: weapon.trait,
+    bossDamage: weapon.bossDamage || 0,
+    critChance: weapon.critChance || 0
   });
 }
 
@@ -1574,18 +1905,23 @@ function startPreparedArenaRun() {
 function renderGear() {
   gearList.innerHTML = '';
   const smithing = skills.find(s => s.id === 'Smithing');
+  const crafting = skills.find(s => s.id === 'Crafting');
   GEAR.forEach(item => {
     const owned = ownedGear.has(item.id);
     const equipped = equipment[item.slot] === item.id;
-    const requirementState = evaluateRequirements(item.requirements);
+    const recipe = craftingRecipeFor(item.id);
+    const requirementState = evaluateRequirements([...(item.requirements || []), ...recipeRequirements(recipe)]);
     const unlocked = requirementState.met;
     const row = document.createElement('div');
     row.className = 'workshop-row';
-    row.innerHTML = `<div style="font-weight:600">${item.name}</div><div style="opacity:.9; margin:2px 0 6px">${item.desc}</div><div class="flex"><span>${owned ? 'Crafted' : unlocked ? `Cost: ${item.cost} Bars` : `Requires: ${requirementState.missing.join(' · ')}`}</span><button class="btn" ${equipped || !unlocked ? 'disabled' : ''}>${equipped ? 'Equipped' : owned ? 'Equip' : unlocked ? 'Craft' : 'Locked'}</button></div>`;
+    row.innerHTML = `<div style="font-weight:600">${item.name}</div><div style="opacity:.9; margin:2px 0 6px">${item.desc}</div><div class="small recipe-preview">${recipe ? `${recipeInputLabel(recipe)} · Crafting ${recipe.requiredLevel}` : `Legacy cost: ${item.cost} Bars`}</div><div class="flex"><span>${owned ? 'Crafted' : unlocked ? 'Ready to assemble' : `Requires: ${requirementState.missing.join(' · ')}`}</span><button class="btn" ${equipped || (!owned && !unlocked) ? 'disabled' : ''}>${equipped ? 'Equipped' : owned ? 'Equip' : unlocked ? 'Assemble' : 'Locked'}</button></div>`;
     row.querySelector('button').onclick = () => {
       if (!ownedGear.has(item.id)) {
-        if (!evaluateRequirements([{type:'resource',resource:'Bars',value:item.cost}]).met) { showToast('Not enough Bars'); return; }
-        smithing.qty -= item.cost;
+        const required = [...(item.requirements || []), ...recipeRequirements(recipe)];
+        const state = evaluateRequirements(required);
+        if (!state.met) { showToast(`Requires ${state.missing.join(' · ')}`); return; }
+        if (recipe) payCraftingRecipe(recipe);
+        else smithing.qty -= item.cost;
         ownedGear.add(item.id);
         ownedItems.add(item.id);
         showToast(`Crafted ${item.name}`);
@@ -1595,6 +1931,31 @@ function renderGear() {
       if (item.slot === 'tool') equippedTool = item.id;
       renderGear();
       renderLoadout();
+    };
+    gearList.appendChild(row);
+  });
+
+  const skillToolRecipes = (SKILL_FRAMEWORK?.craftingRecipes || []).filter(recipe => recipe.skillToolId);
+  if (skillToolRecipes.length) gearList.insertAdjacentHTML('beforeend', '<h3>Skill Instruments</h3><div class="small workshop-note">Craft instruments to unlock new skills. Owned instruments stay in the skill-tool inventory and are selected from their skill card.</div>');
+  skillToolRecipes.forEach(recipe => {
+    const tool = getSkillToolDefinition(recipe.skillToolId);
+    if (!tool) return;
+    const owned = skillToolInventory.some(instance => instance.toolId === tool.id);
+    const requirementState = evaluateRequirements(recipeRequirements(recipe));
+    const unlocked = requirementState.met;
+    const row = document.createElement('div');
+    row.className = 'workshop-row skill-tool-row';
+    row.innerHTML = `<div style="font-weight:600">${tool.name}</div><div style="opacity:.9; margin:2px 0 6px">${tool.description}</div><div class="small recipe-preview">${recipeInputLabel(recipe)} · Music ${tool.xpMultiplier.toFixed(1)}× XP</div><div class="flex"><span>${owned ? 'Owned' : unlocked ? 'Ready to craft' : `Requires: ${requirementState.missing.join(' · ')}`}</span><button class="btn" ${owned || !unlocked ? 'disabled' : ''}>${owned ? 'Owned' : unlocked ? 'Craft' : 'Locked'}</button></div>`;
+    row.querySelector('button').onclick = () => {
+      if (owned) return;
+      if (!payCraftingRecipe(recipe)) { showToast(`Requires ${requirementState.missing.join(' · ')}`); return; }
+      addSkillTool(tool.id);
+      showToast(`${tool.name} crafted · Music unlocked`);
+      logActivity(`Crafted ${tool.name} · Music tool`, 'craft');
+      renderSkills();
+      renderGear();
+      renderLoadout();
+      saveGame();
     };
     gearList.appendChild(row);
   });
@@ -1624,7 +1985,7 @@ function renderGear() {
     gearList.appendChild(row);
   });
 
-  gearList.insertAdjacentHTML('afterbegin', `<div style="margin-bottom:10px">Bars: ${smithing.qty.toFixed(0)} · Rare Gems: ${rareGems} · Tool: ${ITEMS[equipment.tool]?.name || 'None'}</div>`);
+  gearList.insertAdjacentHTML('afterbegin', `<div style="margin-bottom:10px">Bars: ${smithing.qty.toFixed(0)} · Components: ${crafting.qty.toFixed(0)} · Rare Gems: ${rareGems} · Tool: ${ITEMS[equipment.tool]?.name || 'None'}</div><div class="small workshop-note">Crafting assembles equipment from idle components. Select Crafting in the Skill Matrix to keep the workshop supplied.</div>`);
 }
 
 function itemStats(item) {
@@ -1643,19 +2004,78 @@ function equipItem(itemId) {
   if (item.slot === 'tool') equippedTool = itemId;
   renderLoadout();
 }
+
+function lootMatchesFilter(instance) {
+  if (selectedLootFilter === 'all') return true;
+  if (selectedLootFilter === 'weapon') return ['melee', 'ranged', 'gun', 'magic'].includes(ITEMS[instance.instanceId]?.slot);
+  if (selectedLootFilter === 'armor') return ITEMS[instance.instanceId]?.slot === 'armor';
+  return instance.rarity === selectedLootFilter;
+}
+
+function renderLootInventory() {
+  if (!lootInventoryList) return;
+  if (lootFilterSelect) lootFilterSelect.value = selectedLootFilter;
+  const visible = lootInventory.filter(lootMatchesFilter);
+  const collection = Object.entries(collectionProgress).map(([source, progress]) => `${source} ${progress}`).join(' · ') || 'No combat collection progress yet.';
+  if (!visible.length) lootInventoryList.innerHTML = `<div class="small loot-empty">No generated loot matches this filter.</div>`;
+  else lootInventoryList.innerHTML = visible.map(instance => {
+    const definition = lootDefinitionFor(instance);
+    const rarity = lootRarityFor(instance);
+    const equipped = equippedLootIds().includes(instance.instanceId);
+    const inspection = LOOT_FRAMEWORK?.inspectItem(instance);
+    return `<article class="loot-inventory-item rarity-${instance.rarity}${selectedLootItemId === instance.instanceId ? ' is-selected' : ''}" style="--loot-color:${rarity.color}" data-loot-instance="${instance.instanceId}"><div class="loot-item-heading"><strong>${rarity.name}</strong><span>${definition?.name || 'Unknown item'}</span></div><div class="small">${definition?.slot || 'unknown'} · ${instance.affixes.length} affixes · ilvl ${instance.itemLevel}</div><div class="small loot-signature">${inspection?.signature || ''}</div><div class="flex"><button class="btn" data-loot-equip="${instance.instanceId}">${equipped ? 'Equipped' : 'Equip'}</button><button class="btn btn-quiet" data-loot-salvage="${instance.instanceId}" ${equipped ? 'disabled' : ''}>Salvage</button></div></article>`;
+  }).join('');
+  lootInventoryList.querySelectorAll('[data-loot-instance]').forEach(card => card.addEventListener('click', event => {
+    if (event.target.closest('button')) return;
+    selectedLootItemId = card.dataset.lootInstance;
+    renderLootInventory();
+  }));
+  lootInventoryList.querySelectorAll('[data-loot-equip]').forEach(button => button.onclick = () => {
+    const instance = lootInventory.find(candidate => candidate.instanceId === button.dataset.lootEquip);
+    const item = ITEMS[button.dataset.lootEquip];
+    const validation = instance && LOOT_FRAMEWORK?.validateEquipItem(instance, item?.slot);
+    if (!item || !ownedItems.has(item.id) || !validation?.accepted) {
+      if (validation?.reason) showToast(validation.reason);
+      return;
+    }
+    equipment[item.slot] = item.id;
+    showToast(`${item.name} equipped`);
+    renderLoadout();
+    saveGame();
+  });
+  lootInventoryList.querySelectorAll('[data-loot-salvage]').forEach(button => button.onclick = () => salvageLootItem(button.dataset.lootSalvage));
+  if (lootDetail) {
+    const inspection = selectedLootItemId ? inspectLoot(selectedLootItemId) : null;
+    lootDetail.innerHTML = inspection
+      ? `<div class="loot-detail-card rarity-${inspection.instance.rarity}" style="--loot-color:${inspection.rarity.color}"><strong>${inspection.rarity.name} ${inspection.definition.name}</strong><span>${inspection.definition.slot} · item level ${inspection.instance.itemLevel}</span><span>${inspection.signature}</span><div class="loot-affixes">${inspection.instance.affixes.map(affix => `<span>${affix.name} +${affix.value}${affix.unit === '%' ? '%' : ''}</span>`).join('') || '<span>No rolled affixes</span>'}</div></div>`
+      : '<div class="small">Select a drop to inspect its signature and rolled stats.</div>';
+    lootDetail.insertAdjacentHTML('beforeend', `<div class="small loot-collection-progress">Collection progress: ${collection}</div>`);
+  }
+}
+
 function renderLoadout() {
   if (!loadoutSlots) return;
   loadoutSlots.innerHTML = LOADOUT_SLOTS.map(slot => {
     const item = ITEMS[equipment[slot]];
-    return `<div class="loadout-slot"><div class="slot-name">${slot === 'magic' ? 'Magic Spell' : slot}</div><strong>${item?.name || 'Empty'}</strong><div class="small">${itemStats(item)}</div>${item ? `<button class="btn" data-unequip="${slot}">Unequip</button>` : ''}</div>`;
+    return `<div class="loadout-slot ${item ? 'is-equipped' : 'is-empty'}">${iconMarkup('loadout',slot,'slot-icon')}<div class="slot-copy"><div class="slot-name">${slot === 'magic' ? 'Magic Spell' : slot}</div><strong>${item?.name || 'Empty'}</strong><div class="small">${itemStats(item)}</div>${item ? `<button class="btn" data-unequip="${slot}">Unequip</button>` : ''}</div></div>`;
   }).join('');
   loadoutSlots.querySelectorAll('[data-unequip]').forEach(btn => btn.onclick = () => { const slot=btn.dataset.unequip; equipment[slot]=null; if(slot==='tool') equippedTool=null; renderLoadout(); });
   const fishing = skills.find(s=>s.id==='Fishing');
   const materials = [['Ore',skills[0].qty],['Bars',skills[1].qty],['Scrap',scrap],['Raw Fish',fishing.qty],['Cooked Fish',skills.find(skill=>skill.id==='Cooking').qty],['Burnt Fish',burntFish],['Pine Logs',woodInventory.pine],['Oak Logs',woodInventory.oak],['Yew Logs',woodInventory.yew],['Ancient Logs',woodInventory.ancient],['Basic Bait',basicBait],['Uncommon Fish',uncommonFish],['Rare Gems',rareGems]];
   const owned = [...ownedItems].map(id => ITEMS[id]).filter(Boolean);
   const foods = ['cookedFish','smokedRation','surgefinRation'].map(id => ITEMS[id]);
-  inventoryList.innerHTML = `<div class="inventory-materials">${materials.map(([n,q])=>`<div><span>${n}</span><strong>${Number(q).toFixed(0)}</strong></div>`).join('')}<div><span>Smoked Rations</span><strong>${smokedRations}</strong></div><div><span>Surgefin Rations</span><strong>${surgefinRations}</strong></div></div><h3>Owned Equipment</h3>${owned.filter(item=>item.slot!=='food').map(item=>`<div class="inventory-item"><div><strong>${item.name}</strong><div class="small">${itemStats(item)}</div></div><button class="btn" data-equip="${item.id}">Equip</button></div>`).join('')}<h3>Food</h3>${foods.map(item=>`<div class="inventory-item"><div><strong>${item.name} ×${Math.floor(foodCount(item.id))}</strong><div class="small">${item.detail}</div></div><button class="btn" data-equip="${item.id}" ${foodCount(item.id)<1?'disabled':''}>Equip</button></div>`).join('')}`;
+  inventoryList.innerHTML = `<div class="inventory-materials">${materials.map(([n,q])=>`<div>${iconMarkup('resource',n,'material-icon')}<span>${n}</span><strong>${Number(q).toFixed(0)}</strong></div>`).join('')}<div>${iconMarkup('resource','Smoked Rations','material-icon')}<span>Smoked Rations</span><strong>${smokedRations}</strong></div><div>${iconMarkup('resource','Surgefin Rations','material-icon')}<span>Surgefin Rations</span><strong>${surgefinRations}</strong></div><div class="inventory-salvage"><span>Salvage</span><strong>${salvageMaterials}</strong></div></div><h3>Owned Equipment</h3>${owned.filter(item=>item.slot!=='food' && !item.dynamicLoot).map(item=>`<div class="inventory-item"><div class="inventory-item-copy">${iconMarkup('loadout',item.slot,'item-icon')}<div><strong>${item.name}</strong><div class="small">${itemStats(item)}</div></div></div><button class="btn" data-equip="${item.id}">Equip</button></div>`).join('')}<h3>Skill Instruments</h3>${skillToolInventory.map(instance=>{ const tool=getSkillToolDefinition(instance.toolId); return `<div class="inventory-item skill-tool-inventory"><div class="inventory-item-copy"><span class="skill-icon-fallback">♫</span><div><strong>${tool?.name || instance.toolId}</strong><div class="small">${tool?.description || 'Skill training tool'}</div></div></div><button class="btn btn-quiet" data-discard-tool="${instance.instanceId}">Salvage</button></div>`; }).join('')}<h3>Food</h3>${foods.map(item=>`<div class="inventory-item"><div class="inventory-item-copy">${iconMarkup('resource',item.name === 'Cooked Fish' ? 'Cooked Fish' : `${item.name}s`,'item-icon')}<div><strong>${item.name} ×${Math.floor(foodCount(item.id))}</strong><div class="small">${item.detail}</div></div></div><button class="btn" data-equip="${item.id}" ${foodCount(item.id)<1?'disabled':''}>Equip</button></div>`).join('')}`;
   inventoryList.querySelectorAll('[data-equip]').forEach(btn => btn.onclick = () => equipItem(btn.dataset.equip));
+  inventoryList.querySelectorAll('[data-discard-tool]').forEach(btn => btn.onclick = () => {
+    const tool = skillToolInventory.find(instance => instance.instanceId === btn.dataset.discardTool);
+    if (!tool || !removeSkillTool(tool.instanceId)) return;
+    showToast('Skill instrument salvaged');
+    logActivity(`Salvaged ${getSkillToolDefinition(tool.toolId)?.name || 'skill instrument'}`, 'craft');
+    renderSkills();
+    renderLoadout();
+    saveGame();
+  });
+  renderLootInventory();
 }
 
 /* =====================================
@@ -1670,13 +2090,14 @@ function restoreViewportAfterSkillToggle(scrollPosition) {
 
 function renderSkills() {
   skillsDiv.innerHTML = '';
-  skills.forEach(s=>{
-    const card = document.createElement('div');
+  skills.filter(skill => skill.id !== 'Music' || hasSkillTool('Music')).forEach(s=>{
+    const card = document.createElement('article');
     card.className = `skill-card skill-${s.id.toLowerCase()}`;
-    card.style.marginBottom = '8px';
+    card.setAttribute('aria-label', `${s.id} skill controls`);
 
     const chk = document.createElement('input');
     chk.type = 'checkbox';
+    chk.id = `skill-toggle-${s.id.toLowerCase()}`;
     chk.checked = s.active;
     let skillToggleScroll = null;
     const rememberSkillScroll = () => { skillToggleScroll = { left:window.scrollX, top:window.scrollY }; };
@@ -1689,34 +2110,51 @@ function renderSkills() {
     };
 
     const lbl = document.createElement('label');
-    lbl.style.marginLeft = '6px';
+    lbl.htmlFor = chk.id;
     lbl.textContent = s.id;
+
+    const icon = document.createElement('span');
+    const iconPosition = UI_ICONS.skill[s.id];
+    icon.className = iconPosition ? 'game-icon icon-skill skill-icon' : 'skill-icon-fallback';
+    if (iconPosition) {
+      icon.style.setProperty('--icon-x', `${iconPosition[0]}%`);
+      icon.style.setProperty('--icon-y', `${iconPosition[1]}%`);
+    } else icon.textContent = '◆';
+    icon.setAttribute('aria-hidden', 'true');
 
     // Tick progress meter (pays out when full)
     const tickMeter = document.createElement('div');
-    tickMeter.className = 'meter';
+    tickMeter.className = 'meter is-action';
+    tickMeter.setAttribute('role', 'progressbar');
+    tickMeter.setAttribute('aria-label', `${s.id} action progress`);
+    tickMeter.setAttribute('aria-valuemin', '0');
+    tickMeter.setAttribute('aria-valuemax', '100');
+    tickMeter.setAttribute('aria-valuenow', '0');
     const tickFill = document.createElement('i');
     tickFill.style.width = '0%';
     tickMeter.appendChild(tickFill);
 
     // NEW: XP meter
     const xpMeter = document.createElement('div');   // NEW
-    xpMeter.className = 'meter';                     // NEW
-    xpMeter.style.marginTop = '4px';                 // NEW
+    xpMeter.className = 'meter is-xp';               // NEW
+    xpMeter.setAttribute('role', 'progressbar');
+    xpMeter.setAttribute('aria-label', `${s.id} level progress`);
+    xpMeter.setAttribute('aria-valuemin', '0');
+    xpMeter.setAttribute('aria-valuemax', '100');
+    xpMeter.setAttribute('aria-valuenow', '0');
     const xpFill = document.createElement('i');      // NEW
     xpFill.style.width = '0%';                       // NEW
     xpFill.style.background = '#68e0ff';             // NEW a different blue for XP
     xpMeter.appendChild(xpFill);                     // NEW
 
     const row = document.createElement('div');
-    row.className = 'flex';
-    row.style.marginTop = '6px';
+    row.className = 'skill-stats';
 
     const rateEl = document.createElement('span'); // per sec
     rateEl.className = 'small';
 
     const qtyEl = document.createElement('span');  // total
-    qtyEl.className = 'small';
+    qtyEl.className = 'small skill-total';
 
     row.appendChild(rateEl);
     row.appendChild(qtyEl);
@@ -1726,12 +2164,38 @@ function renderSkills() {
     const stateEl = document.createElement('span');
     stateEl.className = 'skill-state is-paused';
     stateEl.textContent = 'Paused';
-    card.appendChild(chk);
-    card.appendChild(lbl);
-    card.appendChild(stateEl);
+    const header = document.createElement('div');
+    header.className = 'skill-card-header';
+    const identity = document.createElement('div');
+    identity.className = 'skill-identity';
+    identity.append(chk, icon, lbl);
+    header.append(identity, stateEl);
+    card.appendChild(header);
     card.appendChild(tickMeter);
     card.appendChild(xpMeter);                      // NEW
     card.appendChild(row);
+    if (s.id === 'Crafting') {
+      const recipeLabel = document.createElement('label');
+      recipeLabel.className = 'field-label';
+      recipeLabel.htmlFor = 'crafting-recipe-select';
+      recipeLabel.textContent = 'Assembly target';
+      const recipeSelect = document.createElement('select');
+      recipeSelect.id = recipeLabel.htmlFor;
+      recipeSelect.className = 'btn skill-action-select';
+      recipeSelect.innerHTML = (SKILL_FRAMEWORK?.craftingRecipes || []).map(recipe => `<option value="${recipe.id}">${recipe.name} · Lv ${recipe.requiredLevel}</option>`).join('');
+      recipeSelect.value = craftingSelectedRecipe;
+      recipeSelect.onchange = () => { craftingSelectedRecipe = recipeSelect.value; saveGame(); renderGear(); };
+      card.appendChild(recipeLabel);
+      card.appendChild(recipeSelect);
+      const assemblyButton = document.createElement('button');
+      assemblyButton.type = 'button';
+      assemblyButton.className = 'btn crafting-activity-button';
+      assemblyButton.textContent = 'Play Assembly Run';
+      assemblyButton.onclick = () => openCraftingAssembly();
+      card.appendChild(assemblyButton);
+      s._craftingRecipeSelect = recipeSelect;
+      s._craftingActivityButton = assemblyButton;
+    }
     if (s.id === 'Cooking') {
       const outcomeEl = document.createElement('div');
       outcomeEl.className = 'cooking-outcome small';
@@ -1739,22 +2203,77 @@ function renderSkills() {
       card.appendChild(outcomeEl);
       s._outcomeEl = outcomeEl;
     }
-    if (s.id === 'Woodchopping') {
+    if (s.id === 'Woodcutting') {
+      const treeLabel = document.createElement('label');
+      treeLabel.className = 'field-label';
+      treeLabel.htmlFor = `skill-tree-${s.id.toLowerCase()}`;
+      treeLabel.textContent = 'Tree target';
       const treeSelect = document.createElement('select');
+      treeSelect.id = treeLabel.htmlFor;
       treeSelect.className = 'btn skill-action-select';
       treeSelect.innerHTML = TREE_TYPES.map(tree => `<option value="${tree.id}" ${s.lvl < tree.level ? 'disabled' : ''}>${tree.name} — level ${tree.level} · ${tree.seconds}s/action</option>`).join('');
       treeSelect.value = selectedTree;
       treeSelect.onchange = () => { selectedTree = treeSelect.value; startWarmup(); };
+      card.appendChild(treeLabel);
       card.appendChild(treeSelect);
       s._treeSelect = treeSelect;
     }
+    if (s.id === 'Music') {
+      const toolLabel = document.createElement('label');
+      toolLabel.className = 'field-label';
+      toolLabel.htmlFor = 'music-tool-select';
+      toolLabel.textContent = 'Instrument target';
+      const toolSelect = document.createElement('select');
+      toolSelect.id = toolLabel.htmlFor;
+      toolSelect.className = 'btn skill-action-select';
+      toolSelect.innerHTML = skillToolsFor('Music').map(tool => `<option value="${tool.id}">${tool.name} · ${tool.xpMultiplier.toFixed(1)}× XP</option>`).join('');
+      toolSelect.value = selectedSkillTool('Music')?.id || '';
+      toolSelect.onchange = () => { s.selectedToolId = toolSelect.value; saveGame(); startWarmup(); };
+      card.appendChild(toolLabel);
+      card.appendChild(toolSelect);
+      s._musicSelect = toolSelect;
+    }
     card.appendChild(unlockEl);
+    const xpDropHost = document.createElement('div');
+    xpDropHost.className = 'xp-drop-host';
+    xpDropHost.setAttribute('aria-hidden', 'true');
+    card.appendChild(xpDropHost);
+    card.addEventListener('click', event => {
+      if (event.target.closest('input, select, button, a, label')) return;
+      chk.checked = !chk.checked;
+      chk.dispatchEvent(new Event('change', { bubbles:true }));
+      chk.focus({ preventScroll:true });
+    });
     skillsDiv.appendChild(card);
 
-    s._els = { card, tickFill, xpFill, rateEl, qtyEl, unlockEl, stateEl, label: lbl };
+    s._els = { card, tickMeter, xpMeter, tickFill, xpFill, rateEl, qtyEl, unlockEl, stateEl, label: lbl, xpDropHost };
   });
 
-  honeSelect.innerHTML = '<option value="">None</option>' + skills.map(s=> `<option value="${s.id}">${s.id}</option>`).join('');
+  honeSelect.innerHTML = '<option value="">None</option>' + skills.filter(skill => skill.id !== 'Music' || hasSkillTool('Music')).map(s=> `<option value="${s.id}">${s.id}</option>`).join('');
+}
+
+function queueSkillXpDrop(skill, amount) {
+  if (!skill?._els?.xpDropHost || amount <= 0 || document.visibilityState !== 'visible') return;
+  skill._pendingXpDrop = (skill._pendingXpDrop || 0) + amount;
+  if (skill._xpDropTimer) return;
+  skill._xpDropTimer = setTimeout(() => {
+    const gained = skill._pendingXpDrop || 0;
+    skill._pendingXpDrop = 0;
+    skill._xpDropTimer = null;
+    if (!gained || !skill._els?.xpDropHost) return;
+    const drop = document.createElement('span');
+    drop.className = 'xp-drop';
+    drop.textContent = `+${Math.round(gained)} XP`;
+    drop.style.top = `${Math.min(2,skill._els.xpDropHost.childElementCount) * 10}px`;
+    drop.style.right = `${skill._els.xpDropHost.childElementCount % 2 ? 5 : 0}px`;
+    skill._els.xpDropHost.appendChild(drop);
+    skill._els.card.classList.remove('xp-pulse');
+    void skill._els.card.offsetWidth;
+    skill._els.card.classList.add('xp-pulse');
+    while (skill._els.xpDropHost.children.length > 3) skill._els.xpDropHost.firstElementChild.remove();
+    setTimeout(() => drop.remove(), 1050);
+    setTimeout(() => skill._els?.card.classList.remove('xp-pulse'), 500);
+  }, 240);
 }
 
 
@@ -1799,50 +2318,105 @@ function combatBuildLabel() {
   return roots.length ? roots.map(talent => talent.branch[0].toUpperCase() + talent.branch.slice(1)).join(' / ') : 'Unassigned';
 }
 
+let operationsExpanded = false;
+function setOperationsExpanded(expanded) {
+  operationsExpanded = Boolean(expanded);
+  operationsBoard?.classList.toggle('is-collapsed', !operationsExpanded);
+  if (operationsToggle) {
+    operationsToggle.setAttribute('aria-expanded', String(operationsExpanded));
+    operationsToggle.textContent = operationsExpanded ? 'Hide contracts' : 'Show contracts';
+  }
+}
+
 function setGameView(view) {
-  currentGameView = view === 'field' ? 'field' : 'hub';
+  const nextView = view === 'field' ? 'field' : 'hub';
+  const changed = currentGameView !== nextView;
+  currentGameView = nextView;
   document.body.dataset.gameView = currentGameView;
-  document.querySelectorAll('[data-game-view]').forEach(button => { const active=button.dataset.gameView === currentGameView; button.classList.toggle('is-active',active); button.setAttribute('aria-pressed',String(active)); });
+  document.querySelectorAll('[data-game-view]').forEach(button => {
+    const active=button.dataset.gameView === currentGameView;
+    button.classList.toggle('is-active',active);
+    button.setAttribute('aria-pressed',String(active));
+    if (active) button.setAttribute('aria-current','page'); else button.removeAttribute('aria-current');
+  });
+  document.querySelectorAll('[data-quick-view]').forEach(button => {
+    const active=button.dataset.quickView === currentGameView;
+    button.classList.toggle('is-active',active);
+    if (active) button.setAttribute('aria-current','page'); else button.removeAttribute('aria-current');
+  });
   const field = ['.card-arena','.card-frontier','.card-fishing'];
   const hub = ['.card-skills','.card-honing','.card-upgrades','.card-workshop','.card-save','.card-inventory','.card-ledger'];
   field.forEach(selector => document.querySelector(selector)?.classList.add('view-field'));
   hub.forEach(selector => document.querySelector(selector)?.classList.add('view-hub'));
   document.querySelector('.operations-board')?.classList.toggle('view-field-emphasis', currentGameView === 'field');
+  if (changed) requestAnimationFrame(() => {
+    document.getElementById('gameViewRoot')?.scrollIntoView({ block:'start', behavior:reduceMotionEnabled() ? 'auto' : 'smooth' });
+  });
 }
 
+let objectiveRenderSignature = '';
 function updateObjective() {
   const mining = skills.find(skill => skill.id === 'Mining');
   const smithing = skills.find(skill => skill.id === 'Smithing');
+  const crafting = skills.find(skill => skill.id === 'Crafting');
   const combat = skills.find(skill => skill.id === 'Combat');
+  const hasAccountProgress = skills.some(skill => skill.lvl > 1 || skill.qty > 0);
   let title = 'Push the frontier';
   let detail = 'Refine weapons, improve your times, and prepare for higher arena tiers.';
   let objectiveProgress = 100;
-  if (!skills.some(skill => skill.active)) {
+  let action = 'review-skills';
+  let actionLabel = 'Review skills';
+  if (!skills.some(skill => skill.active) && !hasAccountProgress) {
     title = 'Start your first skill'; detail = 'Activate Mining to begin producing Ore.'; objectiveProgress = 0;
+    action = 'start-mining'; actionLabel = 'Activate Mining';
   } else if (mining.lvl < 5 || smithing.lvl < 5) {
-    title = 'Reach your first recipe milestones'; objectiveProgress = Math.min(100,(mining.lvl + smithing.lvl) / 10 * 100); detail = `Mining ${mining.lvl}/5 · Smithing ${smithing.lvl}/5. Smithing needs Ore but does not reduce efficiency while blocked.`;
+    const miningProgress = Math.min(5,mining.lvl);
+    const smithingProgress = Math.min(5,smithing.lvl);
+    title = 'Reach your first recipe milestones'; objectiveProgress = (miningProgress + smithingProgress) / 10 * 100; detail = `Mining ${miningProgress}/5 · Smithing ${smithingProgress}/5. Smithing needs Ore but does not reduce efficiency while blocked.`;
+    action = 'review-skills'; actionLabel = 'Review skills';
+  } else if (crafting.qty < 1) {
+    title = 'Supply the Workshop'; objectiveProgress = 20; detail = 'Activate Woodcutting, Smithing, and Crafting to assemble your first workshop component.';
+    action = 'review-skills'; actionLabel = 'Start Crafting';
   } else if (!ownedGear.size) {
-    title = 'Craft your first equipment'; objectiveProgress = 25; detail = 'Open the Workshop and spend Bars on a weapon or specialized Tool.';
+    title = 'Craft your first equipment'; objectiveProgress = 35; detail = 'Use Bars and Crafted Components in the Workshop to assemble a field-ready item.';
+    action = 'craft-gear'; actionLabel = 'Open Workshop';
   } else if (combat.lvl < 5 || Math.floor(keys) < ARENA_TIERS[0].keyCost) {
     title = 'Prepare for the Initiate'; objectiveProgress = Math.min(100,((combat.lvl/5)+(Math.floor(keys)/ARENA_TIERS[0].keyCost))/2*100); detail = `Combat ${combat.lvl}/5 · Boss Keys ${Math.floor(keys)}/${ARENA_TIERS[0].keyCost}.`;
+    action = 'review-skills'; actionLabel = 'Train Combat';
   } else if (arenaWins[0] === 0) {
     title = 'Defeat the Initiate'; objectiveProgress = 75; detail = 'Choose Gun or equip an Iron Blade, then prepare an Arena run.';
+    action = 'open-field'; actionLabel = 'Enter the Field';
   } else if (arenaWins[1] === 0) {
     title = 'Reach and defeat Vanguard'; objectiveProgress = Math.min(90,combat.lvl/10*75); detail = `Reach Combat 10, then beat Vanguard. Current Combat: ${combat.lvl}.`;
+    action = 'open-field'; actionLabel = 'Enter the Field';
   } else if (arenaWins[2] === 0) {
     title = 'Conquer Apex'; objectiveProgress = Math.min(90,combat.lvl/15*75); detail = `Reach Combat 15 and complete the current frontier. Current Combat: ${combat.lvl}.`;
+    action = 'open-field'; actionLabel = 'Enter the Field';
   } else if (masteryStars() < 6) {
     const next = FRONTIER_DIRECTIVES.find(directive => !completedDirectives.has(directive.id));
     title = 'Master the Frontier'; objectiveProgress = masteryStars()/6*100; detail = next ? `Complete ${next.name} for your next Mastery Star. ${masteryStars()}/6 earned.` : `${masteryStars()}/6 Mastery Stars earned.`;
+    action = 'open-frontier'; actionLabel = 'Open Mastery';
   } else if (gauntletRecord.clears === 0) {
     title = 'Clear the Frontier Gauntlet'; objectiveProgress = 50; detail = 'Lock one build and defeat Initiate, Vanguard, and Apex in sequence.';
+    action = 'open-frontier'; actionLabel = 'Open Mastery';
   }
+  const signature = JSON.stringify([title,detail,Math.round(objectiveProgress),action,actionLabel]);
+  if (signature === objectiveRenderSignature) return;
+  objectiveRenderSignature = signature;
   objectiveTitle.textContent = title;
   objectiveDetail.textContent = detail;
   objectiveProgressFill.style.width = `${Math.max(0,Math.min(100,objectiveProgress))}%`;
+  objectiveProgressFill.parentElement?.setAttribute('aria-valuenow', String(Math.round(objectiveProgress)));
+  if (objectiveActionBtn) {
+    objectiveActionBtn.dataset.objectiveAction = action;
+    objectiveActionBtn.textContent = actionLabel;
+  }
 }
 
 let last = performance.now();
+let lastUiRefresh = 0;
+let statusRenderSignature = '';
+let totalsRenderSignature = '';
 function tick(now) {
   const dt = Math.min(0.25, (now - last)/1000);
   last = now;
@@ -1859,25 +2433,18 @@ function tick(now) {
 
   const a = Math.max(1, Math.round(warmup.currentA));
   const m = mOfA(a) * (globalBuff.secs > 0 ? 1.5 : 1.0);
-effReadout.textContent = `Efficiency m(a): ${m.toFixed(2)}x  Honed: ${hone || 'None'}  Slots: ${unlockedNormalSlots}`;
-
-  
-
-  activeCountTag.textContent = `active: ${skills.filter(s=>s.active).length} · productive: ${productiveSkills().length}`;
 
   if (globalBuff.secs>0) {
     globalBuff.secs -= dt;
     if (globalBuff.secs<0) globalBuff.secs = 0;
   }
   if (fishingBuffSecs > 0) fishingBuffSecs = Math.max(0, fishingBuffSecs - dt);
-  buffLabel.textContent = globalBuff.secs>0 ? `1.5x ${Math.ceil(globalBuff.secs)}s` : 'none';
 
  
 // tick based production
 const actives = productiveSkills();
 actives.forEach(s => {
   const cfg = getSkillCfg(s.id);
-  if (cfg.canAct && !cfg.canAct()) return;
   const H = hone === s.id ? honingMult : 1.0;
   const perSec = effectiveProductionRate(s, m, H);
 
@@ -1885,17 +2452,29 @@ actives.forEach(s => {
 
   while (s.progress >= 1) {
     s.progress -= 1;
-
-    cfg.onAction(s, m);
-    s.xp += cfg.xpPerAction;
-
-    tryLevelUp(s);
+    processSkillAction(s);
   }
-}); 
+});
+
+  // Action meters are direct gameplay feedback and stay on the animation frame;
+  // text-heavy account UI is refreshed less often below.
+  skills.filter(skill => skill._els?.card?.isConnected).forEach(skill => {
+    const tickPct = Math.min(100, skill.progress * 100);
+    skill._els.tickFill.style.width = `${tickPct.toFixed(1)}%`;
+  });
+
+  if (now - lastUiRefresh < 100) {
+    requestAnimationFrame(tick);
+    return;
+  }
+  lastUiRefresh = now;
+  effReadout.textContent = `${m.toFixed(2)}× · ${hone ? `${hone} focused` : 'No focus'} · ${unlockedNormalSlots} slots`;
+  activeCountTag.textContent = `${skills.filter(s=>s.active).length} active · ${productiveSkills().length} productive`;
+  buffLabel.textContent = globalBuff.secs>0 ? `1.5× · ${Math.ceil(globalBuff.secs)}s` : 'None';
 
 
 
-skills.forEach(s=>{
+skills.filter(s => s._els?.card?.isConnected).forEach(s=>{
   const H = hone === s.id ? honingMult : 1.0;
   const cfg = getSkillCfg(s.id);
   const waiting = Boolean(s.active && cfg.canAct && !cfg.canAct());
@@ -1908,24 +2487,34 @@ skills.forEach(s=>{
 
   const tickPct = Math.min(100, s.progress * 100);
   s._els.tickFill.style.width = tickPct.toFixed(1) + '%';
+  s._els.tickMeter.setAttribute('aria-valuenow', String(Math.round(tickPct)));
 
   const xpPct = Math.min(100, (s.xp / s.next) * 100);
   s._els.xpFill.style.width = xpPct.toFixed(1) + '%';
+  s._els.xpMeter.setAttribute('aria-valuenow', String(Math.round(xpPct)));
 
   // Lvl / XP / Rate / Total Labels
   s._els.rateEl.textContent =
-    `Lvl: ${s.lvl}/${MAX_SKILL_LEVEL}  XP: ${Math.floor(s.xp)}/${s.next}  Rate: ${perSec.toFixed(2)}/s` + (H>1 ? ' honed' : '') + (waiting ? ` — ${cfg.waitingLabel || 'blocked'}` : '') + (s.id === 'Cooking' ? ` · success ${(cookingSuccessChance(s.lvl) * 100).toFixed(0)}%` : '') + (s.id === 'Woodchopping' ? ` · ${TREE_TYPES.find(tree => tree.id === selectedTree).name}` : '');
-  s._els.qtyEl.textContent = `Total: ${s.qty.toFixed(1)}`;
+    `Lv ${s.lvl} · ${Math.floor(s.xp)}/${s.next} XP · ${perSec.toFixed(2)}/s` + (waiting ? ` · ${cfg.waitingLabel || 'blocked'}` : '') + (s.id === 'Cooking' ? ` · ${(cookingSuccessChance(s.lvl) * 100).toFixed(0)}% success` : '') + (s.id === 'Woodcutting' ? ` · ${TREE_TYPES.find(tree => tree.id === selectedTree).name}` : '');
+  s._els.qtyEl.textContent = `${s.qty.toFixed(1)} total`;
   const milestone = nextSkillMilestone(s);
-  if (s.id === 'Woodchopping' && s._treeSelect) {
+  if (s.id === 'Woodcutting' && s._treeSelect) {
     Array.from(s._treeSelect.options).forEach((option, index) => option.disabled = s.lvl < TREE_TYPES[index].level);
   }
   if (s.id === 'Cooking' && s._outcomeEl && s.lastOutcome) {
     s._outcomeEl.textContent = s.lastOutcome.text;
     s._outcomeEl.className = `cooking-outcome small is-${s.lastOutcome.kind}`;
   }
+  if (s.id === 'Crafting') {
+    if (s._craftingRecipeSelect) s._craftingRecipeSelect.value = craftingSelectedRecipe;
+    if (s._craftingActivityButton) {
+      const remaining = Math.max(0, craftingActiveBonus.expiresAt - performance.now());
+      s._craftingActivityButton.textContent = remaining > 0 ? `Assembly Boost · ${Math.ceil(remaining / 1000)}s` : 'Play Assembly Run';
+      s._craftingActivityButton.classList.toggle('is-active', remaining > 0);
+    }
+  }
   s._els.unlockEl.textContent = milestone ? `Next unlock: ${milestone.label} at level ${milestone.level}` : 'All current milestones unlocked';
-  s._els.label.style.color = H>1 ? '#b9ffcd' : '#e6e6f0';
+  s._els.label.style.color = '';
 });
 
 
@@ -1936,15 +2525,19 @@ skills.forEach(s=>{
   const ore = skills.find(s=>s.id==='Mining')?.qty ?? 0;
   const bars = skills.find(s=>s.id==='Smithing')?.qty ?? 0;
   const combatXP = skills.find(s=>s.id==='Combat')?.xp ?? 0;
-  totalsDiv.innerHTML = `
-    <div class="resource-groups">
-      <section><h3>Forging</h3><div class="resource-chip"><span>Ore</span><strong>${ore.toFixed(1)}</strong></div><div class="resource-chip"><span>Bars</span><strong>${bars.toFixed(1)}</strong></div><div class="resource-chip"><span>Scrap</span><strong>${scrap.toFixed(1)}</strong></div></section>
-      <section><h3>Provisions</h3><div class="resource-chip"><span>Raw Fish</span><strong>${skills.find(s=>s.id==='Fishing').qty.toFixed(1)}</strong></div><div class="resource-chip"><span>Cooked Fish</span><strong>${skills.find(s=>s.id==='Cooking').qty.toFixed(1)}</strong></div><div class="resource-chip"><span>Basic Bait</span><strong>${basicBait}</strong></div><div class="resource-chip"><span>Uncommon Fish</span><strong>${uncommonFish}</strong></div></section>
-      <section><h3>Timber</h3><div class="resource-chip"><span>Pine</span><strong>${woodInventory.pine.toFixed(0)}</strong></div><div class="resource-chip"><span>Oak</span><strong>${woodInventory.oak.toFixed(0)}</strong></div><div class="resource-chip"><span>Yew</span><strong>${woodInventory.yew.toFixed(0)}</strong></div><div class="resource-chip"><span>Ancient</span><strong>${woodInventory.ancient.toFixed(0)}</strong></div></section>
-      <section><h3>Frontier</h3><div class="resource-chip"><span>Boss Keys</span><strong>${Math.floor(keys)}</strong></div><div class="resource-chip"><span>Rare Gems</span><strong>${rareGems}</strong></div><div class="resource-chip"><span>Fishing Boost</span><strong>${fishingBuffSecs > 0 ? `${Math.ceil(fishingBuffSecs)}s` : 'None'}</strong></div><div class="resource-chip"><span>Burnt Fish</span><strong>${burntFish.toFixed(1)}</strong></div></section>
-      <section><h3>Party Rewards</h3><div class="resource-chip"><span>Hunting XP</span><strong>${Math.floor(huntingXp)}</strong></div><div class="resource-chip"><span>Game</span><strong>${trappedGame}</strong></div></section>
-    </div>
-  `;
+  const totalsSignature = JSON.stringify([ore.toFixed(1),bars.toFixed(1),skills.find(s=>s.id==='Crafting').qty.toFixed(1),scrap.toFixed(1),skills.find(s=>s.id==='Fishing').qty.toFixed(1),skills.find(s=>s.id==='Cooking').qty.toFixed(1),basicBait,uncommonFish,woodInventory.pine.toFixed(0),woodInventory.oak.toFixed(0),woodInventory.yew.toFixed(0),woodInventory.ancient.toFixed(0),Math.floor(keys),rareGems,Math.ceil(fishingBuffSecs),burntFish.toFixed(1),Math.floor(huntingXp),trappedGame]);
+  if (totalsSignature !== totalsRenderSignature) {
+    totalsRenderSignature = totalsSignature;
+    totalsDiv.innerHTML = `
+      <div class="resource-groups">
+        <section><h3>Forging</h3>${resourceChipMarkup('Ore',ore.toFixed(1))}${resourceChipMarkup('Bars',bars.toFixed(1))}${resourceChipMarkup('Crafted Parts',skills.find(s=>s.id==='Crafting').qty.toFixed(1),'Crafted Components')}${resourceChipMarkup('Scrap',scrap.toFixed(1))}</section>
+        <section><h3>Provisions</h3>${resourceChipMarkup('Raw Fish',skills.find(s=>s.id==='Fishing').qty.toFixed(1))}${resourceChipMarkup('Cooked Fish',skills.find(s=>s.id==='Cooking').qty.toFixed(1))}${resourceChipMarkup('Basic Bait',basicBait)}${resourceChipMarkup('Uncommon Fish',uncommonFish)}</section>
+        <section><h3>Timber</h3>${resourceChipMarkup('Pine',woodInventory.pine.toFixed(0),'Pine Logs')}${resourceChipMarkup('Oak',woodInventory.oak.toFixed(0),'Oak Logs')}${resourceChipMarkup('Yew',woodInventory.yew.toFixed(0),'Yew Logs')}${resourceChipMarkup('Ancient',woodInventory.ancient.toFixed(0),'Ancient Logs')}</section>
+        <section><h3>Frontier</h3>${resourceChipMarkup('Boss Keys',Math.floor(keys),'Rare Gems')}${resourceChipMarkup('Rare Gems',rareGems)}${resourceChipMarkup('Fishing Boost',fishingBuffSecs > 0 ? `${Math.ceil(fishingBuffSecs)}s` : 'None','Raw Fish')}${resourceChipMarkup('Burnt Fish',burntFish.toFixed(1))}</section>
+        <section><h3>Party Rewards</h3>${resourceChipMarkup('Hunting XP',Math.floor(huntingXp))}${resourceChipMarkup('Game',trappedGame)}</section>
+      </div>
+    `;
+  }
   recycleScrapBtn.disabled = scrap < scrapRecycleCost();
   recycleStatus.textContent = `${scrap.toFixed(1)}/${scrapRecycleCost()} Scrap — recycle ${scrapRecycleCost()} Scrap into 1 Ore.`;
 
@@ -1954,14 +2547,16 @@ skills.forEach(s=>{
 
 updateObjective();
 renderOperations();
-statusEl.innerHTML = `
-  <span class="statLabel">Active Skills:</span> 
-  <span class="statValue">${skills.filter(s=>s.active).length}</span>
-  <span class="statLabel">Efficiency:</span> 
-  <span class="statValue">${m.toFixed(2)}x</span>
-  <span class="hud-resource">Keys <strong>${Math.floor(keys)}</strong></span><span class="hud-resource">Bars <strong>${skills.find(skill=>skill.id==='Smithing').qty.toFixed(0)}</strong></span><span class="hud-resource">Gems <strong>${rareGems}</strong></span><span class="hud-resource">Build <strong>${combatBuildLabel()}</strong></span><span class="statLabel">Global Buff:</span>
-  <span class="statValue ${globalBuff.secs>0 ? 'green' : ''}">${buffText}</span>
-`;
+const statusSignature = JSON.stringify([skills.filter(s=>s.active).length,m.toFixed(2),Math.floor(keys),skills.find(skill=>skill.id==='Smithing').qty.toFixed(0),rareGems,combatBuildLabel(),buffText]);
+if (statusSignature !== statusRenderSignature) {
+  statusRenderSignature = statusSignature;
+  statusEl.innerHTML = `
+    <span class="statLabel">Active</span><span class="statValue">${skills.filter(s=>s.active).length}</span>
+    <span class="statLabel">Efficiency</span><span class="statValue">${m.toFixed(2)}×</span>
+    <span class="hud-resource">Keys <strong>${Math.floor(keys)}</strong></span><span class="hud-resource">Bars <strong>${skills.find(skill=>skill.id==='Smithing').qty.toFixed(0)}</strong></span><span class="hud-resource">Gems <strong>${rareGems}</strong></span><span class="hud-resource">Build <strong>${combatBuildLabel()}</strong></span><span class="statLabel">Buff</span>
+    <span class="statValue ${globalBuff.secs>0 ? 'green' : ''}">${buffText}</span>
+  `;
+}
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
@@ -1977,6 +2572,9 @@ function openFishing() {
   fishingModal.style.display = 'flex';
   updateFishingBaitUI();
   fishingStatus.textContent = 'Choose bait, then cast.';
+  startFishingCastBtn.disabled = false;
+  startFishingCastBtn.textContent = 'Cast';
+  closeFishingBtn.textContent = 'Exit';
 }
 function closeFishing() {
   if (fishingGame) finishFishingCast(false, 'Cast cancelled', false);
@@ -2013,6 +2611,11 @@ function startFishingCast() {
   updateFishingBaitUI();
   fishingGame = { fishY:60 + Math.random()*160, fishV:90, steer:0.7, zoneY:190, catchProgress:0, tension:0, timeLeft:45, usedBait, last:performance.now() };
   fishingStatus.textContent = usedBait === 'prime' ? 'Prime Bait used. Land this fish for enhanced rewards.' : usedBait === 'basic' ? 'Basic Bait used. Keep the fish in the catch zone.' : 'Keep the fish in the catch zone.';
+  startFishingCastBtn.disabled = true;
+  startFishingCastBtn.textContent = 'Cast in progress';
+  prepareBaitBtn.disabled = true;
+  fishingBaitSelect.disabled = true;
+  closeFishingBtn.textContent = 'Cancel cast';
   fishingRaf = requestAnimationFrame(updateFishingCast);
 }
 function updateFishingCast(now) {
@@ -2030,6 +2633,8 @@ function updateFishingCast(now) {
   g.tension = Math.max(0, Math.min(100, g.tension + (overlapping ? -55 : 45) * dt));
   fishingFish.style.top = `${g.fishY}px`; fishingCatchZone.style.top = `${g.zoneY}px`;
   fishingCatchFill.style.width = `${g.catchProgress}%`; fishingTensionFill.style.width = `${g.tension}%`; fishingTime.textContent = `${Math.ceil(g.timeLeft)}s`;
+  fishingCatchFill.parentElement?.setAttribute('aria-valuenow', String(Math.round(g.catchProgress)));
+  fishingTensionFill.parentElement?.setAttribute('aria-valuenow', String(Math.round(g.tension)));
   if (g.catchProgress >= 100) return finishFishingCast(true, 'Fish caught');
   if (g.tension >= 100) return finishFishingCast(false, 'The line broke');
   if (g.timeLeft <= 0) return finishFishingCast(false, 'The fish escaped');
@@ -2046,13 +2651,24 @@ function finishFishingCast(success, message, applyRewards = true) {
       const fishQty = g.usedBait === 'prime' ? 14 : g.usedBait === 'basic' ? 10 : 8;
       const xp = g.usedBait === 'prime' ? 150 : g.usedBait === 'basic' ? 100 : 80;
       fishing.qty += fishQty; fishing.xp += xp; rewards.push({itemId:'rawFish', quantity:fishQty}, {itemId:'fishingXp', quantity:xp});
+      queueSkillXpDrop(fishing, xp);
       fishingBuffSecs = Math.max(fishingBuffSecs, g.usedBait === 'prime' ? 600 : 300);
       if (g.usedBait === 'basic' && Math.random() < 0.15) { uncommonFish += 1; rewards.push({itemId:'uncommonFish', quantity:1}); }
-    } else { fishing.xp += 10; rewards.push({itemId:'fishingXp', quantity:10}); }
+    } else { fishing.xp += 10; queueSkillXpDrop(fishing, 10); rewards.push({itemId:'fishingXp', quantity:10}); }
     tryLevelUp(fishing);
+  } else {
+    if (g.usedBait === 'basic') basicBait += 1;
+    if (g.usedBait === 'prime') uncommonFish += 1;
+    updateFishingBaitUI();
   }
   const result = { activity:'fishing', spot:'shallows', success, score:Math.round(g.catchProgress), rewards, usedBait:g.usedBait, timestamp:Date.now() };
   fishingStatus.textContent = `${message}. ${success ? 'Cast again for another catch.' : 'You can cast again immediately.'}`;
+  startFishingCastBtn.disabled = false;
+  startFishingCastBtn.textContent = 'Cast again';
+  prepareBaitBtn.disabled = false;
+  fishingBaitSelect.disabled = false;
+  closeFishingBtn.textContent = 'Exit';
+  fishingHolding = false;
   if (success) window.MomentumAudio.emit('catch'); else window.MomentumAudio.emit('lineBreak');
   if (success) logActivity(`Shallows catch: +${rewards.find(reward => reward.itemId === 'rawFish')?.quantity || 0} Raw Fish`, 'fishing');
   return result;
@@ -2065,6 +2681,9 @@ let gauntletIntermissionTimer = null;
 
 function openArena(tier, runLoadout, options = {}) {
   const food = arenaFoodDefinition(equipment.food);
+  clearTimeout(closeArenaBtn._confirmTimer);
+  closeArenaBtn.dataset.confirmGiveUp = 'false';
+  closeArenaBtn.textContent = 'Give up';
   window.MomentumArena.start({
     canvas:cv, tier, weapon:runLoadout,
     mode:options.mode || 'standard', directiveId:options.directiveId || null,
@@ -2072,7 +2691,7 @@ function openArena(tier, runLoadout, options = {}) {
     food:food && foodCount(food.id) >= 1 ? food : null,
     talents:[...ownedCombatTalents],
     consumeFood:consumeFoodItem,
-    reduceMotion:gameSettings.reduceMotion,
+    reduceMotion:reduceMotionEnabled(),
     onEvent:(type, payload) => window.MomentumAudio.emit(type, payload),
     onFinish:handleArenaFinish,
     elements:{ modal, controls:arenaControls, tip:arenaTip, foodStatus:arenaFoodStatus, talentStatus:arenaTalentStatus, hpYou:hpYouEl, hpBoss:hpBossEl, hpYouFill, hpBossFill, dashStatus }
@@ -2105,7 +2724,17 @@ function grantBossReward(tier, grantBuff = true) {
   if (grantBuff) globalBuff.secs = Math.max(globalBuff.secs, 20 * 60);
   arenaWins[tier.id - 1] += 1;
   if (tier.id === arenaTierUnlocked && arenaTierUnlocked < ARENA_TIERS.length) arenaTierUnlocked += 1;
-  return { ore:tier.oreGain, gem:gotGem };
+  const loot = LOOT_FRAMEWORK?.rollLoot({
+    sourceType:'arenaBoss',
+    sourceId:`arena:${tier.id}`,
+    sourceTier:tier.id,
+    playerLevel:skills.find(skill => skill.id === 'Combat')?.lvl || 1,
+    runId:`${tier.id}-${arenaWins[tier.id - 1]}-${Date.now()}`
+  }, Math.random);
+  const item = awardLootResolution(loot);
+  if (item) logActivity(`Loot drop: ${lootLabel(item)} · ${item.affixes.length} affixes`, 'loot');
+  logActivity(`Combat cache secured · +${loot?.salvage || 0} Salvage`, 'loot');
+  return { ore:tier.oreGain, gem:gotGem, loot, item };
 }
 
 function resultStatsHtml(result, record = null) {
@@ -2126,7 +2755,7 @@ function handleArenaFinish(result) {
   }
   selectedDirective = null;
   const rewardText = rewards ? `+${rewards.ore} Ore${rewards.gem ? ' · +1 Rare Gem' : ''} · Global 1.5x for 20m` : result.reason === 'gaveUp' ? 'Run abandoned · no rewards' : 'No rewards';
-  resultMsg.innerHTML = `<div class="result-outcome ${result.win ? 'victory' : 'defeat'}">${directive ? directive.name : tier.name} ${result.win ? 'Complete' : result.reason === 'gaveUp' ? 'Abandoned' : 'Failed'}</div><div class="result-loadout">${result.weaponName} · ${result.styleId}${directive ? ` · ${tier.name} Directive` : ''}</div>${resultStatsHtml(result, record)}<div class="result-rewards">${rewardText}</div>${starAwarded ? `<div class="result-unlocks">★ Mastery Star earned · ${masteryStars()}/6</div>` : ''}`;
+  resultMsg.innerHTML = `<div class="result-outcome ${result.win ? 'victory' : 'defeat'}">${directive ? directive.name : tier.name} ${result.win ? 'Complete' : result.reason === 'gaveUp' ? 'Abandoned' : 'Failed'}</div><div class="result-loadout">${result.weaponName} · ${result.styleId}${directive ? ` · ${tier.name} Directive` : ''}</div>${resultStatsHtml(result, record)}<div class="result-rewards">${rewardText}</div>${rewards ? lootResultMarkup(rewards.loot) : ''}${starAwarded ? `<div class="result-unlocks">★ Mastery Star earned · ${masteryStars()}/6</div>` : ''}`;
   resultModal.style.display = 'flex';
   renderArenaTierOptions(); renderFrontier();
   logActivity(`${directive?.name || tier.name} ${result.win ? 'completed' : 'failed'} with ${result.weaponName}`, result.win ? 'victory' : 'arena');
@@ -2146,7 +2775,7 @@ function handleGauntletPhase(result) {
   activeGauntlet.bossIndex += 1;
   activeGauntlet.awaitingNext = true;
   let seconds = 8;
-  resultMsg.innerHTML = `<div class="result-outcome victory">${tier.name} Defeated</div><div class="result-loadout">Gauntlet ${activeGauntlet.bossIndex}/3 complete · rewards banked</div>${resultStatsHtml(result)}<div class="result-rewards">+${reward.ore} Ore${reward.gem ? ' · +1 Rare Gem' : ''}</div>`;
+  resultMsg.innerHTML = `<div class="result-outcome victory">${tier.name} Defeated</div><div class="result-loadout">Gauntlet ${activeGauntlet.bossIndex}/3 complete · rewards banked</div>${resultStatsHtml(result)}<div class="result-rewards">+${reward.ore} Ore${reward.gem ? ' · +1 Rare Gem' : ''}</div>${lootResultMarkup(reward.loot)}`;
   resultOk.disabled = true;
   resultOk.textContent = `Continue in ${seconds}s`;
   resultModal.style.display = 'flex';
@@ -2200,13 +2829,158 @@ function prepareGauntlet() {
   arenaPrepModal.style.display = 'flex';
 }
 
+function resetCraftingAssemblyUi() {
+  craftingAssembly?.rafId && cancelAnimationFrame(craftingAssembly.rafId);
+  craftingAssembly = null;
+  if (craftingAssemblyMarker) craftingAssemblyMarker.style.left = '0%';
+  if (craftingAssemblyTarget) craftingAssemblyTarget.style.left = '44%';
+  if (craftingAssemblyBar) craftingAssemblyBar.setAttribute('aria-valuenow', '0');
+  if (startCraftingAssemblyBtn) startCraftingAssemblyBtn.disabled = false;
+  if (hitCraftingAssemblyBtn) hitCraftingAssemblyBtn.disabled = true;
+}
+
+function finishCraftingAssembly() {
+  if (!craftingAssembly) return;
+  const activity = SKILL_FRAMEWORK?.craftingActivity;
+  const score = craftingAssembly.score / Math.max(1, craftingAssembly.attempts);
+  const multiplier = activity ? SKILL_FRAMEWORK.resolveActiveSkillBonus(activity, score) : 1;
+  const duration = activity?.durationMs || 7000;
+  const durationMultiplier = skillSpecializations.Crafting === 'improvisation' ? 1.25 : 1;
+  craftingActiveBonus = { multiplier, expiresAt:performance.now() + duration * durationMultiplier };
+  const quality = multiplier >= 1.45 ? 'excellent' : multiplier >= 1.25 ? 'clean' : 'rough';
+  craftingActivityStatus.textContent = `Assembly ${quality}: ${multiplier.toFixed(2)}× Crafting for ${Math.round(duration * durationMultiplier / 1000)}s.`;
+  showToast(`Crafting assembly ${quality} · ${multiplier.toFixed(2)}×`, 2800);
+  logActivity(`Crafting assembly ${quality} · ${multiplier.toFixed(2)}×`, 'craft');
+  resetCraftingAssemblyUi();
+  saveGame();
+}
+
+function updateCraftingAssembly(now) {
+  if (!craftingAssembly) return;
+  const activity = SKILL_FRAMEWORK?.craftingActivity;
+  const elapsed = now - craftingAssembly.startedAt;
+  const duration = activity?.durationMs || 7000;
+  if (elapsed >= duration || craftingAssembly.attempts >= 3) {
+    finishCraftingAssembly();
+    return;
+  }
+  const phase = (elapsed % 1200) / 1200;
+  const position = phase <= 0.5 ? phase * 2 : (1 - phase) * 2;
+  craftingAssembly.position = position;
+  craftingAssemblyMarker.style.left = `${position * 100}%`;
+  craftingAssembly.rafId = requestAnimationFrame(updateCraftingAssembly);
+}
+
+function openCraftingAssembly() {
+  if (!craftingModal) return;
+  if (!SKILL_CFG.Crafting.canAct()) {
+    showToast('Crafting needs at least 1 Bar and 1 Pine Log.');
+    return;
+  }
+  resetCraftingAssemblyUi();
+  craftingActivityStatus.textContent = 'Start a run, then lock three timing pulses inside the target zone.';
+  craftingModal.style.display = 'flex';
+}
+
+function startCraftingAssembly() {
+  if (!SKILL_CFG.Crafting.canAct() || craftingAssembly) return;
+  craftingAssembly = { startedAt:performance.now(), position:0, score:0, attempts:0, rafId:null };
+  startCraftingAssemblyBtn.disabled = true;
+  hitCraftingAssemblyBtn.disabled = false;
+  craftingActivityStatus.textContent = 'Lock the marker inside the target zone.';
+  craftingAssembly.rafId = requestAnimationFrame(updateCraftingAssembly);
+}
+
+function hitCraftingAssembly() {
+  if (!craftingAssembly) return;
+  const position = craftingAssembly.position;
+  const success = position >= 0.40 && position <= 0.60;
+  craftingAssembly.attempts += 1;
+  if (success) craftingAssembly.score += 1;
+  craftingActivityStatus.textContent = success ? 'Timing locked.' : 'Missed the target. Recalibrating…';
+  if (craftingAssembly.attempts >= 3) finishCraftingAssembly();
+}
+
+function closeCraftingAssembly() {
+  resetCraftingAssemblyUi();
+  craftingModal.style.display = 'none';
+}
+
 /* =====================================
    MODAL UX
 ===================================== */
+const uiModalIds = [
+  'settingsModal','frontierModal','specModal','talentModal','loadoutModal','gearModal','baseUpModal','skillUpModal',
+  'offlineModal','resultModal','arenaPrepModal','fishingModal','craftingModal','arenaModal','taskbarSummaryModal'
+];
+const uiModals = uiModalIds.map(id => document.getElementById(id)).filter(Boolean);
+const modalReturnFocus = new WeakMap();
+
+function visibleUiModals() {
+  return uiModals.filter(overlay => getComputedStyle(overlay).display !== 'none');
+}
+
+function modalFocusableElements(overlay) {
+  return [...overlay.querySelectorAll('button:not(:disabled),select:not(:disabled),input:not(:disabled),[href],[tabindex]:not([tabindex="-1"])')]
+    .filter(element => !element.hidden && getComputedStyle(element).visibility !== 'hidden');
+}
+
+function syncModalEnvironment(openedOverlay = null) {
+  const visible = visibleUiModals();
+  const top = visible[visible.length - 1] || null;
+  document.body.classList.toggle('modal-open', Boolean(top));
+  [...document.body.children].forEach(child => {
+    const keepInteractive = !top || child === top || child === document.getElementById('toastHost') || child === document.getElementById('levelHost') || child === confettiCanvas;
+    if (!keepInteractive && !child.inert) {
+      child.inert = true;
+      child.dataset.modalInert = 'true';
+    } else if (keepInteractive && child.dataset.modalInert === 'true') {
+      child.inert = false;
+      delete child.dataset.modalInert;
+    }
+  });
+  uiModals.forEach(overlay => overlay.setAttribute('aria-hidden', String(overlay !== top)));
+  if (openedOverlay && openedOverlay === top) {
+    const active = document.activeElement;
+    if (active && !openedOverlay.contains(active)) modalReturnFocus.set(openedOverlay, active);
+    requestAnimationFrame(() => {
+      const initial = openedOverlay.id === 'arenaModal' ? cv : modalFocusableElements(openedOverlay)[0];
+      initial?.focus({ preventScroll:true });
+    });
+  }
+}
+
+uiModals.forEach(overlay => {
+  overlay.setAttribute('aria-hidden', 'true');
+  new MutationObserver(() => {
+    const opened = getComputedStyle(overlay).display !== 'none';
+    if (opened) syncModalEnvironment(overlay);
+    else {
+      const returnTarget = modalReturnFocus.get(overlay);
+      modalReturnFocus.delete(overlay);
+      syncModalEnvironment();
+      if (!visibleUiModals().length && returnTarget?.isConnected) requestAnimationFrame(() => returnTarget.focus({ preventScroll:true }));
+    }
+  }).observe(overlay, { attributes:true, attributeFilter:['style','class'] });
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Tab') return;
+  const visible = visibleUiModals();
+  const top = visible[visible.length - 1];
+  if (!top) return;
+  const focusable = modalFocusableElements(top);
+  if (!focusable.length) { event.preventDefault(); top.focus?.(); return; }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+}, true);
+
 const dismissibleModals = [
   ['settingsModal','closeSettingsBtn'], ['frontierModal','closeFrontier'], ['specModal','closeSpecs'],
   ['talentModal','closeTalents'], ['loadoutModal','closeLoadout'], ['gearModal','closeGear'],
-  ['baseUpModal','closeBaseUp'], ['skillUpModal','closeSkillUp']
+  ['baseUpModal','closeBaseUp'], ['skillUpModal','closeSkillUp'], ['craftingModal','closeCrafting']
 ];
 function topVisibleDismissibleModal() {
   return dismissibleModals.map(([modalId,closeId]) => ({ modal:document.getElementById(modalId), close:document.getElementById(closeId) })).reverse().find(entry => entry.modal?.style.display === 'flex');
@@ -2215,6 +2989,7 @@ document.addEventListener('keydown', event => {
   if (event.key !== 'Escape' || window.MomentumArena.isRunning() || activeGauntlet?.awaitingNext) return;
   if (arenaPrepModal.style.display === 'flex') { closeArenaPreparation(); return; }
   if (fishingModal.style.display === 'flex') { closeFishing(); return; }
+  if (craftingModal.style.display === 'flex') { closeCraftingAssembly(); return; }
   const entry = topVisibleDismissibleModal();
   if (entry) entry.close.click();
 });
@@ -2226,11 +3001,39 @@ dismissibleModals.forEach(([modalId,closeId]) => {
 /* =====================================
    EVENTS
 ===================================== */
+operationsToggle?.addEventListener('click', () => setOperationsExpanded(!operationsExpanded));
+objectiveActionBtn?.addEventListener('click', () => {
+  const action = objectiveActionBtn.dataset.objectiveAction;
+  if (action === 'start-mining') {
+    const mining = skills.find(skill => skill.id === 'Mining');
+    if (mining && !mining.active) {
+      mining.active = true;
+      const toggle = document.getElementById('skill-toggle-mining');
+      if (toggle) toggle.checked = true;
+      startWarmup();
+      showToast('Mining online · Ore production started');
+    }
+    document.querySelector('.skill-mining')?.scrollIntoView({ block:'center', behavior:reduceMotionEnabled() ? 'auto' : 'smooth' });
+    document.getElementById('skill-toggle-mining')?.focus({ preventScroll:true });
+    return;
+  }
+  if (action === 'craft-gear') { renderGear(); gearModal.style.display='flex'; return; }
+  if (action === 'open-field') {
+    setGameView('field');
+    requestAnimationFrame(() => document.querySelector('.card-arena')?.scrollIntoView({ block:'center', behavior:reduceMotionEnabled() ? 'auto' : 'smooth' }));
+    return;
+  }
+  if (action === 'open-frontier') { renderFrontier(); frontierModal.style.display='flex'; return; }
+  setGameView('hub');
+  requestAnimationFrame(() => document.querySelector('.card-skills')?.scrollIntoView({ block:'start', behavior:reduceMotionEnabled() ? 'auto' : 'smooth' }));
+});
+
 document.getElementById('openBaseUpBtn').onclick = ()=>{ renderBaseUps(); baseUpModal.style.display='flex'; };
 document.getElementById('openGearBtn').onclick = ()=>{ renderGear(); gearModal.style.display='flex'; };
 document.getElementById('openLoadoutBtn').onclick = ()=>{ renderLoadout(); loadoutModal.style.display='flex'; };
 document.getElementById('closeLoadout').onclick = ()=> loadoutModal.style.display='none';
 document.getElementById('closeGear').onclick = ()=> gearModal.style.display='none';
+lootFilterSelect?.addEventListener('change', () => { selectedLootFilter = lootFilterSelect.value; renderLootInventory(); });
 document.getElementById('closeBaseUp').onclick   = ()=> baseUpModal.style.display='none';
 
 document.getElementById('openTalentsBtn').onclick = () => { renderTalents(); talentModal.style.display='flex'; };
@@ -2249,7 +3052,8 @@ document.getElementById('openSpecsBtn').onclick = () => { renderSpecializations(
 document.getElementById('closeSpecs').onclick = () => specModal.style.display='none';
 muteAudio.onchange = () => { gameSettings.muted = muteAudio.checked; window.MomentumAudio.setMuted(gameSettings.muted); };
 audioVolume.oninput = () => { gameSettings.volume = Number(audioVolume.value); window.MomentumAudio.setVolume(gameSettings.volume); };
-reduceMotion.onchange = () => { gameSettings.reduceMotion = reduceMotion.checked; document.body.classList.toggle('reduce-motion', gameSettings.reduceMotion); };
+reduceMotion.onchange = () => { gameSettings.reduceMotion = reduceMotion.checked; applySettings(); };
+window.matchMedia?.('(prefers-reduced-motion: reduce)').addEventListener?.('change', applySettings);
 document.getElementById('openSettingsBtn').onclick = () => { applySettings(); settingsModal.style.display='flex'; };
 document.getElementById('closeSettingsBtn').onclick = () => settingsModal.style.display='none';
 document.querySelectorAll('[data-game-view]').forEach(button => button.onclick = () => setGameView(button.dataset.gameView));
@@ -2264,15 +3068,46 @@ document.querySelectorAll('#skillUpModal [data-tab]').forEach(btn=>{
   btn.onclick = ()=> renderSkillUps(btn.getAttribute('data-tab'));
 });
 
-document.getElementById('closeArena').onclick = () => window.MomentumArena.giveUp();
+closeArenaBtn.onclick = () => {
+  if (closeArenaBtn.dataset.confirmGiveUp !== 'true') {
+    closeArenaBtn.dataset.confirmGiveUp = 'true';
+    closeArenaBtn.textContent = 'Confirm give up';
+    closeArenaBtn._confirmTimer = setTimeout(() => {
+      closeArenaBtn.dataset.confirmGiveUp = 'false';
+      closeArenaBtn.textContent = 'Give up';
+    }, 3000);
+    return;
+  }
+  clearTimeout(closeArenaBtn._confirmTimer);
+  window.MomentumArena.giveUp();
+};
 document.getElementById('openFishingBtn').onclick = openFishing;
 document.getElementById('closeFishing').onclick = closeFishing;
+startCraftingAssemblyBtn.onclick = startCraftingAssembly;
+hitCraftingAssemblyBtn.onclick = hitCraftingAssembly;
+closeCraftingBtn.onclick = closeCraftingAssembly;
 document.getElementById('startFishingCast').onclick = startFishingCast;
 document.getElementById('prepareBaitBtn').onclick = prepareBasicBait;
-fishingPlayfield.addEventListener('pointerdown', e => { e.preventDefault(); fishingHolding = true; });
-window.addEventListener('pointerup', () => fishingHolding = false);
-window.addEventListener('keydown', e => { if (e.code === 'Space' && fishingModal.style.display === 'flex') { e.preventDefault(); fishingHolding = true; } });
-window.addEventListener('keyup', e => { if (e.code === 'Space') fishingHolding = false; });
+function clearFishingInput() { fishingHolding = false; }
+function isUiControlTarget(target) { return target instanceof Element && Boolean(target.closest('button,input,select,textarea,a[href],[contenteditable="true"]')); }
+fishingPlayfield.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  fishingHolding = true;
+  try { fishingPlayfield.setPointerCapture(e.pointerId); } catch {}
+});
+fishingPlayfield.addEventListener('pointerup', clearFishingInput);
+fishingPlayfield.addEventListener('pointercancel', clearFishingInput);
+fishingPlayfield.addEventListener('lostpointercapture', clearFishingInput);
+window.addEventListener('pointerup', clearFishingInput);
+window.addEventListener('blur', clearFishingInput);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') clearFishingInput(); });
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' && fishingModal.style.display === 'flex' && !isUiControlTarget(e.target)) {
+    e.preventDefault();
+    fishingHolding = true;
+  }
+});
+window.addEventListener('keyup', e => { if (e.code === 'Space') clearFishingInput(); });
 offlineOk.onclick = () => { offlineModal.style.display = 'none'; pendingOfflineSummary = null; };
 saveBtn.onclick = () => saveGame(true);
 resetSaveBtn.onclick = resetSave;

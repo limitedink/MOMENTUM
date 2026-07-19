@@ -1,4 +1,6 @@
 import '../styles.scss';
+import './game/skills';
+import './game/loot';
 import './party/party-transport';
 import './party/party-store';
 import './party/party-controller';

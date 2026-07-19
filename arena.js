@@ -26,6 +26,22 @@
     ctx.fill();
   }
 
+  function isInteractiveTarget(target) {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest([
+      'button', 'input', 'select', 'textarea', 'a[href]',
+      '[contenteditable]:not([contenteditable="false"])',
+      '[role="button"]', '[role="checkbox"]', '[role="combobox"]',
+      '[role="link"]', '[role="menuitem"]', '[role="radio"]',
+      '[role="slider"]', '[role="spinbutton"]', '[role="switch"]',
+      '[role="tab"]', '[role="textbox"]'
+    ].join(',')));
+  }
+
+  function clearInputState() {
+    Object.keys(keysDown).forEach(code => delete keysDown[code]);
+  }
+
   function hasTalent(id) {
     return run.talents.has(id);
   }
@@ -118,7 +134,7 @@
 
   function damageBoss(baseDamage, source) {
     const bossHpBefore = run.boss.hp;
-    let multiplier = 1;
+    let multiplier = 1 + (run.weapon.bossDamage || 0) / 100;
 
     if (source.dashStrike) {
       multiplier *= 1.5;
@@ -131,6 +147,7 @@
       run.stats.openingAttackTriggered = true;
       emit('talent', { talentId:'openingAttack' });
     }
+    if ((run.weapon.critChance || 0) > 0 && Math.random() < run.weapon.critChance / 100) multiplier *= 1.5;
     if (hasTalent('pressure')) multiplier *= 1 + run.pressure * PRESSURE_PER_STACK;
     let cadenceHit = false;
     if (hasTalent('cadence')) {
@@ -242,7 +259,7 @@
     if (you.dashCooldown > 0) return;
     you.dash = DASH_DURATION * (hasTalent('longstride') ? 1.4 : 1);
     if (hasTalent('ghostStep')) you.ghostTimer = you.dash + 0.35;
-    you.dashCooldown = DASH_COOLDOWN;
+    you.dashCooldown = Math.max(0, DASH_COOLDOWN + (run.weapon.dashCooldown || 0));
     run.stats.dashesUsed += 1;
     run.phaseRushTriggered = false;
     if (hasTalent('slipstream')) run.you.slipstream = 1;
@@ -616,6 +633,8 @@
     elements.hpBoss.textContent = `${Math.max(0, Math.ceil(boss.hp))} / ${boss.maxHp}`;
     elements.hpYouFill.style.width = `${clamp(you.hp / you.maxHp * 100, 0, 100)}%`;
     elements.hpBossFill.style.width = `${clamp(boss.hp / boss.maxHp * 100, 0, 100)}%`;
+    elements.hpYouFill.parentElement?.setAttribute('aria-valuenow', String(Math.round(clamp(you.hp / you.maxHp * 100, 0, 100))));
+    elements.hpBossFill.parentElement?.setAttribute('aria-valuenow', String(Math.round(clamp(boss.hp / boss.maxHp * 100, 0, 100))));
     elements.dashStatus.textContent = you.dashCooldown <= 0 ? 'READY' : `${you.dashCooldown.toFixed(1)}s`;
     elements.dashStatus.classList.toggle('ready', you.dashCooldown <= 0);
 
@@ -709,6 +728,7 @@
 
   function onKeyDown(event) {
     if (!run) return;
+    if (isInteractiveTarget(event.target)) return;
     keysDown[event.code] = true;
     if (event.repeat) return;
     if (event.code === 'Space') {
@@ -723,7 +743,7 @@
   }
 
   function onPointerDown(event) {
-    if (!run) return;
+    if (!run || event.button !== 0) return;
     const rect = run.canvas.getBoundingClientRect();
     const mouseX = (event.clientX - rect.left) * run.canvas.width / rect.width;
     const mouseY = (event.clientY - rect.top) * run.canvas.height / rect.height;
@@ -733,13 +753,23 @@
     if (run.weapon.styleId === 'gun') gunAttack(dx, dy);
   }
 
+  function onWindowBlur() {
+    clearInputState();
+  }
+
+  function onVisibilityChange() {
+    if (document.visibilityState === 'hidden') clearInputState();
+  }
+
   function stop() {
     if (!run) return;
     if (rafId) cancelAnimationFrame(rafId);
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
+    window.removeEventListener('blur', onWindowBlur);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
     run.canvas.removeEventListener('pointerdown', onPointerDown);
-    Object.keys(keysDown).forEach(code => delete keysDown[code]);
+    clearInputState();
     run.canvas.style.transform = '';
     run.elements.modal.style.display = 'none';
     run = null;
@@ -826,6 +856,8 @@
 
     window.addEventListener('keydown', onKeyDown, false);
     window.addEventListener('keyup', onKeyUp, false);
+    window.addEventListener('blur', onWindowBlur, false);
+    document.addEventListener('visibilitychange', onVisibilityChange, false);
     canvas.addEventListener('pointerdown', onPointerDown, false);
     rafId = requestAnimationFrame(loop);
   }

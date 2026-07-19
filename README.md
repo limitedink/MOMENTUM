@@ -38,7 +38,7 @@ Momentum takes inspiration from the long-term skill progression of **Old School 
 
 ### Idle progression
 
-- Six trainable skills: **Mining, Smithing, Combat, Fishing, Cooking, and Woodchopping**
+- Six trainable skills: **Mining, Smithing, Combat, Fishing, Cooking, and Woodcutting**
 - Parallel skill training with shared efficiency
 - A Honing slot that supercharges one selected skill
 - Level progression, skill upgrades, specializations, and account-wide upgrades

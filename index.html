@@ -9,40 +9,45 @@
   <script type="module" src="/src/main.ts"></script>
 </head>
 <body>
+  <a class="skip-link" href="#gameViewRoot">Skip to game controls</a>
   <!-- Confetti overlay -->
   <canvas id="confettiCanvas"></canvas>
 
   <!-- Toasts + Level banners -->
-  <div id="toastHost"></div>
-  <div id="levelHost"></div>
+  <div id="toastHost" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div id="levelHost" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <div class="wrap">
     <header class="game-header">
-      <div>
-        <div class="eyebrow">IDLE // ACTIVE RPG PROTOTYPE</div>
+      <div class="brand-lockup">
+        <div class="eyebrow"><span class="signal-dot" aria-hidden="true"></span> FRONTIER COMMAND // ONLINE</div>
         <h1>MOMENTUM</h1>
-        <p class="game-subtitle">Choose your focus. Build your loadout. Push the frontier.</p>
+        <p class="game-subtitle">Train in the background. Forge a build. Push the frontier together.</p>
       </div>
-      <div class="header-actions"><div class="identity-readout" id="partyIdentity" aria-live="polite"><small>PLAYER IDENTITY</small><strong id="partyIdentityName">Connecting…</strong><span id="partyIdentityDetail">Acquiring party profile</span></div><button class="btn" id="openSettingsBtn">Settings</button><div class="header-mark" aria-hidden="true">M</div></div>
+      <div class="header-actions"><div class="identity-readout" id="partyIdentity" aria-live="polite"><small>PLAYER IDENTITY</small><strong id="partyIdentityName">Connecting…</strong><span id="partyIdentityDetail">Acquiring party profile</span></div><button class="btn btn-quiet" id="openSettingsBtn" aria-haspopup="dialog"><span aria-hidden="true">⚙</span> Settings</button><div class="header-mark" aria-hidden="true">M</div></div>
     </header>
     <div class="command-rail">
       <nav class="game-view-tabs" aria-label="Primary game views">
-        <button class="game-view-tab is-active" data-game-view="hub">Hub</button>
-        <button class="game-view-tab" data-game-view="field">Field</button>
-        <button class="game-view-tab" id="viewCharacterBtn">Character</button>
+        <button class="game-view-tab is-active" data-game-view="hub"><span aria-hidden="true">◆</span> Hub</button>
+        <button class="game-view-tab" data-game-view="field"><span aria-hidden="true">⚔</span> Field</button>
+        <button class="game-view-tab" id="viewCharacterBtn" aria-haspopup="dialog"><span aria-hidden="true">◇</span> Loadout</button>
       </nav>
-      <div id="status" class="status-bar" aria-live="polite"></div>
+      <div id="status" class="status-bar" aria-label="Current account status"></div>
     </div>
-    <section class="objective-strip" aria-live="polite">
-      <div>
+    <section class="objective-strip" aria-labelledby="objectiveTitle">
+      <div class="objective-identity">
+        <span class="objective-index" aria-hidden="true">01</span>
+        <div>
         <div class="eyebrow">CURRENT OBJECTIVE</div>
-        <strong id="objectiveTitle">Start your first skill</strong>
+          <strong id="objectiveTitle">Start your first skill</strong>
+        </div>
       </div>
-      <div class="objective-copy"><div class="small" id="objectiveDetail">Activate Mining to begin producing Ore.</div><div class="objective-progress"><i id="objectiveProgressFill"></i></div></div>
+      <div class="objective-copy"><div class="small" id="objectiveDetail">Activate Mining to begin producing Ore.</div><div class="objective-progress" role="progressbar" aria-label="Objective progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="objectiveProgressFill"></i></div></div>
+      <button class="btn btn-primary objective-action" id="objectiveActionBtn">Activate Mining</button>
     </section>
 
-    <section class="operations-board card">
-      <div class="flex"><div><div class="eyebrow">OPERATIONS</div><p class="title">Mission Board</p></div><span class="tag" id="operationsCount">0 complete</span></div>
+    <section class="operations-board card is-collapsed" id="operationsBoard">
+      <div class="flex operations-heading"><div><div class="eyebrow">OPTIONAL CONTRACTS</div><h2 class="title">Operations</h2></div><div class="operations-heading-actions"><span class="tag" id="operationsCount">0 complete</span><button class="btn btn-small btn-quiet" id="operationsToggle" aria-expanded="false" aria-controls="operationsList">Show contracts</button></div></div>
       <div id="operationsList" class="operations-list"></div>
     </section>
 
@@ -50,100 +55,101 @@
       <div class="dashboard-grid">
         <!-- Normal tracks -->
         <section class="card card-skills">
-          <p class="title"><span class="title-icon">◆</span> Skill Matrix <span class="tag" id="activeCountTag">active: 0</span></p>
-          <div class="small" style="margin-bottom:8px">
-            Run skills in parallel. Only productive skills share efficiency; a blocked skill such as Smithing without Ore does not slow the others.
+          <div class="section-heading"><div><div class="eyebrow">IDLE PRODUCTION</div><h2 class="title"><span class="title-icon" aria-hidden="true">◆</span> Skill Matrix</h2></div><span class="tag" id="activeCountTag">active: 0</span></div>
+          <div class="small section-intro">
+            Toggle skills to run them together. Blocked skills wait without reducing the output of productive tracks.
           </div>
           <div id="skills"></div>
-          <div class="small" style="margin-top:8px">
-            Per track efficiency <span id="effReadout">1.00x</span>
+          <div class="efficiency-readout small">
+            <span>Shared efficiency</span><strong id="effReadout">1.00x</strong>
           </div>
         </section>
 
         <!-- Honing -->
         <section class="card card-honing">
-          <p class="title"><span class="title-icon">✦</span> Honing Slot</p>
-          <div class="small" style="margin-bottom:8px">Pick one skill to supercharge. Honing multiplier = 1.8x.</div>
+          <div class="eyebrow">FOCUS CHANNEL</div>
+          <h2 class="title"><span class="title-icon" aria-hidden="true">✦</span> Honing</h2>
+          <div class="small section-intro">Supercharge one track to 1.8× output.</div>
+          <label class="field-label" for="honeSelect">Honed skill</label>
           <select id="honeSelect" class="btn"></select>
-          <div class="small" style="margin-top:8px">Honed: <span id="honedLabel">None</span></div>
-          <div class="small" style="margin-top:8px">Global boss buff: <span id="buffLabel">none</span></div>
+          <div class="inline-stats small"><span>Honed <strong id="honedLabel">None</strong></span><span>Boss buff <strong id="buffLabel">none</strong></span></div>
         </section>
 
         <!-- Boss Gate -->
         <section class="card card-arena">
-          <p class="title"><span class="title-icon">⚔</span> Boss Gate</p>
-          <div class="small">Combat generates Boss Keys. Defeat each tier to unlock the next challenge.</div>
-          <div style="margin:8px 0" class="small">Keys: <span id="keysLabel">0</span></div>
-          <select id="arenaTierSelect" class="btn" style="width:100%; margin-bottom:6px"></select>
-          <div class="small" id="arenaTierDetails" style="margin-bottom:8px"></div>
-          <button class="btn" id="fightBtn" disabled>Prepare Arena Run</button>
-          <div class="small" style="margin-top:8px">Higher tiers cost more Keys, attack faster, and grant larger rewards.</div>
+          <div class="eyebrow">ACTIVE COMBAT</div>
+          <div class="section-heading"><h2 class="title"><span class="title-icon" aria-hidden="true">⚔</span> Boss Gate</h2><span class="resource-badge">Keys <strong id="keysLabel">0</strong></span></div>
+          <div class="small section-intro">Lock a build, spend Boss Keys, and break through escalating tiers.</div>
+          <label class="field-label" for="arenaTierSelect">Challenge tier</label>
+          <select id="arenaTierSelect" class="btn full-width"></select>
+          <div class="small arena-tier-details" id="arenaTierDetails"></div>
+          <button class="btn btn-danger full-width" id="fightBtn" disabled>Prepare Arena Run</button>
         </section>
 
         <!-- Upgrades -->
         <section class="card card-upgrades">
-          <p class="title"><span class="title-icon">⬆</span> Upgrades</p>
-          <div class="small" style="margin-bottom:8px">Spend resources to boost your account.</div>
-          <button class="btn" id="openBaseUpBtn">Base Upgrades</button>
-          <button class="btn" id="openSkillUpBtn">Skill Upgrades</button>
-          <button class="btn" id="openTalentsBtn">Combat Discipline</button>
-          <button class="btn" id="openSpecsBtn">Skill Specializations</button>
+          <div class="eyebrow">GROWTH SYSTEMS</div>
+          <h2 class="title"><span class="title-icon" aria-hidden="true">⬆</span> Upgrades</h2>
+          <div class="small section-intro">Spend resources and shape how your account plays.</div>
+          <div class="action-grid"><button class="btn" id="openBaseUpBtn">Base</button><button class="btn" id="openSkillUpBtn">Skills</button><button class="btn" id="openTalentsBtn">Combat</button><button class="btn" id="openSpecsBtn">Specialize</button></div>
         </section>
 
         <!-- Workshop -->
         <section class="card card-workshop">
-          <p class="title"><span class="title-icon">⚒</span> Workshop</p>
-          <div class="small" style="margin-bottom:8px">Turn Bars into equipment and choose a specialized Tool.</div>
-          <button class="btn" id="openGearBtn">Craft Equipment</button>
-          <button class="btn" id="openLoadoutBtn">Character & Inventory</button>
+          <div class="eyebrow">FORGE &amp; EQUIP</div>
+          <h2 class="title"><span class="title-icon" aria-hidden="true">⚒</span> Workshop</h2>
+          <div class="small section-intro">Turn Bars and idle Crafting components into equipment, then assemble your field loadout.</div>
+          <div class="action-grid"><button class="btn" id="openGearBtn">Craft Gear</button><button class="btn" id="openLoadoutBtn">Open Loadout</button></div>
         </section>
 
         <!-- Frontier Mastery -->
         <section class="card card-frontier">
-          <p class="title"><span class="title-icon">✧</span> Frontier Mastery</p>
+          <div class="eyebrow">ENDGAME</div>
+          <h2 class="title"><span class="title-icon" aria-hidden="true">✧</span> Frontier Mastery</h2>
           <div class="small" id="frontierSummary">Defeat Apex to unlock authored combat Directives.</div>
-          <button class="btn" id="openFrontierBtn" disabled>Frontier Locked</button>
+          <button class="btn full-width" id="openFrontierBtn" disabled>Frontier Locked</button>
         </section>
 
         <!-- Party Expedition Prototype -->
         <section class="card card-party view-field" id="partyCard">
-          <div class="flex"><div><div class="eyebrow" id="partyTransportLabel">PARTY STATE</div><p class="title"><span class="title-icon">◈</span> Forest Expedition</p></div><div class="party-header-actions"><button class="btn btn-small" id="partyReconnectBtn" title="Reconnect the active party connection">Reconnect</button><button class="btn btn-small" id="partyExpeditionToggle">Pause</button><button class="btn btn-small" id="collapseTaskbarBtn">Collapse</button></div></div>
-          <div class="small party-status-line"><span id="partySyncStatus">Party state · Ready</span></div>
+          <div class="flex party-heading"><div><div class="eyebrow" id="partyTransportLabel">PARTY STATE</div><h2 class="title"><span class="title-icon" aria-hidden="true">◈</span> Forest Expedition</h2></div><div class="party-header-actions"><button class="btn btn-small btn-quiet" id="partyReconnectBtn" title="Refresh the party link">Refresh link</button><button class="btn btn-small" id="partyExpeditionToggle">Pause</button><button class="btn btn-small btn-quiet" id="collapseTaskbarBtn">Mini mode</button></div></div>
+          <div class="small party-status-line"><span id="partyExpeditionStatus">Party state · Ready</span><span id="partySyncStatus">Party state · Ready</span><span id="partyTickLabel">Expedition 1</span></div>
           <div id="partyManagement" class="party-management"></div>
           <div id="partyLanes" class="party-lanes"></div>
           <div id="partyMembers" class="party-members"></div>
           <div class="party-action-row" id="partyActionRow"></div>
-          <div class="small party-checkin" id="partyCheckin">Your party keeps moving while you work. Choose an activity or collapse this panel.</div>
+          <div class="small party-checkin" id="partyCheckin">Your expedition keeps moving while you work. Pick the role that suits your build.</div>
         </section>
         <!-- Fishing Activity -->
         <section class="card card-fishing">
-          <p class="title"><span class="title-icon">◉</span> Active Fishing</p>
-          <div class="small" style="margin-bottom:8px">Idle Fishing steadily produces Raw Fish. Shallows fishing is an optional active challenge for burst rewards and a temporary idle Fishing boost.</div>
-          <button class="btn" id="openFishingBtn">Go Fishing</button>
+          <div class="eyebrow">ACTIVE SKILL</div>
+          <h2 class="title"><span class="title-icon" aria-hidden="true">◉</span> Shallows Fishing</h2>
+          <div class="small section-intro">Take direct control for burst rewards and a temporary idle Fishing boost.</div>
+          <button class="btn full-width" id="openFishingBtn">Cast a Line</button>
         </section>
 
         <!-- Save -->
         <section class="card card-save">
-          <p class="title"><span class="title-icon">▣</span> Save Core</p>
-          <div class="small" id="saveStatus" style="margin-bottom:8px">Autosaves every 10 seconds.</div>
-          <button class="btn" id="saveBtn">Save Now</button>
-          <button class="btn" id="resetSaveBtn">Reset Save</button>
+          <h2 class="title"><span class="title-icon" aria-hidden="true">▣</span> Save Core</h2>
+          <div class="small" id="saveStatus">Autosaves every 10 seconds.</div>
+          <button class="btn btn-small btn-quiet" id="saveBtn">Save now</button>
+          <button class="btn btn-small btn-danger" id="resetSaveBtn">Reset save</button>
         </section>
       </div>
 
       <!-- Totals -->
       <section class="card card-inventory">
-        <p class="title"><span class="title-icon">◇</span> Resource Vault</p>
+        <div class="eyebrow">ACCOUNT INVENTORY</div>
+        <h2 class="title"><span class="title-icon" aria-hidden="true">◇</span> Resource Vault</h2>
         <div id="totals"></div>
-        <div style="margin-top:12px; padding-top:12px; border-top:1px solid #222745">
-          <div class="small" style="margin-bottom:8px">Smithing consumes 1 Ore per attempt. Failed smelts produce Scrap.</div>
+        <div class="recycle-panel">
+          <div><strong>Scrap recycler</strong><div class="small" id="recycleStatus">0/5 Scrap — recycle 5 Scrap into 1 Ore.</div></div>
           <button class="btn" id="recycleScrapBtn" disabled>Recycle Scrap</button>
-          <div class="small" id="recycleStatus" style="margin-top:6px">0/5 Scrap — recycle 5 Scrap into 1 Ore.</div>
         </div>
       </section>
 
       <section class="card card-ledger">
-        <div class="flex"><p class="title"><span class="title-icon">≡</span> Activity Ledger</p><button class="btn btn-small" id="clearLedgerBtn">Clear</button></div>
+        <div class="flex"><div><div class="eyebrow">RECENT EVENTS</div><h2 class="title"><span class="title-icon" aria-hidden="true">≡</span> Activity Ledger</h2></div><button class="btn btn-small btn-quiet" id="clearLedgerBtn">Clear</button></div>
         <div id="activityLedger" class="activity-ledger"><div class="small">Meaningful events will appear here.</div></div>
       </section>
     </main>
@@ -160,20 +166,20 @@
   </div>
 
   <!-- Fishing Modal -->
-  <div id="fishingModal">
+  <div id="fishingModal" role="dialog" aria-modal="true" aria-labelledby="fishingTitle">
     <div class="fishing-panel">
-      <div class="flex"><span class="title" style="margin:0">Shallows Fishing</span><button class="btn" id="closeFishing">Exit</button></div>
+      <div class="flex modal-heading"><div><div class="eyebrow">ACTIVE SKILL</div><h2 class="title" id="fishingTitle">Shallows Fishing</h2></div><button class="btn" id="closeFishing">Exit</button></div>
       <div class="fishing-controls small">
-        <select class="btn" id="fishingBaitSelect"><option value="none">No Bait</option><option value="basic">Basic Bait</option><option value="prime">Prime Bait (1 Uncommon Fish)</option></select>
+        <label class="field-label" for="fishingBaitSelect">Bait</label><select class="btn" id="fishingBaitSelect"><option value="none">No Bait</option><option value="basic">Basic Bait</option><option value="prime">Prime Bait (1 Uncommon Fish)</option></select>
         <span id="fishingBaitCount">Basic Bait: 0</span>
         <button class="btn" id="prepareBaitBtn">Prepare Bait (3 Fish)</button>
         <button class="btn" id="startFishingCast">Cast</button>
       </div>
-      <div class="small" id="fishingStatus">Choose bait, then cast.</div>
-      <div id="fishingPlayfield"><div id="fishingFish"></div><div id="fishingCatchZone"></div></div>
-      <div class="small">Catch <span id="fishingTime">45s</span></div><div class="fishing-meter"><i id="fishingCatchFill"></i></div>
-      <div class="small">Tension — rises only while the fish is outside the catch zone</div><div class="fishing-meter tension"><i id="fishingTensionFill"></i></div>
-      <div class="small">Hold Space or mouse to raise the catch zone. Release to lower it.</div>
+      <div class="small" id="fishingStatus" role="status">Choose bait, then cast.</div>
+      <div id="fishingPlayfield" aria-label="Fishing playfield"><div id="fishingFish"></div><div id="fishingCatchZone"></div></div>
+      <div class="small">Catch <span id="fishingTime">45s</span></div><div class="fishing-meter" role="progressbar" aria-label="Catch progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="fishingCatchFill"></i></div>
+      <div class="small">Tension — rises while the fish is outside the catch zone</div><div class="fishing-meter tension" role="progressbar" aria-label="Line tension" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="fishingTensionFill"></i></div>
+      <div class="small fishing-help">Hold Space, mouse, or touch to raise the catch zone. Release to lower it.</div>
     </div>
   </div>
 
@@ -201,26 +207,26 @@
   </div>
 
   <!-- Arena Modal -->
-  <div id="arenaModal">
+  <div id="arenaModal" role="dialog" aria-modal="true" aria-label="Arena battle">
     <div id="arena">
-      <div class="flex" style="margin-bottom:6px">
+      <div class="flex arena-topbar">
         <span class="small" id="arenaControls">WASD to move. Space to dash. Left click to attack.</span>
-        <button class="btn" id="closeArena">Give Up</button>
+        <button class="btn btn-danger" id="closeArena">Give up</button>
       </div>
-      <canvas id="cv" width="720" height="420"></canvas>
+      <canvas id="cv" width="720" height="420" tabindex="0" aria-label="Arena playfield. Use WASD to move, Space to dash, and click to attack."></canvas>
       <div class="arena-hud">
         <div class="arena-vital">
           <div class="small"><span>You</span><span id="hpYou">100 / 100</span></div>
-          <div class="arena-health"><i id="hpYouFill"></i></div>
+          <div class="arena-health" role="progressbar" aria-label="Player health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i id="hpYouFill"></i></div>
         </div>
         <div class="arena-vital boss">
           <div class="small"><span>Boss</span><span id="hpBoss">30 / 30</span></div>
-          <div class="arena-health"><i id="hpBossFill"></i></div>
+          <div class="arena-health" role="progressbar" aria-label="Boss health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i id="hpBossFill"></i></div>
         </div>
         <div class="arena-dash small">Dash: <strong id="dashStatus">READY</strong></div>
       </div>
       <div class="arena-talent-status small" id="arenaTalentStatus">No active talent trigger</div>
-      <div class="flex" style="margin-top:6px">
+      <div class="flex arena-footer-status">
         <div class="small" id="arenaFoodStatus">Food: none equipped</div>
         <div class="small" id="arenaTip">Tip. Dash through the red shockwave</div>
       </div>
@@ -238,39 +244,75 @@
   </div>
 
   <!-- Result Modal -->
-  <div id="resultModal">
-    <div style="background:#0b0f1c; border:1px solid #222745; border-radius:12px; padding:20px; width:680px; text-align:left">
+  <div id="resultModal" role="dialog" aria-modal="true" aria-label="Arena result">
+    <div class="result-panel">
       <div id="resultMsg" class="run-result-summary">Result</div>
       <button class="btn" id="resultOk">Continue</button>
     </div>
   </div>
 
   <!-- Character & Inventory Modal -->
-  <div id="loadoutModal">
+  <div id="loadoutModal" role="dialog" aria-modal="true" aria-labelledby="loadoutTitle">
     <div class="loadout-panel">
-      <div class="flex modal-heading"><span class="title" style="margin:0">Character Loadout</span><button class="btn" id="closeLoadout">Close</button></div>
+      <div class="flex modal-heading"><div><div class="eyebrow">CHARACTER</div><h2 class="title" id="loadoutTitle">Field Loadout</h2></div><button class="btn" id="closeLoadout">Close</button></div>
       <div id="loadoutSlots" class="loadout-grid"></div>
-      <div class="inventory-heading"><span class="title">Inventory</span><span class="small">Materials remain stackable; equipment has no arbitrary slot limit.</span></div>
+      <div class="inventory-heading"><h3 class="title">Inventory</h3><span class="small">Materials stack freely; equipment has no slot cap.</span></div>
       <div id="inventoryList"></div>
+      <section class="loot-inventory-section" aria-labelledby="lootInventoryTitle">
+        <div class="inventory-heading"><h3 class="title" id="lootInventoryTitle">Combat Loot</h3><span class="small">Rare drops are combat-first; duplicates become Salvage.</span></div>
+        <label class="field-label" for="lootFilterSelect">Filter drops</label>
+        <select class="btn full-width" id="lootFilterSelect">
+          <option value="all">All rarities and slots</option>
+          <option value="weapon">Weapons</option>
+          <option value="armor">Armor</option>
+          <option value="common">Common</option>
+          <option value="uncommon">Uncommon</option>
+          <option value="rare">Rare</option>
+          <option value="epic">Epic</option>
+          <option value="legendary">Legendary</option>
+          <option value="mythic">Mythic</option>
+          <option value="ascendant">Ascendant</option>
+          <option value="chase">Chase Unique</option>
+        </select>
+        <div id="lootInventoryList" class="loot-inventory-list"></div>
+        <div id="lootDetail" class="loot-detail"></div>
+      </section>
     </div>
   </div>
 
   <!-- Equipment Modal -->
-  <div id="gearModal">
-    <div style="background:#0b0f1c; border:1px solid #222745; border-radius:12px; padding:16px; width:520px;">
-      <div class="flex" style="margin-bottom:8px">
-        <span class="title" style="font-size:18px; margin:0">Workshop Equipment</span>
+  <div id="gearModal" role="dialog" aria-modal="true" aria-labelledby="gearTitle">
+    <div class="modal-panel modal-panel-medium">
+      <div class="flex modal-heading">
+        <div><div class="eyebrow">WORKSHOP</div><h2 class="title" id="gearTitle">Craft Equipment</h2></div>
         <button class="btn" id="closeGear">Close</button>
       </div>
       <div id="gearList" class="small"></div>
     </div>
   </div>
 
+  <!-- Active Crafting Activity -->
+  <div id="craftingModal" role="dialog" aria-modal="true" aria-labelledby="craftingActivityTitle">
+    <div class="modal-panel modal-panel-small crafting-panel">
+      <div class="flex modal-heading">
+        <div><div class="eyebrow">ACTIVE SKILL BOOST</div><h2 class="title" id="craftingActivityTitle">Assembly Run</h2></div>
+        <button class="btn" id="closeCrafting">Close</button>
+      </div>
+      <p class="small">Hit the assembly pulse while it crosses the target zone. Better timing grants a bounded Crafting rate boost.</p>
+      <div class="crafting-assembly-track" id="craftingAssemblyBar" aria-label="Assembly timing track">
+        <i id="craftingAssemblyTarget" aria-hidden="true"></i>
+        <b id="craftingAssemblyMarker" aria-hidden="true"></b>
+      </div>
+      <div class="small crafting-activity-status" id="craftingActivityStatus">Start an assembly run when Crafting has materials to consume.</div>
+      <div class="action-grid"><button class="btn btn-primary" id="startCraftingAssembly">Start Assembly</button><button class="btn" id="hitCraftingAssembly" disabled>Lock Timing</button></div>
+    </div>
+  </div>
+
   <!-- Base Upgrades Modal -->
-  <div id="baseUpModal">
-    <div style="background:#0b0f1c; border:1px solid #222745; border-radius:12px; padding:16px; width:480px;">
-      <div class="flex" style="margin-bottom:8px">
-        <span class="title" style="font-size:18px; margin:0">Base Upgrades</span>
+  <div id="baseUpModal" role="dialog" aria-modal="true" aria-labelledby="baseUpTitle">
+    <div class="modal-panel modal-panel-small">
+      <div class="flex modal-heading">
+        <div><div class="eyebrow">ACCOUNT</div><h2 class="title" id="baseUpTitle">Base Upgrades</h2></div>
         <button class="btn" id="closeBaseUp">Close</button>
       </div>
       <div id="baseUpList" class="small"></div>
@@ -315,25 +357,26 @@
   </div>
 
   <!-- Skill Upgrades Modal -->
-  <div id="skillUpModal">
-    <div style="background:#0b0f1c; border:1px solid #222745; border-radius:12px; padding:16px; width:560px;">
-      <div class="flex" style="margin-bottom:8px">
-        <span class="title" style="font-size:18px; margin:0">Skill Upgrades</span>
+  <div id="skillUpModal" role="dialog" aria-modal="true" aria-labelledby="skillUpTitle">
+    <div class="modal-panel modal-panel-medium">
+      <div class="flex modal-heading">
+        <div><div class="eyebrow">SKILL MODIFIERS</div><h2 class="title" id="skillUpTitle">Skill Upgrades</h2></div>
         <button class="btn" id="closeSkillUp">Close</button>
       </div>
-      <div class="small" style="margin-bottom:8px">
+      <div class="skill-up-tabs" role="tablist" aria-label="Skill upgrade categories">
         <button class="btn" data-tab="Mining">Mining</button>
         <button class="btn" data-tab="Smithing">Smithing</button>
+        <button class="btn" data-tab="Crafting">Crafting</button>
         <button class="btn" data-tab="Combat">Combat</button>
         <button class="btn" data-tab="Cooking">Cooking</button>
-        <button class="btn" data-tab="Woodchopping">Woodchopping</button>
+        <button class="btn" data-tab="Woodcutting">Woodcutting</button>
       </div>
       <div id="skillUpList" class="small"></div>
     </div>
   </div>
 
   <aside id="taskbarDock" class="taskbar-dock" aria-label="Collapsed Momentum party panel" aria-hidden="true">
-    <div class="taskbar-dock-heading"><strong>Momentum</strong><button class="btn btn-small" id="expandTaskbarBtn">Expand</button></div>
+    <div class="taskbar-dock-heading"><strong>Momentum expedition</strong><button class="btn btn-small" id="expandTaskbarBtn">Return to game</button></div>
     <div class="small" id="dockExpeditionLabel">Forest Expedition · Active</div>
     <div id="dockLanes" class="party-lanes compact"></div>
     <div id="dockMembers" class="party-members compact"></div>
@@ -346,10 +389,10 @@
   </div>
 
   <nav class="quickbar" aria-label="Quick actions">
-    <button class="quick-action" data-quick-view="hub"><span>◆</span>Skills</button>
-    <button class="quick-action" data-quick-view="field"><span>⚔</span>Field</button>
-    <button class="quick-action" id="quickInventory"><span>◇</span>Inventory</button>
-    <button class="quick-action" id="quickSettings"><span>⚙</span>Settings</button>
+    <button class="quick-action is-active" data-quick-view="hub"><span aria-hidden="true">◆</span>Hub</button>
+    <button class="quick-action" data-quick-view="field"><span aria-hidden="true">⚔</span>Field</button>
+    <button class="quick-action" id="quickInventory" aria-haspopup="dialog"><span aria-hidden="true">◇</span>Loadout</button>
+    <button class="quick-action" id="quickSettings" aria-haspopup="dialog"><span aria-hidden="true">⚙</span>Settings</button>
   </nav>
   
 </body>
