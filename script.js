@@ -21,6 +21,8 @@ const XP_BAL = {
 
 const SKILL_FRAMEWORK = window.MomentumSkillFramework;
 const SKILL_REGISTRY = SKILL_FRAMEWORK?.registry;
+const COMBAT_SKILL_TREE = SKILL_FRAMEWORK?.combatTree;
+const SKILL_TREE_RULES = SKILL_FRAMEWORK?.skillTree;
 const LOOT_FRAMEWORK = window.MomentumLootFramework;
 
 const MAX_SKILL_LEVEL = 100;   // set to 99, 100, 120, 500, 1000... your call
@@ -575,30 +577,11 @@ const SKILL_MILESTONES = {
 };
 
 const COMBAT_TALENT_LEVELS = [5, 10, 15, 20, 25, 30];
-const COMBAT_TALENTS = [
-  { id:'dashStrike', branch:'mobility', tier:1, name:'Dash Strike', description:'First attack within 0.75s after a Dash deals 50% additional damage.', requires:[] },
-  { id:'flowRecovery', branch:'mobility', tier:2, fork:'mobilityTechnique', name:'Flow Recovery', description:'Evading a shockwave during Dash reduces Dash cooldown by 0.4s.', requires:['dashStrike'] },
-  { id:'slipstream', branch:'mobility', tier:2, fork:'mobilityTechnique', name:'Slipstream', description:'After Dashing, move faster for one second.', requires:['dashStrike'] },
-  { id:'longstride', branch:'mobility', tier:2, fork:'mobilityTechnique', name:'Longstride', description:'Dash lasts 40% longer, trading frequency for safer traversal.', requires:['dashStrike'] },
-  { id:'afterimage', branch:'mobility', tier:3, capstone:true, name:'Afterimage', description:'Dashing creates a 1.5s projectile-decoy.', requires:['flowRecovery'] },
-  { id:'phaseRush', branch:'mobility', tier:3, capstone:true, name:'Phase Rush', description:'Dashing through the boss staggers it once per Dash.', requires:['slipstream'] },
-  { id:'ghostStep', branch:'mobility', tier:3, capstone:true, name:'Ghost Step', description:'Remain invulnerable for 0.35s after Dash ends.', requires:['longstride'] },
-  { id:'openingAttack', branch:'assault', tier:1, name:'Opening Attack', description:'First successful hit of each run deals double damage.', requires:[] },
-  { id:'pressure', branch:'assault', tier:2, fork:'assaultTechnique', name:'Pressure', description:'Consecutive hits build damage; missing or taking damage resets it.', requires:['openingAttack'] },
-  { id:'counterforce', branch:'assault', tier:2, fork:'assaultTechnique', name:'Counterforce', description:'Taking damage arms the next attack for 50% additional damage.', requires:['openingAttack'] },
-  { id:'cadence', branch:'assault', tier:2, fork:'assaultTechnique', name:'Cadence', description:'Every third consecutive hit deals 40% additional damage.', requires:['openingAttack'] },
-  { id:'executioner', branch:'assault', tier:3, capstone:true, name:'Executioner', description:'Once per run, hitting below 25% HP deals 15% maximum HP bonus damage.', requires:['pressure'] },
-  { id:'reprisal', branch:'assault', tier:3, capstone:true, name:'Reprisal', description:'Counterforce hits also restore 12 HP.', requires:['counterforce'] },
-  { id:'overdrive', branch:'assault', tier:3, capstone:true, name:'Overdrive', description:'Cadence hits stagger the boss and immediately ready the next attack.', requires:['cadence'] },
-  { id:'fieldRation', branch:'survival', tier:1, name:'Field Ration', description:'Automatically consumes equipped Food below 35% HP.', requires:[] },
-  { id:'secondWind', branch:'survival', tier:2, fork:'survivalTechnique', name:'Second Wind', description:'Once per run, lethal damage leaves you at 1 HP.', requires:['fieldRation'] },
-  { id:'guardedRecovery', branch:'survival', tier:2, fork:'survivalTechnique', name:'Guarded Recovery', description:'Successfully Dashing a shockwave restores 8 HP.', requires:['fieldRation'] },
-  { id:'combatNutrition', branch:'survival', tier:2, fork:'survivalTechnique', name:'Combat Nutrition', description:'Consuming Food grants a barrier against the next damage instance.', requires:['fieldRation'] },
-  { id:'fortifiedRecovery', branch:'survival', tier:3, capstone:true, name:'Fortified Recovery', description:'Once per run, recover 25 HP after avoiding damage for 6s.', requires:['secondWind'] },
-  { id:'aegis', branch:'survival', tier:3, capstone:true, name:'Aegis', description:'A shockwave evade arms a barrier that prevents the next damage instance.', requires:['guardedRecovery'] },
-  { id:'lastSupper', branch:'survival', tier:3, capstone:true, name:'Last Supper', description:'Combat Nutrition barriers absorb two damage instances instead of one.', requires:['combatNutrition'] }
-]
+// The typed skill framework is the authoritative source. IDs remain the
+// legacy Combat Discipline IDs consumed by arena.js and persisted saves.
+const COMBAT_TALENTS = COMBAT_SKILL_TREE?.nodes || [];
 const ownedCombatTalents = new Set();
+let combatSkillTreeView = SKILL_TREE_RULES?.defaultView() || { zoom:1, panX:0, panY:0, focusNodeId:null, activeBranch:null };
 let arenaRecords = {};
 let activityLedger = [];
 
@@ -1054,6 +1037,7 @@ function createSaveData() {
     equipment: { ...equipment },
     weaponRefinements: { ...weaponRefinements },
     combatTalents: [...ownedCombatTalents],
+    combatSkillTreeView: { ...combatSkillTreeView },
     arenaRecords: { ...arenaRecords },
     activityLedger: [...activityLedger],
     frontier: {
@@ -1155,6 +1139,7 @@ function loadGame() {
     equippedTool = equipment.tool;
     ownedCombatTalents.clear();
     if (save.version >= 8) validateLoadedTalents(save.combatTalents || []).forEach(id => ownedCombatTalents.add(id));
+    combatSkillTreeView = SKILL_TREE_RULES.createState(COMBAT_SKILL_TREE, [], save.version >= 14 ? save.combatSkillTreeView || {} : {}).view;
     arenaRecords = save.version >= 8 && save.arenaRecords ? { ...save.arenaRecords } : {};
     activityLedger = save.version >= 8 && Array.isArray(save.activityLedger) ? save.activityLedger.slice(0, 20) : [];
     if (save.version >= 9) {
@@ -1588,57 +1573,138 @@ function showOfflineSummary() {
 function fishingRateMult(skillId) { return skillId === 'Fishing' && fishingBuffSecs > 0 ? 1.5 : 1; }
 
 function validateLoadedTalents(ids) {
-  const selected = new Set();
-  let capstoneOwned = false;
-  const selectedForks = new Set();
-  const known = new Set(ids.filter(id => COMBAT_TALENTS.some(talent => talent.id === id)));
-  for (const talent of COMBAT_TALENTS) {
-    if (!known.has(talent.id) || selected.size >= earnedCombatTalentPoints()) continue;
-    if (!talent.requires.every(id => selected.has(id))) continue;
-    if (talent.fork && selectedForks.has(talent.fork)) continue;
-    if (talent.capstone && capstoneOwned) continue;
-    selected.add(talent.id);
-    if (talent.fork) selectedForks.add(talent.fork);
-    if (talent.capstone) capstoneOwned = true;
-  }
-  return [...selected];
+  return SKILL_TREE_RULES.normalizeNodeIds(COMBAT_SKILL_TREE, ids, earnedCombatTalentPoints());
 }
 
 function canSelectTalent(talent) {
-  if (ownedCombatTalents.has(talent.id)) return { allowed:false, reason:'Selected' };
-  if (availableCombatTalentPoints() <= 0) return { allowed:false, reason:'No points available' };
-  const missing = talent.requires.filter(id => !ownedCombatTalents.has(id));
-  if (missing.length) return { allowed:false, reason:'Requires previous talent' };
-  if (talent.fork && COMBAT_TALENTS.some(candidate => candidate.id !== talent.id && candidate.fork === talent.fork && ownedCombatTalents.has(candidate.id))) return { allowed:false, reason:'Other fork selected' };
-  if (talent.capstone && COMBAT_TALENTS.some(candidate => candidate.capstone && ownedCombatTalents.has(candidate.id))) {
-    return { allowed:false, reason:'Another capstone selected' };
-  }
-  return { allowed:true, reason:'Available' };
+  return SKILL_TREE_RULES.canAllocate(
+    COMBAT_SKILL_TREE,
+    SKILL_TREE_RULES.createState(COMBAT_SKILL_TREE, [...ownedCombatTalents], combatSkillTreeView),
+    talent.id,
+    availableCombatTalentPoints()
+  );
 }
 
 function renderTalents() {
+  const state = SKILL_TREE_RULES.createState(COMBAT_SKILL_TREE, [...ownedCombatTalents], combatSkillTreeView);
   const earned = earnedCombatTalentPoints();
-  talentPointSummary.innerHTML = `<span>Combat ${skills.find(skill => skill.id === 'Combat').lvl}</span><strong>${availableCombatTalentPoints()} available</strong><span>${ownedCombatTalents.size}/${earned} spent</span><span>Build: ${combatBuildLabel()}</span><span>Next point: ${COMBAT_TALENT_LEVELS.find(level => level > skills.find(skill => skill.id === 'Combat').lvl) || 'all earned'}</span>`;
-  const branchNames = { mobility:'Mobility', assault:'Assault', survival:'Survival' };
-  talentBranches.innerHTML = Object.entries(branchNames).map(([branch, name]) => {
-    const talents = COMBAT_TALENTS.filter(talent => talent.branch === branch);
-    const renderNode = talent => {
-      const selected = ownedCombatTalents.has(talent.id);
-      const state = canSelectTalent(talent);
-      return `<button class="talent-node${selected ? ' is-selected' : ''}${talent.capstone ? ' is-capstone' : ''}" data-talent="${talent.id}" ${selected || !state.allowed ? 'disabled' : ''}><span class="talent-tier">${talent.capstone ? 'CAPSTONE' : `TIER ${talent.tier}`}</span><strong>${talent.name}</strong><span>${talent.description}</span><em>${selected ? 'Selected' : state.reason}</em></button>`;
-    };
-    return `<section class="talent-branch branch-${branch}"><h3>${name}</h3>${renderNode(talents.find(talent => talent.tier === 1))}<div class="talent-split" aria-hidden="true"><i></i><i></i><i></i></div><div class="talent-fork-row">${talents.filter(talent => talent.tier === 2).map(renderNode).join('')}</div><div class="talent-path-lines" aria-hidden="true"><i></i><i></i><i></i></div><div class="talent-fork-row">${talents.filter(talent => talent.tier === 3).map(renderNode).join('')}</div></section>`;
+  const combatLevel = skills.find(skill => skill.id === 'Combat').lvl;
+  talentPointSummary.innerHTML = `<span>Combat ${combatLevel}</span><strong>${availableCombatTalentPoints()} available</strong><span>${ownedCombatTalents.size}/${earned} spent</span><span>Build: ${combatBuildLabel()}</span><span>Next point: ${COMBAT_TALENT_LEVELS.find(level => level > combatLevel) || 'all earned'}</span>`;
+  const branchById = new Map(COMBAT_SKILL_TREE.branches.map(branch => [branch.id, branch]));
+  const selectedNode = COMBAT_TALENTS.find(node => node.id === combatSkillTreeView.focusNodeId) || COMBAT_TALENTS.find(node => node.id === COMBAT_SKILL_TREE.rootNodeIds[0]);
+  const selectedStatus = selectedNode ? canSelectTalent(selectedNode) : { allowed:false, reason:'Select a node' };
+  const selectedOwned = selectedNode ? ownedCombatTalents.has(selectedNode.id) : false;
+  const selectedBranch = selectedNode ? branchById.get(selectedNode.branch) : null;
+  const nodeMarkup = node => {
+    const branch = branchById.get(node.branch);
+    const owned = ownedCombatTalents.has(node.id);
+    const allocation = canSelectTalent(node);
+    const status = owned ? 'owned' : allocation.allowed ? 'available' : 'locked';
+    const dimmed = combatSkillTreeView.activeBranch && combatSkillTreeView.activeBranch !== node.branch;
+    const icon = node.icon ? iconMarkup(node.icon.sheet, node.icon.key, 'skill-tree-node-icon') || `<span class="skill-tree-node-icon-fallback" aria-hidden="true">${node.icon.fallback}</span>` : '';
+    return `<button type="button" class="skill-tree-node is-${status}${node.capstone ? ' is-capstone' : ''}${dimmed ? ' is-dimmed' : ''}" data-tree-node="${node.id}" aria-pressed="${owned}" aria-label="${node.name}, ${owned ? 'owned' : allocation.reason}" style="--node-x:${node.position.x / COMBAT_SKILL_TREE.viewBox.width * 100}%;--node-y:${node.position.y / COMBAT_SKILL_TREE.viewBox.height * 100}%;--branch-color:${branch.color}"><span class="skill-tree-node-icon-wrap">${icon}</span><span class="skill-tree-node-tier">${node.capstone ? 'CAPSTONE' : `TIER ${node.tier}`}</span><strong>${node.name}</strong><em>${owned ? 'Owned' : allocation.reason}</em></button>`;
+  };
+  const edgeMarkup = COMBAT_SKILL_TREE.edges.map(connection => {
+    const from = COMBAT_TALENTS.find(node => node.id === connection.from);
+    const to = COMBAT_TALENTS.find(node => node.id === connection.to);
+    if (!from || !to) return '';
+    const fromOwned = ownedCombatTalents.has(from.id);
+    const toOwned = ownedCombatTalents.has(to.id);
+    const toAvailable = canSelectTalent(to).allowed;
+    const status = fromOwned && toOwned ? 'owned' : toAvailable || fromOwned ? 'available' : 'locked';
+    const dimmed = combatSkillTreeView.activeBranch && combatSkillTreeView.activeBranch !== to.branch;
+    return `<line class="skill-tree-edge is-${status}${dimmed ? ' is-dimmed' : ''}" data-edge="${connection.id}" x1="${from.position.x}" y1="${from.position.y}" x2="${to.position.x}" y2="${to.position.y}" />`;
   }).join('');
-  talentBranches.querySelectorAll('[data-talent]').forEach(button => {
-    button.onclick = () => {
-      if (window.MomentumArena.isRunning()) return;
-      const talent = COMBAT_TALENTS.find(candidate => candidate.id === button.dataset.talent);
-      if (!canSelectTalent(talent).allowed) return;
-      ownedCombatTalents.add(talent.id);
-      logActivity(`Selected talent: ${talent.name}`, 'talent');
-      renderTalents();
-    };
+  talentBranches.innerHTML = `<div class="skill-tree-layout">
+    <aside class="skill-tree-branch-rail" aria-label="Combat branches">
+      <div class="eyebrow">BRANCH FOCUS</div>
+      <button type="button" class="skill-tree-branch-filter${combatSkillTreeView.activeBranch ? '' : ' is-active'}" data-tree-branch="all"><span>All branches</span><em>${COMBAT_TALENTS.length} nodes</em></button>
+      ${COMBAT_SKILL_TREE.branches.map(branch => `<button type="button" class="skill-tree-branch-filter${combatSkillTreeView.activeBranch === branch.id ? ' is-active' : ''}" data-tree-branch="${branch.id}" style="--branch-color:${branch.color}"><span>${branch.name}</span><em>${SKILL_TREE_RULES.branchProgress(COMBAT_SKILL_TREE, state, branch.id).owned}/${SKILL_TREE_RULES.branchProgress(COMBAT_SKILL_TREE, state, branch.id).total} owned</em></button>`).join('')}
+      <p class="skill-tree-branch-note">Choose a root, then commit to one technique fork per branch. Only one capstone can be active overall.</p>
+    </aside>
+    <section class="skill-tree-graph-column">
+      <div class="skill-tree-toolbar" role="toolbar" aria-label="Skill tree view controls">
+        <button type="button" class="btn btn-small" data-tree-control="zoom-out" aria-label="Zoom out">−</button>
+        <span class="skill-tree-zoom-label" data-tree-zoom>${Math.round(combatSkillTreeView.zoom * 100)}%</span>
+        <button type="button" class="btn btn-small" data-tree-control="zoom-in" aria-label="Zoom in">+</button>
+        <button type="button" class="btn btn-small btn-quiet" data-tree-control="fit">Fit to view</button>
+        <button type="button" class="btn btn-small btn-quiet" data-tree-control="reset-view">Reset view</button>
+      </div>
+      <div id="talentTreeViewport" class="skill-tree-viewport" tabindex="0" aria-label="Combat skill tree graph. Drag to pan and use the wheel to zoom.">
+        <div id="talentTreeStage" class="skill-tree-stage" style="width:${COMBAT_SKILL_TREE.viewBox.width}px;height:${COMBAT_SKILL_TREE.viewBox.height}px;transform:translate(${combatSkillTreeView.panX}px,${combatSkillTreeView.panY}px) scale(${combatSkillTreeView.zoom})">
+          <svg class="skill-tree-edges" viewBox="0 0 ${COMBAT_SKILL_TREE.viewBox.width} ${COMBAT_SKILL_TREE.viewBox.height}" aria-hidden="true">${edgeMarkup}</svg>
+          <div class="skill-tree-nodes">${COMBAT_TALENTS.map(nodeMarkup).join('')}</div>
+        </div>
+      </div>
+      <p class="skill-tree-graph-hint">Gold paths are owned progress. Cyan paths are reachable. Drag the graph or use the controls to survey the tree.</p>
+    </section>
+    <aside class="skill-tree-details" id="talentNodeDetails" aria-live="polite">
+      <div class="eyebrow">NODE DETAIL</div>
+      ${selectedNode ? `<div class="skill-tree-detail-icon" style="--branch-color:${selectedBranch.color}">${selectedNode.icon?.fallback || '◆'}</div><span class="skill-tree-detail-branch" style="color:${selectedBranch.color}">${selectedBranch.name} · ${selectedNode.capstone ? 'CAPSTONE' : `TIER ${selectedNode.tier}`}</span><h3>${selectedNode.name}</h3><p>${selectedNode.description}</p><div class="skill-tree-detail-rule">${selectedNode.requires.length ? `Requires: ${selectedNode.requires.map(id => COMBAT_TALENTS.find(node => node.id === id)?.name || id).join(' · ')}` : 'Root node · no prerequisite'}</div><button type="button" class="btn skill-tree-acquire" data-tree-acquire="${selectedNode.id}" ${selectedOwned || !selectedStatus.allowed ? 'disabled' : ''}>${selectedOwned ? 'Owned' : selectedStatus.allowed ? 'Spend 1 Combat Point' : selectedStatus.reason}</button>` : '<p>Select a node to inspect it.</p>'}
+    </aside>
+  </div>`;
+
+  const viewport = talentBranches.querySelector('#talentTreeViewport');
+  const stage = talentBranches.querySelector('#talentTreeStage');
+  const applyTransform = () => { stage.style.transform = `translate(${combatSkillTreeView.panX}px,${combatSkillTreeView.panY}px) scale(${combatSkillTreeView.zoom})`; };
+  const setView = patch => { combatSkillTreeView = { ...combatSkillTreeView, ...patch }; applyTransform(); };
+  talentBranches.querySelectorAll('[data-tree-node]').forEach(button => button.addEventListener('click', () => {
+    combatSkillTreeView = { ...combatSkillTreeView, focusNodeId: button.dataset.treeNode };
+    saveGame();
+    renderTalents();
+  }));
+  talentBranches.querySelector('[data-tree-acquire]')?.addEventListener('click', event => {
+    if (window.MomentumArena.isRunning()) return;
+    const node = COMBAT_TALENTS.find(candidate => candidate.id === event.currentTarget.dataset.treeAcquire);
+    if (!node) return;
+    const allocation = SKILL_TREE_RULES.allocate(COMBAT_SKILL_TREE, state, node.id, availableCombatTalentPoints());
+    if (!allocation.accepted) return;
+    ownedCombatTalents.add(node.id);
+    combatSkillTreeView = allocation.state.view;
+    logActivity(`Selected talent: ${node.name}`, 'talent');
+    saveGame();
+    renderTalents();
   });
+  talentBranches.querySelectorAll('[data-tree-branch]').forEach(button => button.addEventListener('click', () => {
+    const branch = button.dataset.treeBranch === 'all' ? null : button.dataset.treeBranch;
+    combatSkillTreeView = { ...combatSkillTreeView, activeBranch: branch };
+    saveGame();
+    renderTalents();
+    const target = branch ? COMBAT_TALENTS.find(node => node.branch === branch) : null;
+    if (target && viewport) {
+      const nextScrollLeft = Math.max(0, target.position.x * combatSkillTreeView.zoom - viewport.clientWidth / 2);
+      viewport.scrollLeft = nextScrollLeft;
+    }
+  }));
+  talentBranches.querySelectorAll('[data-tree-control]').forEach(button => button.addEventListener('click', () => {
+    const control = button.dataset.treeControl;
+    if (control === 'zoom-in') setView({ zoom: Math.min(1.45, combatSkillTreeView.zoom + 0.1) });
+    if (control === 'zoom-out') setView({ zoom: Math.max(0.55, combatSkillTreeView.zoom - 0.1) });
+    if (control === 'fit') {
+      const fitWidth = Math.max(0.55, Math.min(1.45, (viewport.clientWidth - 24) / COMBAT_SKILL_TREE.viewBox.width));
+      const fitHeight = Math.max(0.55, Math.min(1.45, (viewport.clientHeight - 24) / COMBAT_SKILL_TREE.viewBox.height));
+      combatSkillTreeView = { ...combatSkillTreeView, zoom:Math.min(fitWidth, fitHeight), panX:0, panY:0 };
+      renderTalents();
+    }
+    if (control === 'reset-view') { combatSkillTreeView = { ...combatSkillTreeView, zoom:1, panX:0, panY:0, activeBranch:null }; renderTalents(); }
+    saveGame();
+  }));
+  let drag = null;
+  viewport?.addEventListener('pointerdown', event => {
+    if (event.target.closest('button')) return;
+    drag = { x:event.clientX, y:event.clientY, panX:combatSkillTreeView.panX, panY:combatSkillTreeView.panY };
+    viewport.setPointerCapture(event.pointerId);
+  });
+  viewport?.addEventListener('pointermove', event => {
+    if (!drag) return;
+    setView({ panX:drag.panX + event.clientX - drag.x, panY:drag.panY + event.clientY - drag.y });
+  });
+  viewport?.addEventListener('pointerup', () => { if (drag) saveGame(); drag = null; });
+  viewport?.addEventListener('pointercancel', () => { drag = null; });
+  viewport?.addEventListener('wheel', event => {
+    event.preventDefault();
+    setView({ zoom: Math.max(0.55, Math.min(1.45, combatSkillTreeView.zoom + (event.deltaY < 0 ? 0.08 : -0.08))) });
+  }, { passive:false });
   refundTalentsBtn.disabled = ownedCombatTalents.size === 0 || window.MomentumArena.isRunning();
 }
 
@@ -3040,8 +3106,11 @@ document.getElementById('openTalentsBtn').onclick = () => { renderTalents(); tal
 document.getElementById('closeTalents').onclick = () => talentModal.style.display='none';
 refundTalentsBtn.onclick = () => {
   if (window.MomentumArena.isRunning() || ownedCombatTalents.size === 0) return;
+  if (!confirm('Reset all Combat Skill Tree nodes? All spent Combat Points will return.')) return;
   ownedCombatTalents.clear();
-  logActivity('Combat Discipline talents refunded', 'talent');
+  combatSkillTreeView = { ...combatSkillTreeView, focusNodeId:null };
+  logActivity('Combat Skill Tree reset', 'talent');
+  saveGame();
   renderTalents();
 };
 document.getElementById('clearLedgerBtn').onclick = () => { activityLedger = []; renderActivityLedger(); };

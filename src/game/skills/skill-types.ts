@@ -86,7 +86,71 @@ export interface SkillTreeNode {
   description: string;
   requires: readonly string[];
   exclusiveWith?: readonly string[];
+  /** One point is the default cost for existing Combat Discipline nodes. */
+  cost?: number;
+  /** Named exclusivity group, such as a Tier II fork. */
+  exclusiveGroup?: string;
+  /** Legacy alias retained for Combat Discipline and existing presets. */
+  fork?: string;
   capstone?: boolean;
+  icon?: SkillTreeNodeIcon;
+  position?: SkillTreeNodePosition;
+  effectIds?: readonly string[];
+}
+
+export interface SkillTreeNodeIcon {
+  sheet: 'skill' | 'resource' | 'loadout';
+  key: string;
+  fallback: string;
+}
+
+export interface SkillTreeNodePosition {
+  x: number;
+  y: number;
+}
+
+export interface SkillTreeEdge {
+  id: string;
+  from: string;
+  to: string;
+  kind?: 'prerequisite' | 'branch';
+}
+
+export interface SkillTreeBranch {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+}
+
+export interface SkillTreeDefinition {
+  id: string;
+  name: string;
+  skillId: string;
+  currencyLabel: string;
+  description: string;
+  branches: readonly SkillTreeBranch[];
+  nodes: readonly SkillTreeNode[];
+  edges: readonly SkillTreeEdge[];
+  rootNodeIds: readonly string[];
+  viewBox: { width: number; height: number };
+}
+
+export type SkillTreeNodeState = 'locked' | 'available' | 'owned';
+
+export interface SkillTreeViewState {
+  zoom: number;
+  panX: number;
+  panY: number;
+  focusNodeId: string | null;
+  activeBranch: string | null;
+}
+
+/** Persisted allocation and presentation state for a data-driven skill tree. */
+export interface SkillTreeState {
+  treeId: string;
+  ownedNodeIds: readonly string[];
+  view: SkillTreeViewState;
 }
 
 export interface SkillSpecializationNode {
