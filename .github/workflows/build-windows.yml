@@ -1,11 +1,15 @@
 name: Build Windows desktop app
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       backend_url:
         description: 'Backend URL embedded in this build (for example http://192.168.20.25:3000)'
-        required: true
+        required: false
+        default: ''
         type: string
 
 jobs:
@@ -13,7 +17,7 @@ jobs:
     runs-on: windows-latest
     env:
       VITE_MOMENTUM_PARTY_MODE: authoritative
-      VITE_MOMENTUM_BACKEND_URL: ${{ inputs.backend_url }}
+      VITE_MOMENTUM_BACKEND_URL: ${{ inputs.backend_url || vars.MOMENTUM_BACKEND_URL }}
 
     steps:
       - name: Check out source
@@ -30,6 +34,13 @@ jobs:
 
       - name: Install JavaScript dependencies
         run: npm ci
+
+      - name: Check backend URL
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:VITE_MOMENTUM_BACKEND_URL)) {
+            throw 'Set the MOMENTUM_BACKEND_URL repository variable or provide a backend_url when running this workflow manually.'
+          }
 
       - name: Build Tauri Windows installers
         run: npm run tauri:build
