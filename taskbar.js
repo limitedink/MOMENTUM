@@ -79,6 +79,29 @@
     return String(value).replace(/[&<>"']/g, character => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[character]));
   }
 
+  function adventureSignature() {
+    const state = window.MomentumAdventure?.getState?.();
+    return state ? `${state.status}:${state.currentNodeId}:${state.selectedRouteId || ''}:${state.pendingReward?.id || ''}:${state.completedEncounterIds.length}` : 'none';
+  }
+
+  function adventureSummaryMarkup() {
+    const state = window.MomentumAdventure?.getState?.();
+    if (!state) return '';
+    const labels = {
+      outpost:'Choose a route',
+      ready:state.selectedRouteId ? 'Begin the next encounter' : 'Route decision waiting',
+      in_encounter:'Encounter active',
+      reward:'Reward waiting',
+      complete:'Region secured',
+      failed:'Restart at the outpost'
+    };
+    return `<div class="taskbar-adventure-note"><strong>Adventure</strong> · ${escapeHtml(labels[state.status] || 'Frontier ready')} <button class="btn btn-small btn-quiet" data-open-adventure>Open</button></div>`;
+  }
+
+  function bindAdventureButton(host) {
+    host?.querySelector('[data-open-adventure]')?.addEventListener('click', () => window.MomentumAdventure?.open?.());
+  }
+
   function rewardDescription(reward) {
     return reward ? `+${escapeHtml(reward.pineLogs)} Pine Logs · +${escapeHtml(reward.cookedFish)} Cooked Fish` : '';
   }
@@ -202,7 +225,7 @@
     const player = currentPlayer(snapshot);
     const pendingSignature = storeState.session.pendingCommands.map(command => `${command.type}:${command.commandId}`).join(',');
     const error = commandError(storeState);
-    const signature = `${storeState.session.lastAcceptedRevision}:${storeState.session.connection.status}:${pendingSignature}:${error}:${snapshot.elapsedTicks}:${expedition.status}:${expedition.pendingRewards?.id || 'clear'}:${player?.activity || ''}:${presentation.compact}`;
+    const signature = `${storeState.session.lastAcceptedRevision}:${storeState.session.connection.status}:${pendingSignature}:${error}:${snapshot.elapsedTicks}:${expedition.status}:${expedition.pendingRewards?.id || 'clear'}:${player?.activity || ''}:${presentation.compact}:${adventureSignature()}`;
     if (!force && signature === lastRenderSignature) return;
     lastRenderSignature = signature;
     renderIdentity(currentRuntimeState());
@@ -243,7 +266,7 @@
     elements.dockLabel.textContent = `Forest Expedition · ${expedition.status} · ${expedition.completedExpeditions} complete`;
 
     const latestEvent = escapeHtml(snapshot.recentEvents[0]?.text || 'Progress continues quietly.');
-    elements.dockNotable.innerHTML = expedition.pendingRewards ? `<strong>Reward ready</strong><br>${rewardDescription(expedition.pendingRewards)} ${rewardButtonMarkup('Claim')}` : latestEvent;
+    elements.dockNotable.innerHTML = `${expedition.pendingRewards ? `<strong>Reward ready</strong><br>${rewardDescription(expedition.pendingRewards)} ${rewardButtonMarkup('Claim')}` : latestEvent}${adventureSummaryMarkup()}`;
     if (expedition.pendingRewards) {
       elements.checkin.innerHTML = `<strong>Expedition complete.</strong> ${rewardDescription(expedition.pendingRewards)} ${rewardButtonMarkup('Claim reward')}`;
     } else {
@@ -253,6 +276,7 @@
     }
     bindRewardButtons(elements.dockNotable);
     bindRewardButtons(elements.checkin);
+    bindAdventureButton(elements.dockNotable);
   }
 
   function shortPlayerId(playerId) {
@@ -456,7 +480,7 @@
     const party = authoritative.party;
     const displayName = runtimeState.identity.displayName || '';
     const rewardId = authoritativePendingReward(runtimeState)?.id || 'none';
-    const signature = `authoritative:${connectionStatus}:${authoritative.scope.partyId || 'none'}:${party?.updatedAt || 'none'}:${party?.members.length || 0}:${displayName}:${authoritativeState?.revision ?? 'none'}:${rewardId}:${pending}:${error}:${partyManagementBusy}:${presentation.compact}`;
+    const signature = `authoritative:${connectionStatus}:${authoritative.scope.partyId || 'none'}:${party?.updatedAt || 'none'}:${party?.members.length || 0}:${displayName}:${authoritativeState?.revision ?? 'none'}:${rewardId}:${pending}:${error}:${partyManagementBusy}:${presentation.compact}:${adventureSignature()}`;
     if (!force && signature === lastRenderSignature) return;
     lastRenderSignature = signature;
     renderIdentity(runtimeState);
@@ -497,8 +521,9 @@
     bindAuthoritativeActions(elements.dockActions);
     elements.dockLabel.textContent = `Forest Expedition · ${stateLabel}`;
     const pendingReward = authoritativePendingReward(runtimeState);
-    elements.dockNotable.innerHTML = error || (pendingReward ? `<strong>Reward ready</strong><br>${authoritativeRewardDescription(pendingReward)}` : authoritativeState ? 'Progress runs automatically while the party is online.' : 'Waiting for party state.');
+    elements.dockNotable.innerHTML = `${error || (pendingReward ? `<strong>Reward ready</strong><br>${authoritativeRewardDescription(pendingReward)}` : authoritativeState ? 'Progress runs automatically while the party is online.' : 'Waiting for party state.')}${adventureSummaryMarkup()}`;
     bindRewardButtons(elements.dockNotable);
+    bindAdventureButton(elements.dockNotable);
     const yourActivityId = authoritativeState?.memberActivities?.[runtimeState.identity.authenticatedPlayerId || ''] || 'rest';
     const yourActivity = DEFINITIONS.activities[yourActivityId] || DEFINITIONS.activities.rest;
     elements.checkin.innerHTML = authoritative.scope.partyId ? `<span>${authoritativeState ? `Shared forest expedition is ${stateLabel.toLowerCase()}.` : 'Waiting for the server to provide the shared expedition state.'} You are on <strong>${yourActivity.icon} ${escapeHtml(yourActivity.name)}</strong>. ${authoritativeState?.activity.status === 'active' ? 'Progress updates automatically while the server runs the expedition.' : ''}</span>` : '<span>No party membership is currently available. The local fallback remains available by selecting local mode.</span>';

@@ -29,6 +29,7 @@
     <div class="command-rail">
       <nav class="game-view-tabs" aria-label="Primary game views">
         <button class="game-view-tab is-active" data-game-view="hub"><span aria-hidden="true">◆</span> Hub</button>
+        <button class="game-view-tab" data-game-view="adventure"><span aria-hidden="true">✧</span> Adventure</button>
         <button class="game-view-tab" data-game-view="field"><span aria-hidden="true">⚔</span> Field</button>
         <button class="game-view-tab" id="viewCharacterBtn" aria-haspopup="dialog"><span aria-hidden="true">◇</span> Loadout</button>
       </nav>
@@ -53,6 +54,21 @@
 
     <main class="row" id="gameViewRoot">
       <div class="dashboard-grid">
+        <!-- Solo Adventure -->
+        <section class="card card-adventure view-adventure" id="adventureCard">
+          <div class="flex adventure-heading">
+            <div><div class="eyebrow">SOLO ADVENTURE // ROUTE MAP</div><h2 class="title"><span class="title-icon" aria-hidden="true">✧</span> The Frontier Line</h2></div>
+            <span class="tag" id="adventureRunStatus">Outpost</span>
+          </div>
+          <div class="small section-intro">Train in the background, then choose the route that turns your stockpile into forward motion.</div>
+          <div class="adventure-map" aria-label="Frontier route map">
+            <div class="adventure-map-copy"><div class="eyebrow">CURRENT POSITION</div><strong id="adventureLog">No route records yet.</strong><span id="adventureReward">No pending reward</span></div>
+          </div>
+          <div class="adventure-progress" id="adventureProgress" aria-label="Adventure progress"></div>
+          <div class="adventure-routes" id="adventureRoutes" aria-label="Frontier routes"></div>
+          <div class="adventure-encounter" id="adventureEncounter" aria-live="polite"></div>
+        </section>
+
         <!-- Normal tracks -->
         <section class="card card-skills">
           <div class="section-heading"><div><div class="eyebrow">IDLE PRODUCTION</div><h2 class="title"><span class="title-icon" aria-hidden="true">◆</span> Skill Matrix</h2></div><span class="tag" id="activeCountTag">active: 0</span></div>
@@ -390,9 +406,9 @@
 
   <nav class="quickbar" aria-label="Quick actions">
     <button class="quick-action is-active" data-quick-view="hub"><span aria-hidden="true">◆</span>Hub</button>
+    <button class="quick-action" data-quick-view="adventure"><span aria-hidden="true">✧</span>Adventure</button>
     <button class="quick-action" data-quick-view="field"><span aria-hidden="true">⚔</span>Field</button>
     <button class="quick-action" id="quickInventory" aria-haspopup="dialog"><span aria-hidden="true">◇</span>Loadout</button>
-    <button class="quick-action" id="quickSettings" aria-haspopup="dialog"><span aria-hidden="true">⚙</span>Settings</button>
   </nav>
   
 </body>

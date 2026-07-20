@@ -24,6 +24,8 @@ const SKILL_REGISTRY = SKILL_FRAMEWORK?.registry;
 const COMBAT_SKILL_TREE = SKILL_FRAMEWORK?.combatTree;
 const SKILL_TREE_RULES = SKILL_FRAMEWORK?.skillTree;
 const LOOT_FRAMEWORK = window.MomentumLootFramework;
+const WORLD_FRAMEWORK = window.MomentumWorldFramework;
+const WORLD_REGION = WORLD_FRAMEWORK?.frontier;
 
 const MAX_SKILL_LEVEL = 100;   // set to 99, 100, 120, 500, 1000... your call
 const skills = [
@@ -221,6 +223,12 @@ const objectiveTitle = document.getElementById('objectiveTitle');
 const objectiveDetail = document.getElementById('objectiveDetail');
 const objectiveProgressFill = document.getElementById('objectiveProgressFill');
 const objectiveActionBtn = document.getElementById('objectiveActionBtn');
+const adventureRunStatus = document.getElementById('adventureRunStatus');
+const adventureProgress = document.getElementById('adventureProgress');
+const adventureRoutes = document.getElementById('adventureRoutes');
+const adventureEncounter = document.getElementById('adventureEncounter');
+const adventureReward = document.getElementById('adventureReward');
+const adventureLog = document.getElementById('adventureLog');
 const operationsBoard = document.getElementById('operationsBoard');
 const operationsToggle = document.getElementById('operationsToggle');
 const operationsList = document.getElementById('operationsList');
@@ -584,6 +592,10 @@ const ownedCombatTalents = new Set();
 let combatSkillTreeView = SKILL_TREE_RULES?.defaultView() || { zoom:1, panX:0, panY:0, focusNodeId:null, activeBranch:null };
 let arenaRecords = {};
 let activityLedger = [];
+let worldRuntime = null;
+let worldState = null;
+let worldRenderSignature = '';
+let worldActiveActivity = null;
 
 const FRONTIER_DIRECTIVES = [
   { id:'echoProtocol', tierId:1, name:'Echo Protocol', description:'Every shockwave is followed by a delayed echo.' },
@@ -689,6 +701,295 @@ function evaluateRequirements(requirements = []) {
   }
   return { met: missing.length === 0, missing };
 }
+
+function worldResourceAmount(resourceId) {
+  return resourceId === 'Ore' ? skills.find(skill => skill.id === 'Mining')?.qty || 0
+    : resourceId === 'Bars' ? skills.find(skill => skill.id === 'Smithing')?.qty || 0
+    : resourceId === 'Pine Logs' ? woodInventory.pine
+    : resourceId === 'Crafted Components' ? skills.find(skill => skill.id === 'Crafting')?.qty || 0
+    : resourceId === 'Boss Keys' ? Math.floor(keys)
+    : resourceId === 'Rare Gems' ? rareGems
+    : resourceId === 'Raw Fish' ? skills.find(skill => skill.id === 'Fishing')?.qty || 0
+    : resourceId === 'Cooked Fish' ? skills.find(skill => skill.id === 'Cooking')?.qty || 0
+    : resourceId === 'Uncommon Fish' ? uncommonFish
+    : resourceId === 'Scrap' ? scrap
+    : 0;
+}
+
+function evaluateWorldRequirements(requirements = [], state = worldState) {
+  const missing = [];
+  for (const requirement of requirements) {
+    if (requirement.type === 'skillLevel') {
+      const level = skills.find(skill => skill.id === requirement.skillId)?.lvl || 0;
+      if (level < requirement.level) missing.push(`${requirement.skillId} ${requirement.level}`);
+    }
+    if (requirement.type === 'resource') {
+      const amount = worldResourceAmount(requirement.resourceId);
+      if (amount < requirement.amount) missing.push(`${requirement.amount} ${requirement.resourceId}`);
+    }
+    if (requirement.type === 'equipment') {
+      const equipped = requirement.slot === 'combat'
+        ? ['gun', 'melee', 'ranged', 'magic'].some(slot => equipment[slot] && ownedItems.has(equipment[slot]))
+        : Boolean(equipment[requirement.slot] && ownedItems.has(equipment[requirement.slot]));
+      if (!equipped) missing.push(`equip ${requirement.slot}`);
+    }
+    if (requirement.type === 'arenaTier' && arenaTierUnlocked < requirement.tierId) {
+      missing.push(`Defeat ${ARENA_TIERS[requirement.tierId - 2]?.name || 'previous Arena tier'}`);
+    }
+    if (requirement.type === 'completedNode' && !state?.completedNodeIds?.includes(requirement.nodeId)) {
+      missing.push(`complete ${requirement.nodeId}`);
+    }
+  }
+  return { met: missing.length === 0, missing };
+}
+
+function ensureWorldRuntime(savedState = null, saveVersion = SAVE_VERSION) {
+  if (!WORLD_FRAMEWORK || !WORLD_REGION) return null;
+  const initial = WORLD_FRAMEWORK.migrateWorldState(WORLD_REGION, saveVersion, savedState);
+  worldRuntime = WORLD_FRAMEWORK.createWorldRuntime(WORLD_REGION, initial, {
+    evaluateRequirements: (requirements, state) => evaluateWorldRequirements(requirements, state),
+    createRunId: () => `frontier-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  });
+  worldState = worldRuntime.getState();
+  return worldRuntime;
+}
+
+function worldNode() {
+  return WORLD_REGION?.nodes.find(node => node.id === worldState?.currentNodeId) || null;
+}
+
+function worldEncounter() {
+  return WORLD_REGION?.encounters.find(encounter => encounter.id === worldState?.activeEncounterId) || null;
+}
+
+function worldRouteIcon(routeId) {
+  const iconKey = routeId === 'timberline' ? 'Woodcutting' : routeId === 'ironworks' ? 'Smithing' : 'Combat';
+  return iconMarkup('skill', iconKey, 'adventure-route-icon') || '<span class="adventure-route-icon-fallback" aria-hidden="true">◆</span>';
+}
+
+function worldText(value) {
+  return String(value).replace(/[&<>"']/g, character => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[character]));
+}
+
+function worldRequirementText(requirements = []) {
+  return requirements.map(requirement => {
+    if (requirement.type === 'skillLevel') return `${requirement.skillId} ${requirement.level}`;
+    if (requirement.type === 'resource') return `${requirement.amount} ${requirement.resourceId}`;
+    if (requirement.type === 'equipment') return `Combat loadout`;
+    if (requirement.type === 'arenaTier') return `${ARENA_TIERS[requirement.tierId - 1]?.name || `Arena tier ${requirement.tierId}`} unlocked`;
+    return `Previous node`;
+  }).join(' · ');
+}
+
+function worldRewardText(reward = {}) {
+  const items = [];
+  Object.entries(reward.resources || {}).forEach(([resource, amount]) => items.push(`+${amount} ${resource}`));
+  Object.entries(reward.skillXp || {}).forEach(([skill, amount]) => items.push(`+${amount} ${skill} XP`));
+  if (reward.mastery) items.push(`+${reward.mastery} Mastery`);
+  return items.length ? items.join(' · ') : 'A route record and new position';
+}
+
+function worldPayRequirements(encounter) {
+  const requirements = encounter?.requirements || [];
+  if (!evaluateWorldRequirements(requirements, worldState).met) return false;
+  requirements.forEach(requirement => {
+    if (requirement.type !== 'resource') return;
+    const amount = requirement.amount;
+    if (requirement.resourceId === 'Ore') skills.find(skill => skill.id === 'Mining').qty -= amount;
+    if (requirement.resourceId === 'Bars') skills.find(skill => skill.id === 'Smithing').qty -= amount;
+    if (requirement.resourceId === 'Pine Logs') { woodInventory.pine -= amount; skills.find(skill => skill.id === 'Woodcutting').qty = Math.max(0, skills.find(skill => skill.id === 'Woodcutting').qty - amount); }
+    if (requirement.resourceId === 'Crafted Components') skills.find(skill => skill.id === 'Crafting').qty -= amount;
+    if (requirement.resourceId === 'Boss Keys') keys -= amount;
+    if (requirement.resourceId === 'Rare Gems') rareGems -= amount;
+    if (requirement.resourceId === 'Raw Fish') skills.find(skill => skill.id === 'Fishing').qty -= amount;
+    if (requirement.resourceId === 'Cooked Fish') skills.find(skill => skill.id === 'Cooking').qty -= amount;
+    if (requirement.resourceId === 'Uncommon Fish') uncommonFish -= amount;
+    if (requirement.resourceId === 'Scrap') scrap -= amount;
+  });
+  return true;
+}
+
+function worldApplyReward(reward = {}) {
+  Object.entries(reward.resources || {}).forEach(([resource, amount]) => {
+    if (resource === 'Ore') skills.find(skill => skill.id === 'Mining').qty += amount;
+    if (resource === 'Bars') skills.find(skill => skill.id === 'Smithing').qty += amount;
+    if (resource === 'Pine Logs') { woodInventory.pine += amount; skills.find(skill => skill.id === 'Woodcutting').qty += amount; }
+    if (resource === 'Crafted Components') skills.find(skill => skill.id === 'Crafting').qty += amount;
+    if (resource === 'Boss Keys') keys += amount;
+    if (resource === 'Rare Gems') rareGems += amount;
+    if (resource === 'Raw Fish') skills.find(skill => skill.id === 'Fishing').qty += amount;
+    if (resource === 'Cooked Fish') skills.find(skill => skill.id === 'Cooking').qty += amount;
+    if (resource === 'Uncommon Fish') uncommonFish += amount;
+    if (resource === 'Scrap') scrap += amount;
+  });
+  Object.entries(reward.skillXp || {}).forEach(([skillId, amount]) => {
+    const skill = skills.find(candidate => candidate.id === skillId);
+    if (!skill) return;
+    skill.xp += amount;
+    tryLevelUp(skill);
+  });
+  if (reward.lootSource && LOOT_FRAMEWORK) {
+    const loot = LOOT_FRAMEWORK.rollLoot({
+      sourceType: reward.lootSource.sourceType,
+      sourceId: reward.lootSource.sourceId,
+      sourceTier: reward.lootSource.sourceTier,
+      playerLevel: skills.find(skill => skill.id === 'Combat')?.lvl || 1,
+      runId: worldState?.runId || `frontier-loot-${Date.now()}`
+    }, Math.random);
+    const item = awardLootResolution(loot);
+    if (item) logActivity(`Frontier loot: ${lootLabel(item)}`, 'loot');
+  }
+}
+
+function worldCommitLog(message, kind = 'adventure') {
+  logActivity(message, kind);
+  worldState = worldRuntime?.getState() || worldState;
+  renderWorld(true);
+  saveGame();
+}
+
+function worldCancelEncounter() {
+  if (!worldRuntime || worldState?.status !== 'in_encounter') return;
+  worldRuntime.cancelEncounter();
+  worldActiveActivity = null;
+  worldState = worldRuntime.getState();
+  renderWorld(true);
+  saveGame();
+}
+
+function resolveWorldEncounter(success, payInputs = false) {
+  if (!worldRuntime || !worldState?.runId || !worldState.activeEncounterId) return false;
+  const encounter = worldEncounter();
+  if (!encounter) return false;
+  if (payInputs && !worldPayRequirements(encounter)) {
+    showToast(`Requires ${worldRequirementText(encounter.requirements)}`, 3600);
+    return false;
+  }
+  const result = worldRuntime.resolveEncounter({ runId:worldState.runId, encounterId:encounter.id, success });
+  if (!result.accepted) { showToast(result.reason || 'The frontier encounter could not be resolved.', 3600); return false; }
+  worldActiveActivity = null;
+  worldState = result.state;
+  renderWorld(true);
+  saveGame();
+  return true;
+}
+
+function claimWorldReward() {
+  if (!worldRuntime || !worldState?.pendingReward) return;
+  const pending = worldState.pendingReward;
+  const result = worldRuntime.claimReward(pending.id);
+  if (!result.accepted) { showToast(result.reason || 'Frontier reward unavailable.', 3600); return; }
+  worldApplyReward(pending.reward);
+  worldState = result.state;
+  logActivity(`Frontier reward claimed: ${worldRewardText(pending.reward)}`, 'adventure');
+  showToast(`Frontier reward claimed · ${worldRewardText(pending.reward)}`, 4200);
+  renderWorld(true);
+  saveGame();
+}
+
+function beginWorldEncounter() {
+  if (!worldRuntime) return;
+  const result = worldRuntime.beginEncounter();
+  if (!result.accepted) { showToast(result.reason || 'The route is not ready.', 3600); return; }
+  worldState = result.state;
+  const encounter = result.encounter;
+  if (encounter?.arenaTierId) {
+    worldActiveActivity = { kind:'arena', encounterId:encounter.id, runId:worldState.runId };
+    selectedArenaTier = encounter.arenaTierId;
+    openArenaPreparation();
+  } else {
+    renderWorld(true);
+    saveGame();
+  }
+}
+
+function startWorldActiveActivity() {
+  const encounter = worldEncounter();
+  if (!encounter?.activeActivity || !worldState?.runId) return;
+  worldActiveActivity = { kind:encounter.activeActivity, encounterId:encounter.id, runId:worldState.runId };
+  if (encounter.activeActivity === 'fishing') openFishing(worldActiveActivity);
+  if (encounter.activeActivity === 'crafting') openCraftingAssembly(worldActiveActivity);
+}
+
+function renderWorld(force = false) {
+  if (!adventureRoutes || !WORLD_REGION) return;
+  if (!worldRuntime) ensureWorldRuntime();
+  if (!worldRuntime) return;
+  worldState = worldRuntime.getState();
+  const node = worldNode();
+  const encounter = worldEncounter();
+  const route = WORLD_REGION.routes.find(candidate => candidate.id === worldState.selectedRouteId);
+  const signature = JSON.stringify([
+    worldState.status,
+    worldState.currentNodeId,
+    worldState.selectedRouteId,
+    worldState.activeEncounterId,
+    worldState.pendingReward?.id || null,
+    worldState.completedEncounterIds,
+    worldState.mastery,
+    ...skills.filter(skill => ['Woodcutting', 'Smithing', 'Crafting', 'Combat'].includes(skill.id)).map(skill => `${skill.id}:${skill.lvl}:${Math.floor(skill.qty)}`),
+    Math.floor(keys),
+    rareGems,
+    uncommonFish,
+    Math.floor(woodInventory.pine)
+  ]);
+  if (!force && signature === worldRenderSignature) return;
+  worldRenderSignature = signature;
+  const statusLabels = { outpost:'Outpost', ready:'Route ready', in_encounter:'Encounter active', reward:'Reward waiting', complete:'Region secured', failed:'Run ended' };
+  adventureRunStatus.textContent = statusLabels[worldState.status] || 'Outpost';
+    const masteryComplete = Object.values(worldState.mastery || {}).filter(value => value > 0).length;
+    const routeMasteryIds = ['route-timberline', 'route-ironworks', 'route-watch'];
+    const routeRecords = routeMasteryIds.filter(id => (worldState.mastery?.[id] || 0) > 0).length;
+    adventureProgress.innerHTML = `<span>${routeRecords}/${WORLD_REGION.routes.length} route records</span><span class="adventure-progress-track"><i style="width:${masteryComplete / WORLD_REGION.mastery.length * 100}%"></i></span><span>${worldText(node?.name || WORLD_REGION.name)}</span>`;
+  adventureRoutes.innerHTML = WORLD_REGION.routes.map(candidate => {
+    const selected = candidate.id === worldState.selectedRouteId;
+    const completed = worldState.mastery[`route-${candidate.id === 'broken-watch' ? 'watch' : candidate.id}`] > 0;
+    const disabled = !['outpost', 'ready', 'complete', 'failed'].includes(worldState.status) || worldState.currentNodeId !== WORLD_REGION.outpostNodeId;
+    return `<button type="button" class="adventure-route${selected ? ' is-selected' : ''}${completed ? ' is-complete' : ''}" data-world-route="${candidate.id}" ${disabled ? 'disabled' : ''} style="--route-accent:${candidate.accent}"><span class="adventure-route-icon-wrap">${worldRouteIcon(candidate.id)}</span><span class="adventure-route-copy"><strong>${worldText(candidate.name)}</strong><small>${worldText(candidate.summary)}</small></span><span class="adventure-route-mark" aria-hidden="true">${completed ? '★' : selected ? '◆' : '›'}</span></button>`;
+  }).join('');
+  adventureRoutes.querySelectorAll('[data-world-route]').forEach(button => button.onclick = () => {
+    if (worldState.status === 'complete' || worldState.status === 'failed' || worldState.status === 'outpost') worldRuntime.startRun();
+    const result = worldRuntime.selectRoute(button.dataset.worldRoute);
+    if (!result.accepted) { showToast(result.reason || 'Route unavailable.', 3600); return; }
+    worldState = result.state;
+    logActivity(`Route selected: ${result.encounter?.name || button.dataset.worldRoute}`, 'adventure');
+    renderWorld(true); saveGame();
+  });
+  const currentNodeEncounter = node?.encounterId ? WORLD_REGION.encounters.find(candidate => candidate.id === node.encounterId) : null;
+  const selectedEncounter = worldState.currentNodeId !== WORLD_REGION.outpostNodeId
+    ? currentNodeEncounter
+    : route ? WORLD_REGION.encounters.find(candidate => candidate.id === route.encounterId) : encounter;
+  let encounterMarkup = '';
+  if (worldState.status === 'outpost') encounterMarkup = `<div class="adventure-empty"><strong>Start the line.</strong><span>Train in the background, then choose the route that matches your stockpile.</span><button class="btn btn-primary" data-world-start>Start frontier run</button></div>`;
+  else if (worldState.status === 'complete') encounterMarkup = `<div class="adventure-empty is-complete"><strong>Region secured.</strong><span>Run another route to build mastery and discover the alternate rewards.</span><button class="btn" data-world-start>Run the line again</button></div>`;
+  else if (worldState.status === 'failed') encounterMarkup = `<div class="adventure-empty is-failed"><strong>Back at the outpost.</strong><span>Your personal progression is intact. Rebuild the route and try again.</span><button class="btn" data-world-start>Restart frontier run</button></div>`;
+  else if (worldState.status === 'reward' && worldState.pendingReward) encounterMarkup = `<div class="adventure-encounter is-reward"><div class="eyebrow">REWARD CACHE</div><strong>Route secured</strong><p>${worldText(worldRewardText(worldState.pendingReward.reward))}</p><button class="btn btn-primary" data-world-claim>Claim frontier reward</button></div>`;
+  else if (worldState.status === 'in_encounter' && encounter) {
+    const active = encounter.activeActivity ? `<button class="btn" data-world-activity>Play ${encounter.activeActivity === 'crafting' ? 'Assembly' : 'Fishing'} activity</button>` : '';
+    const resolve = encounter.kind === 'boss' ? '' : `<button class="btn btn-primary" data-world-resolve>Resolve with supplies</button>`;
+    encounterMarkup = `<div class="adventure-encounter"><div class="eyebrow">${worldText(encounter.kind.toUpperCase())}</div><strong>${worldText(encounter.name)}</strong><p>${worldText(encounter.summary)}</p><div class="small adventure-requirement">${worldText(worldRequirementText(encounter.requirements))}</div><div class="adventure-actions">${active}${resolve}<button class="btn btn-quiet" data-world-cancel>Cancel encounter</button></div></div>`;
+  } else if (worldState.currentNodeId === WORLD_REGION.outpostNodeId && !route) encounterMarkup = `<div class="adventure-empty"><strong>Choose a route.</strong><span>Each route is a different preparation test before Vanguard.</span></div>`;
+  else if (selectedEncounter) encounterMarkup = `<div class="adventure-encounter"><div class="eyebrow">NEXT ENCOUNTER</div><strong>${worldText(selectedEncounter.name)}</strong><p>${worldText(selectedEncounter.summary)}</p><div class="small adventure-requirement">${worldText(worldRequirementText(selectedEncounter.requirements))}</div><button class="btn btn-primary" data-world-begin>Begin encounter</button></div>`;
+  adventureEncounter.innerHTML = encounterMarkup;
+  adventureEncounter.querySelector('[data-world-start]')?.addEventListener('click', () => { const result = worldRuntime.startRun(); if (result.accepted) { worldState = result.state; logActivity('Frontier run started', 'adventure'); renderWorld(true); saveGame(); } });
+  adventureEncounter.querySelector('[data-world-begin]')?.addEventListener('click', beginWorldEncounter);
+  adventureEncounter.querySelector('[data-world-resolve]')?.addEventListener('click', () => resolveWorldEncounter(true, true));
+  adventureEncounter.querySelector('[data-world-activity]')?.addEventListener('click', startWorldActiveActivity);
+  adventureEncounter.querySelector('[data-world-claim]')?.addEventListener('click', claimWorldReward);
+  adventureEncounter.querySelector('[data-world-cancel]')?.addEventListener('click', worldCancelEncounter);
+  adventureReward.textContent = worldState.pendingReward
+    ? `Cache ready · ${worldRewardText(worldState.pendingReward.reward)}`
+    : node?.description || 'No pending reward';
+  adventureLog.textContent = node?.name || WORLD_REGION.name;
+}
+
+window.MomentumAdventure = Object.freeze({
+  getState() { return worldRuntime?.getState() || null; },
+  open() {
+    setGameView('adventure');
+    renderWorld(true);
+  }
+});
 
 function logActivity(message, kind = 'system') {
   activityLedger.unshift({ message, kind, timestamp:Date.now() });
@@ -1004,7 +1305,7 @@ let selectedArenaStyle = null;
    SAVE / LOAD
 ===================================== */
 const SAVE_KEY = 'momentum-save';
-const SAVE_VERSION = 14;
+const SAVE_VERSION = 15;
 const AUTO_SAVE_MS = 10_000;
 let resetInProgress = false;
 
@@ -1058,7 +1359,8 @@ function createSaveData() {
     skillTools: skillToolInventory.map(instance => ({ ...instance })),
     arenaTierUnlocked,
     selectedArenaTier,
-    arenaWins: [...arenaWins]
+    arenaWins: [...arenaWins],
+    world: worldRuntime?.getState() || null
   };
 }
 
@@ -1080,7 +1382,7 @@ function loadGame() {
 
   try {
     const save = JSON.parse(raw);
-    if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, SAVE_VERSION].includes(save.version)) return false;
+    if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, SAVE_VERSION].includes(save.version)) return false;
 
     save.skills.forEach(savedSkill => {
       const skill = skills.find(s => s.id === savedSkill.id) || (savedSkill.id === 'Music' ? ensureSkillState('Music') : null);
@@ -1170,6 +1472,7 @@ function loadGame() {
     arenaTierUnlocked = save.version >= 4 ? save.arenaTierUnlocked : 1;
     selectedArenaTier = save.version >= 4 ? Math.min(save.selectedArenaTier, arenaTierUnlocked) : 1;
     arenaWins = save.version >= 4 ? [...save.arenaWins] : [0, 0, 0];
+    ensureWorldRuntime(save.version >= 15 ? save.world || null : null, save.version);
 
     updateSaveStatus(save.savedAt);
     return true;
@@ -1889,7 +2192,11 @@ function renderArenaPreparation() {
 
   const directive = FRONTIER_DIRECTIVES.find(candidate => candidate.id === selectedDirective && candidate.tierId === tier.id);
   arenaPrepTierSummary.innerHTML = `<strong>${activeGauntlet ? 'Frontier Gauntlet' : `${tier.name} Arena`}</strong><span>${activeGauntlet ? ARENA_TIERS.reduce((sum, item) => sum + item.keyCost, 0) : tier.keyCost} Boss Keys</span><span>${activeGauntlet ? '3 bosses' : `${tier.bossHp} Boss HP`}</span>`;
-  arenaDirectiveBanner.textContent = activeGauntlet ? 'Gauntlet: HP, Food, and once-per-run talents persist across all three bosses.' : directive ? `Directive: ${directive.name} — ${directive.description}` : 'Standard run · no Directive';
+  arenaDirectiveBanner.textContent = worldActiveActivity?.kind === 'arena'
+    ? 'Frontier finale: this Arena run advances the active adventure route.'
+    : activeGauntlet
+      ? 'Gauntlet: HP, Food, and once-per-run talents persist across all three bosses.'
+      : directive ? `Directive: ${directive.name} — ${directive.description}` : 'Standard run · no Directive';
   arenaStyleCards.innerHTML = states.map(state => {
     const selected = state.style.id === selectedArenaStyle;
     return `<button class="arena-style-card${selected ? ' is-selected' : ''}" data-arena-style="${state.style.id}" aria-pressed="${selected}" ${state.available ? '' : 'disabled'}><span class="arena-style-name">${state.style.name}</span><strong>${state.weapon?.name || 'Empty'}</strong><span class="small">${state.status}</span></button>`;
@@ -1939,6 +2246,7 @@ function closeArenaPreparation() {
   selectedArenaStyle = null;
   if (!window.MomentumArena.isRunning()) activeGauntlet = null;
   selectedDirective = null;
+  if (worldActiveActivity?.kind === 'arena') worldCancelEncounter();
 }
 
 function startPreparedArenaRun() {
@@ -1965,7 +2273,7 @@ function startPreparedArenaRun() {
     openArena(ARENA_TIERS[0], runLoadout, { mode:'gauntlet' });
   } else {
     const directive = FRONTIER_DIRECTIVES.find(candidate => candidate.id === selectedDirective && candidate.tierId === tier.id);
-    openArena(tier, runLoadout, { mode:directive ? 'directive' : 'standard', directiveId:directive?.id || null });
+    openArena(tier, runLoadout, { mode:directive ? 'directive' : 'standard', directiveId:directive?.id || null, worldEncounterId:worldActiveActivity?.encounterId || null });
   }
 }
 function renderGear() {
@@ -2181,8 +2489,11 @@ function renderSkills() {
 
     const icon = document.createElement('span');
     const iconPosition = UI_ICONS.skill[s.id];
-    icon.className = iconPosition ? 'game-icon icon-skill skill-icon' : 'skill-icon-fallback';
-    if (iconPosition) {
+    const isMusic = s.id === 'Music';
+    icon.className = isMusic ? 'game-icon icon-music skill-icon' : iconPosition ? 'game-icon icon-skill skill-icon' : 'skill-icon-fallback';
+    if (isMusic) {
+      icon.setAttribute('aria-label', 'Music');
+    } else if (iconPosition) {
       icon.style.setProperty('--icon-x', `${iconPosition[0]}%`);
       icon.style.setProperty('--icon-y', `${iconPosition[1]}%`);
     } else icon.textContent = '◆';
@@ -2344,12 +2655,14 @@ function queueSkillXpDrop(skill, amount) {
 
 
 const loadedSave = loadGame();
+if (!worldRuntime) ensureWorldRuntime();
 if (loadedSave) applyOfflineProgress(JSON.parse(localStorage.getItem(SAVE_KEY)).savedAt);
 renderSkills();
 renderArenaTierOptions();
 renderActivityLedger();
 renderFrontier();
 renderOperations(true);
+renderWorld(true);
 applySettings();
 setGameView('hub');
 honeSelect.value = hone || '';
@@ -2395,7 +2708,7 @@ function setOperationsExpanded(expanded) {
 }
 
 function setGameView(view) {
-  const nextView = view === 'field' ? 'field' : 'hub';
+  const nextView = ['field', 'adventure'].includes(view) ? view : 'hub';
   const changed = currentGameView !== nextView;
   currentGameView = nextView;
   document.body.dataset.gameView = currentGameView;
@@ -2412,8 +2725,10 @@ function setGameView(view) {
   });
   const field = ['.card-arena','.card-frontier','.card-fishing'];
   const hub = ['.card-skills','.card-honing','.card-upgrades','.card-workshop','.card-save','.card-inventory','.card-ledger'];
+  const adventure = ['.card-adventure'];
   field.forEach(selector => document.querySelector(selector)?.classList.add('view-field'));
   hub.forEach(selector => document.querySelector(selector)?.classList.add('view-hub'));
+  adventure.forEach(selector => document.querySelector(selector)?.classList.add('view-adventure'));
   document.querySelector('.operations-board')?.classList.toggle('view-field-emphasis', currentGameView === 'field');
   if (changed) requestAnimationFrame(() => {
     document.getElementById('gameViewRoot')?.scrollIntoView({ block:'start', behavior:reduceMotionEnabled() ? 'auto' : 'smooth' });
@@ -2446,6 +2761,15 @@ function updateObjective() {
   } else if (!ownedGear.size) {
     title = 'Craft your first equipment'; objectiveProgress = 35; detail = 'Use Bars and Crafted Components in the Workshop to assemble a field-ready item.';
     action = 'craft-gear'; actionLabel = 'Open Workshop';
+  } else if (worldState && worldState.status === 'outpost') {
+    title = 'Choose a frontier route'; objectiveProgress = 55; detail = 'The Frontier Line is ready. Choose Timberline, Ironworks, or the Broken Watch based on your current build.';
+    action = 'open-adventure'; actionLabel = 'Open Adventure';
+  } else if (worldState && worldState.status === 'ready' && worldState.currentNodeId === WORLD_REGION?.outpostNodeId) {
+    title = 'Select your next route'; objectiveProgress = 65; detail = 'Pick the route that best matches your current stockpile, then begin the encounter.';
+    action = 'open-adventure'; actionLabel = 'Choose Route';
+  } else if (worldState && worldState.status === 'reward') {
+    title = 'Claim the frontier cache'; objectiveProgress = 90; detail = 'A route reward is waiting. Claim it to continue toward Vanguard Gate.';
+    action = 'open-adventure'; actionLabel = 'Claim Reward';
   } else if (combat.lvl < 5 || Math.floor(keys) < ARENA_TIERS[0].keyCost) {
     title = 'Prepare for the Initiate'; objectiveProgress = Math.min(100,((combat.lvl/5)+(Math.floor(keys)/ARENA_TIERS[0].keyCost))/2*100); detail = `Combat ${combat.lvl}/5 · Boss Keys ${Math.floor(keys)}/${ARENA_TIERS[0].keyCost}.`;
     action = 'review-skills'; actionLabel = 'Train Combat';
@@ -2612,6 +2936,7 @@ skills.filter(s => s._els?.card?.isConnected).forEach(s=>{
   : 'None';
 
 updateObjective();
+renderWorld();
 renderOperations();
 const statusSignature = JSON.stringify([skills.filter(s=>s.active).length,m.toFixed(2),Math.floor(keys),skills.find(skill=>skill.id==='Smithing').qty.toFixed(0),rareGems,combatBuildLabel(),buffText]);
 if (statusSignature !== statusRenderSignature) {
@@ -2634,7 +2959,8 @@ let fishingRaf = null;
 function updateFishingBaitUI() {
   fishingBaitCount.textContent = `Basic Bait: ${basicBait} · Uncommon Fish: ${uncommonFish}`;
 }
-function openFishing() {
+function openFishing(context = null) {
+  if (context) worldActiveActivity = context;
   fishingModal.style.display = 'flex';
   updateFishingBaitUI();
   fishingStatus.textContent = 'Choose bait, then cast.';
@@ -2644,6 +2970,7 @@ function openFishing() {
 }
 function closeFishing() {
   if (fishingGame) finishFishingCast(false, 'Cast cancelled', false);
+  else if (worldActiveActivity?.kind === 'fishing') worldCancelEncounter();
   fishingModal.style.display = 'none';
 }
 function prepareBasicBait() {
@@ -2708,6 +3035,7 @@ function updateFishingCast(now) {
 }
 function finishFishingCast(success, message, applyRewards = true) {
   if (!fishingGame) return null;
+  const worldContext = worldActiveActivity?.kind === 'fishing' ? { ...worldActiveActivity } : null;
   const g = fishingGame; fishingGame = null;
   if (fishingRaf) cancelAnimationFrame(fishingRaf);
   const fishing = skills.find(s=>s.id==='Fishing');
@@ -2737,6 +3065,10 @@ function finishFishingCast(success, message, applyRewards = true) {
   fishingHolding = false;
   if (success) window.MomentumAudio.emit('catch'); else window.MomentumAudio.emit('lineBreak');
   if (success) logActivity(`Shallows catch: +${rewards.find(reward => reward.itemId === 'rawFish')?.quantity || 0} Raw Fish`, 'fishing');
+  if (worldContext) {
+    if (applyRewards) resolveWorldEncounter(success, false);
+    else worldCancelEncounter();
+  }
   return result;
 }
 
@@ -2809,6 +3141,7 @@ function resultStatsHtml(result, record = null) {
 
 function handleArenaFinish(result) {
   if (activeGauntlet && !activeGauntlet.preparing) return handleGauntletPhase(result);
+  const worldContext = worldActiveActivity?.kind === 'arena' ? { ...worldActiveActivity } : null;
   const tier = ARENA_TIERS[result.tierId - 1];
   const record = recordArenaResult(result);
   const rewards = result.win ? grantBossReward(tier) : null;
@@ -2819,8 +3152,10 @@ function handleArenaFinish(result) {
     starAwarded = true;
     logActivity(`Mastery Star earned: ${directive.name}`, 'frontier');
   }
+  if (worldContext) resolveWorldEncounter(result.win, false);
   selectedDirective = null;
-  const rewardText = rewards ? `+${rewards.ore} Ore${rewards.gem ? ' · +1 Rare Gem' : ''} · Global 1.5x for 20m` : result.reason === 'gaveUp' ? 'Run abandoned · no rewards' : 'No rewards';
+  const adventureText = worldContext ? (result.win ? ' · Adventure cache waiting' : ' · Returned to the outpost') : '';
+  const rewardText = rewards ? `+${rewards.ore} Ore${rewards.gem ? ' · +1 Rare Gem' : ''} · Global 1.5x for 20m${adventureText}` : result.reason === 'gaveUp' ? `Run abandoned · no rewards${adventureText}` : `No rewards${adventureText}`;
   resultMsg.innerHTML = `<div class="result-outcome ${result.win ? 'victory' : 'defeat'}">${directive ? directive.name : tier.name} ${result.win ? 'Complete' : result.reason === 'gaveUp' ? 'Abandoned' : 'Failed'}</div><div class="result-loadout">${result.weaponName} · ${result.styleId}${directive ? ` · ${tier.name} Directive` : ''}</div>${resultStatsHtml(result, record)}<div class="result-rewards">${rewardText}</div>${rewards ? lootResultMarkup(rewards.loot) : ''}${starAwarded ? `<div class="result-unlocks">★ Mastery Star earned · ${masteryStars()}/6</div>` : ''}`;
   resultModal.style.display = 'flex';
   renderArenaTierOptions(); renderFrontier();
@@ -2907,6 +3242,7 @@ function resetCraftingAssemblyUi() {
 
 function finishCraftingAssembly() {
   if (!craftingAssembly) return;
+  const worldContext = worldActiveActivity?.kind === 'crafting' ? { ...worldActiveActivity } : null;
   const activity = SKILL_FRAMEWORK?.craftingActivity;
   const score = craftingAssembly.score / Math.max(1, craftingAssembly.attempts);
   const multiplier = activity ? SKILL_FRAMEWORK.resolveActiveSkillBonus(activity, score) : 1;
@@ -2918,6 +3254,7 @@ function finishCraftingAssembly() {
   showToast(`Crafting assembly ${quality} · ${multiplier.toFixed(2)}×`, 2800);
   logActivity(`Crafting assembly ${quality} · ${multiplier.toFixed(2)}×`, 'craft');
   resetCraftingAssemblyUi();
+  if (worldContext && !resolveWorldEncounter(true, true)) worldCancelEncounter();
   saveGame();
 }
 
@@ -2937,10 +3274,12 @@ function updateCraftingAssembly(now) {
   craftingAssembly.rafId = requestAnimationFrame(updateCraftingAssembly);
 }
 
-function openCraftingAssembly() {
+function openCraftingAssembly(context = null) {
   if (!craftingModal) return;
+  if (context) worldActiveActivity = context;
   if (!SKILL_CFG.Crafting.canAct()) {
     showToast('Crafting needs at least 1 Bar and 1 Pine Log.');
+    if (context) worldCancelEncounter();
     return;
   }
   resetCraftingAssemblyUi();
@@ -2970,6 +3309,7 @@ function hitCraftingAssembly() {
 function closeCraftingAssembly() {
   resetCraftingAssemblyUi();
   craftingModal.style.display = 'none';
+  if (worldActiveActivity?.kind === 'crafting') worldCancelEncounter();
 }
 
 /* =====================================
@@ -3089,6 +3429,12 @@ objectiveActionBtn?.addEventListener('click', () => {
     requestAnimationFrame(() => document.querySelector('.card-arena')?.scrollIntoView({ block:'center', behavior:reduceMotionEnabled() ? 'auto' : 'smooth' }));
     return;
   }
+  if (action === 'open-adventure') {
+    setGameView('adventure');
+    renderWorld(true);
+    requestAnimationFrame(() => document.querySelector('.card-adventure')?.scrollIntoView({ block:'start', behavior:reduceMotionEnabled() ? 'auto' : 'smooth' }));
+    return;
+  }
   if (action === 'open-frontier') { renderFrontier(); frontierModal.style.display='flex'; return; }
   setGameView('hub');
   requestAnimationFrame(() => document.querySelector('.card-skills')?.scrollIntoView({ block:'start', behavior:reduceMotionEnabled() ? 'auto' : 'smooth' }));
@@ -3129,7 +3475,7 @@ document.querySelectorAll('[data-game-view]').forEach(button => button.onclick =
 document.getElementById('viewCharacterBtn').onclick = () => { renderLoadout(); loadoutModal.style.display='flex'; };
 document.querySelectorAll('[data-quick-view]').forEach(button => button.onclick = () => setGameView(button.dataset.quickView));
 document.getElementById('quickInventory').onclick = () => { renderLoadout(); loadoutModal.style.display='flex'; };
-document.getElementById('quickSettings').onclick = () => { applySettings(); settingsModal.style.display='flex'; };
+document.getElementById('quickSettings')?.addEventListener('click', () => { applySettings(); settingsModal.style.display='flex'; });
 
 document.getElementById('openSkillUpBtn').onclick= ()=>{ renderSkillUps('Mining'); skillUpModal.style.display='flex'; };
 document.getElementById('closeSkillUp').onclick  = ()=> skillUpModal.style.display='none';

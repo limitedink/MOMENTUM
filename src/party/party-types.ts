@@ -325,6 +325,7 @@ declare global {
   interface Window {
     MomentumSkillFramework: typeof import('../game/skills').MomentumSkillFramework;
     MomentumLootFramework: typeof import('../game/loot').momentumLootFramework;
+    MomentumWorldFramework: typeof import('../game/world').MomentumWorldFramework;
     MomentumPartyTransport: PartyTransportApi;
     LocalMomentumPartyTransport: (options?: { commandDelay?: number; connectDelay?: number; authenticatedPlayerId?: string; storage?: Storage }) => MomentumPartyTransport & {
       resolveElapsed(): number;

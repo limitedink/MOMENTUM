@@ -8,9 +8,13 @@
   const PRESSURE_MAX = 5;
   const PRESSURE_PER_STACK = 0.1;
 
-  let run = null;
-  let rafId = null;
-  const keysDown = Object.create(null);
+  const MOVEMENT_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD']);
+  const SHOOT_CODES = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+
+	let run = null;
+	let rafId = null;
+	const keysDown = Object.create(null);
+	const movementState = new Set();
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -26,9 +30,13 @@
     ctx.fill();
   }
 
+  function clearInputState() {
+    Object.keys(keysDown).forEach(code => delete keysDown[code]);
+    movementState.clear();
+  }
+
   function isInteractiveTarget(target) {
-    if (!(target instanceof Element)) return false;
-    return Boolean(target.closest([
+    return Boolean(target && typeof target.closest === 'function' && target.closest([
       'button', 'input', 'select', 'textarea', 'a[href]',
       '[contenteditable]:not([contenteditable="false"])',
       '[role="button"]', '[role="checkbox"]', '[role="combobox"]',
@@ -38,8 +46,12 @@
     ].join(',')));
   }
 
-  function clearInputState() {
-    Object.keys(keysDown).forEach(code => delete keysDown[code]);
+  function arrowToDirection(code) {
+    if (code === 'ArrowUp') return { dx: 0, dy: -1 };
+    if (code === 'ArrowDown') return { dx: 0, dy: 1 };
+    if (code === 'ArrowLeft') return { dx: -1, dy: 0 };
+    if (code === 'ArrowRight') return { dx: 1, dy: 0 };
+    return null;
   }
 
   function hasTalent(id) {
@@ -74,20 +86,20 @@
     if (run && hasTalent('cadence')) run.cadenceHits = 0;
   }
 
-  function consumeFood(automatic) {
-    if (!run.food || run.foodUsed || run.you.hp >= run.you.maxHp) return false;
-    if (!run.consumeFood(run.food.id)) return false;
-    run.foodUsed = true;
-    run.stats.foodConsumed += 1;
-    if (hasTalent('combatNutrition')) run.foodShieldCharges = hasTalent('lastSupper') ? 2 : 1;
-    run.you.hp = Math.min(run.you.maxHp, run.you.hp + run.food.instantHeal);
-    if (run.food.regenHeal > 0) run.foodRegen = { remaining:run.food.regenHeal, duration:run.food.regenDuration };
-    if (run.food.resetDash) run.you.dashCooldown = 0;
-    run.elements.foodStatus.textContent = `${automatic ? 'Field Ration' : run.food.name} used: +${run.food.instantHeal} HP${run.food.resetDash ? ' · Dash ready' : ''}`;
-    spawnImpact(run.you.x, run.you.y, '#62e6a7', 12);
-    emit('food', { foodId:run.food.id, automatic });
-    return true;
-  }
+	function consumeFood(automatic) {
+	  if (!run.food || run.foodUsed || run.you.hp >= run.you.maxHp) return false;
+	  if (!run.consumeFood(run.food.id)) return false;
+	  run.foodUsed = true;
+	  run.stats.foodConsumed += 1;
+	  if (hasTalent('combatNutrition')) run.foodShieldCharges = hasTalent('lastSupper') ? 2 : 1;
+	  run.you.hp = Math.min(run.you.maxHp, run.you.hp + run.food.instantHeal);
+	  if (run.food.regenHeal > 0) run.foodRegen = { remaining:run.food.regenHeal, duration:run.food.regenDuration };
+	  if (run.food.resetDash) run.you.dashCooldown = 0;
+	  run.elements.foodStatus.textContent = `${automatic ? 'Field Ration' : run.food.name} used: +${run.food.instantHeal} HP${run.food.resetDash ? ' · Dash ready' : ''}`;
+	  spawnImpact(run.you.x, run.you.y, '#62e6a7', 12);
+	  emit('food', { foodId:run.food.id, automatic });
+	  return true;
+	}
 
   function damagePlayer(amount, x, y) {
     if (!run || run.you.dash > 0 || run.you.ghostTimer > 0) return false;
@@ -237,19 +249,16 @@
     emit('attack', { styleId:'gun' });
     const length = Math.hypot(dx, dy) || 1;
     const speed = weapon.projectileSpeed || 400;
-    run.gunSequence += 1;
-    const pulse = run.gunSequence % 5 === 0;
     run.shots.push({
       x: you.x,
       y: you.y,
-      r: pulse ? 5 : 2,
+      r: 2,
       vx: dx / length * speed,
       vy: dy / length * speed,
       damage: weapon.damage,
       lifetime: weapon.lifetime || 3,
       t: 0,
       hit: false,
-      pulse,
       dashStrike: attackModifier()
     });
   }
@@ -420,12 +429,6 @@
       if (!shot.hit && circleHit(shot, run.boss)) {
         shot.hit = true;
         damageBoss(shot.damage, { styleId: 'gun', x: shot.x, y: shot.y, dashStrike: shot.dashStrike });
-        if (shot.pulse) {
-          const before = run.enemyShots.length;
-          run.enemyShots = run.enemyShots.filter(enemy => Math.hypot(enemy.x - shot.x, enemy.y - shot.y) > 110);
-          run.stats.projectilesDeflected += before - run.enemyShots.length;
-          spawnImpact(shot.x, shot.y, '#50d9ff', 14);
-        }
         shot.t = 99;
       }
     }
@@ -509,14 +512,38 @@
     }
   }
 
+  function updateShooting() {
+    // While any arrow key is physically held (via .code), keep attempting to fire
+    // in that cardinal direction at the weapon's natural attack rate.
+    const { you } = run;
+    if (!you || you.attackCooldown > 0) return;
+
+    // Stable priority order if multiple arrows are held.
+    let dirCode = null;
+    if (keysDown.ArrowUp) dirCode = 'ArrowUp';
+    else if (keysDown.ArrowDown) dirCode = 'ArrowDown';
+    else if (keysDown.ArrowLeft) dirCode = 'ArrowLeft';
+    else if (keysDown.ArrowRight) dirCode = 'ArrowRight';
+    if (!dirCode) return;
+
+    const dir = arrowToDirection(dirCode);
+    if (!dir) return;
+
+    if (run.weapon.styleId === 'melee') {
+      meleeAttack(Math.atan2(dir.dy, dir.dx));
+    } else {
+      gunAttack(dir.dx, dir.dy);
+    }
+  }
+
   function updateMovement(dt) {
     const { you } = run;
     let x = 0;
     let y = 0;
-    if (keysDown.KeyW) y -= 1;
-    if (keysDown.KeyS) y += 1;
-    if (keysDown.KeyA) x -= 1;
-    if (keysDown.KeyD) x += 1;
+    if (movementState.has('KeyW')) y -= 1;
+    if (movementState.has('KeyS')) y += 1;
+    if (movementState.has('KeyA')) x -= 1;
+    if (movementState.has('KeyD')) x += 1;
     const speed = you.dash > 0 ? DASH_SPEED : PLAYER_SPEED * (you.slipstream > 0 ? 1.3 : 1);
     const length = Math.hypot(x, y) || 1;
     you.vx = x / length * speed;
@@ -617,7 +644,7 @@
       drawCircle(ctx, shot.x, shot.y, shot.r);
     }
     for (const shot of run.shots) {
-      ctx.fillStyle = shot.pulse ? '#50d9ff' : '#c7d2ff';
+      ctx.fillStyle = '#c7d2ff';
       drawCircle(ctx, shot.x, shot.y, shot.r);
     }
 
@@ -700,6 +727,7 @@
     }
 
     updateMovement(dt);
+    updateShooting();
     updateBoss(dt);
     updateDelayedEffects(dt);
     updateWave(dt);
@@ -726,24 +754,9 @@
     rafId = requestAnimationFrame(loop);
   }
 
-  function onKeyDown(event) {
-    if (!run) return;
-    if (isInteractiveTarget(event.target)) return;
-    keysDown[event.code] = true;
-    if (event.repeat) return;
-    if (event.code === 'Space') {
-      event.preventDefault();
-      useDash();
-    }
-    if (event.code === 'KeyE') consumeFood(false);
-  }
-
-  function onKeyUp(event) {
-    delete keysDown[event.code];
-  }
-
   function onPointerDown(event) {
     if (!run || event.button !== 0) return;
+    run.canvas.focus({ preventScroll: true });
     const rect = run.canvas.getBoundingClientRect();
     const mouseX = (event.clientX - rect.left) * run.canvas.width / rect.width;
     const mouseY = (event.clientY - rect.top) * run.canvas.height / rect.height;
@@ -751,6 +764,40 @@
     const dy = mouseY - run.you.y;
     if (run.weapon.styleId === 'melee') meleeAttack(Math.atan2(dy, dx));
     if (run.weapon.styleId === 'gun') gunAttack(dx, dy);
+  }
+
+  function onKeyDown(event) {
+    if (!run || isInteractiveTarget(event.target)) return;
+
+    // KeyboardEvent.code identifies the physical key position. It is stable when the
+    // OS layout changes, unlike event.key (for example, Graphite's physical S produces r).
+    event.preventDefault();
+    const code = event.code;
+    if (MOVEMENT_CODES.has(code)) {
+      movementState.add(code);
+      return;
+    }
+    if (SHOOT_CODES.has(code)) keysDown[code] = true;
+
+    if (event.repeat) return;
+    if (code === 'Space') useDash();
+    if (code === 'KeyE') consumeFood(false);
+    if (SHOOT_CODES.has(code)) {
+      const dir = arrowToDirection(code);
+      if (dir && run.weapon.styleId === 'melee') meleeAttack(Math.atan2(dir.dy, dir.dx));
+      if (dir && run.weapon.styleId === 'gun') gunAttack(dir.dx, dir.dy);
+    }
+  }
+
+  function onKeyUp(event) {
+    if (!run) return;
+    const code = event.code;
+    if (MOVEMENT_CODES.has(code)) {
+      event.preventDefault();
+      movementState.delete(code);
+      return;
+    }
+    delete keysDown[code];
   }
 
   function onWindowBlur() {
@@ -761,22 +808,22 @@
     if (document.visibilityState === 'hidden') clearInputState();
   }
 
-  function stop() {
+	function stop() {
     if (!run) return;
     if (rafId) cancelAnimationFrame(rafId);
-    window.removeEventListener('keydown', onKeyDown);
-    window.removeEventListener('keyup', onKeyUp);
-    window.removeEventListener('blur', onWindowBlur);
-    document.removeEventListener('visibilitychange', onVisibilityChange);
-    run.canvas.removeEventListener('pointerdown', onPointerDown);
-    clearInputState();
-    run.canvas.style.transform = '';
-    run.elements.modal.style.display = 'none';
-    run = null;
-    rafId = null;
+	  document.removeEventListener('keydown', onKeyDown, true);
+	  document.removeEventListener('keyup', onKeyUp, true);
+	  window.removeEventListener('blur', onWindowBlur);
+	  document.removeEventListener('visibilitychange', onVisibilityChange);
+	  run.canvas.removeEventListener('pointerdown', onPointerDown);
+	  clearInputState();
+	  run.canvas.style.transform = '';
+	  run.elements.modal.style.display = 'none';
+	  run = null;
+	  rafId = null;
   }
 
-  function start(config) {
+	function start(config) {
     stop();
     const canvas = config.canvas;
     const maxHp = config.maxHp;
@@ -815,7 +862,6 @@
       counterforceArmed:false,
       aegisArmed:false,
       phaseRushTriggered:false,
-      gunSequence: 0,
       dashStrikeArmed: false,
       dashStrikeUntil: 0,
       openingAttackUsed: Boolean(config.carryState?.openingAttackUsed),
@@ -844,9 +890,11 @@
     };
 
     run.elements.modal.style.display = 'flex';
+    canvas.focus({ preventScroll: true });
+    // Control hints updated: WASD = physical ANSI movement; Arrows = shoot/swing; E = eat; Space = dash.
     run.elements.controls.textContent = run.weapon.styleId === 'melee'
-      ? 'WASD move · Space dash · Click swing/deflect · E eat equipped food'
-      : 'WASD move · Space dash · Click shoot · Every fifth shot disrupts nearby projectiles · E eat';
+      ? 'WASD move · Arrows shoot/swing · Space dash · Click swing/deflect · E eat'
+      : 'WASD move · Arrows shoot · Space dash · Click shoot · E eat';
     run.elements.foodStatus.textContent = run.food && !run.foodUsed ? `Food: ${run.food.name} ready (${run.food.instantHeal} HP${run.food.resetDash ? ' + Dash reset' : run.food.regenHeal ? ` + ${run.food.regenHeal} regeneration` : ''})` : run.foodUsed ? 'Food already consumed this run' : 'Food: none available';
     run.elements.tip.textContent = config.tier.id === 1
       ? 'Initiate: dash through the radial shockwave'
@@ -854,12 +902,12 @@
         ? 'Vanguard: sidestep the locked aim line and watch for shockwaves'
         : 'Apex: spread volleys leave temporary danger zones and alternate with shockwaves';
 
-    window.addEventListener('keydown', onKeyDown, false);
-    window.addEventListener('keyup', onKeyUp, false);
-    window.addEventListener('blur', onWindowBlur, false);
-    document.addEventListener('visibilitychange', onVisibilityChange, false);
-    canvas.addEventListener('pointerdown', onPointerDown, false);
-    rafId = requestAnimationFrame(loop);
+	  document.addEventListener('keydown', onKeyDown, true);
+	  document.addEventListener('keyup', onKeyUp, true);
+	  window.addEventListener('blur', onWindowBlur, false);
+	  document.addEventListener('visibilitychange', onVisibilityChange, false);
+	  canvas.addEventListener('pointerdown', onPointerDown, false);
+	  rafId = requestAnimationFrame(loop);
   }
 
   window.MomentumArena = Object.freeze({

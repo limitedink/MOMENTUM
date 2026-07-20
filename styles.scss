@@ -110,6 +110,7 @@ select.btn { appearance: none; padding-right: 28px; background-image: linear-gra
 .skill-card label { font: 800 13px/1 ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; }
 .game-icon { display:inline-block; flex:0 0 auto; width:42px; height:42px; overflow:hidden; vertical-align:middle; background-repeat:no-repeat; background-position:var(--icon-x) var(--icon-y); filter:drop-shadow(0 4px 7px rgba(0,0,0,.55)); }
 .icon-skill { background-image:url('./assets/ui-icons/skills-ui.png'); background-size:300% 200%; }
+.icon-music { background-image:url('./assets/ui-icons/music-clef.png'); background-position:center; background-repeat:no-repeat; background-size:contain; }
 .icon-resource { background-image:url('./assets/ui-icons/resources-ui.png'); background-size:400% 400%; }
 .icon-loadout { background-image:url('./assets/ui-icons/loadout-ui.png'); background-size:400% 200%; }
 .skill-icon { width:38px; height:38px; margin:-6px 1px -6px 8px; }
@@ -434,9 +435,13 @@ body { padding-bottom:76px; }
 .status-bar .statValue { font:800 11px ui-monospace,monospace; }
 .hud-resource { display:inline-flex; align-items:center; gap:5px; padding:5px 7px; color:var(--muted); border:1px solid rgba(69,100,165,.45); background:rgba(16,24,43,.72); font:700 9px ui-monospace,monospace; text-transform:uppercase; }
 .hud-resource strong { color:var(--gold); font-size:11px; text-transform:none; }
-body[data-game-view="hub"] .view-field,body[data-game-view="field"] .view-hub { display:none !important; }
+body[data-game-view="hub"] .view-field,body[data-game-view="hub"] .view-adventure,
+body[data-game-view="field"] .view-hub,body[data-game-view="field"] .view-adventure,
+body[data-game-view="adventure"] .view-hub,body[data-game-view="adventure"] .view-field { display:none !important; }
 body[data-game-view="field"] .dashboard-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
 body[data-game-view="field"] .view-field { grid-column:span 1; }
+body[data-game-view="adventure"] .dashboard-grid { grid-template-columns:minmax(0,1fr); }
+body[data-game-view="adventure"] .card-adventure { grid-column:1/-1; }
 
 /* Objective and operations */
 .objective-strip { position:relative; overflow:hidden; min-height:76px; }
@@ -509,7 +514,7 @@ body.reduce-motion .settings-panel,body.reduce-motion .frontier-panel,body.reduc
 @media(max-width:560px){
   body { padding-bottom:72px; }
   .command-rail { margin-top:6px; }
-  .game-view-tabs { display:grid; grid-template-columns:repeat(3,1fr); }
+  .game-view-tabs { display:grid; grid-template-columns:repeat(4,1fr); }
   .game-view-tab { padding-inline:6px; }
   .status-bar .statLabel,.status-bar .statValue { display:none; }
   .hud-resource { flex:1; justify-content:center; }
@@ -577,6 +582,9 @@ body.reduce-motion .settings-panel,body.reduce-motion .frontier-panel,body.reduc
 .party-action-row.compact .party-action { min-height:34px; padding:4px; font-size:0; }
 .party-action-row.compact .party-action span { margin:0; font-size:13px; }
 .dock-notable { margin-top:8px; padding-top:7px; color:var(--gold); border-top:1px solid var(--line); }
+.taskbar-adventure-note { display:flex; align-items:center; gap:6px; margin-top:8px; padding-top:8px; color:var(--cyan); border-top:1px solid rgba(80,217,255,.18); font-size:10px; }
+.taskbar-adventure-note strong { color:var(--text); }
+.taskbar-adventure-note .btn { margin-left:auto; min-height:28px; padding:4px 7px; }
 .taskbar-summary-modal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:16px; background:rgba(2,5,12,.9); backdrop-filter:blur(7px); z-index:12000; }
 .taskbar-summary-panel { width:min(520px,calc(100vw - 28px)); max-height:90vh; overflow:auto; padding:20px; border:1px solid var(--line-bright); border-top:3px solid var(--green); background:linear-gradient(145deg,#111a30,#090e1c); box-shadow:0 25px 80px rgba(0,0,0,.68); }
 .taskbar-summary-panel h2 { margin:4px 0 14px; }
@@ -784,6 +792,7 @@ body[data-game-view="field"] .card-fishing { grid-area:fishing; }
 .card-frontier { --panel-accent:var(--violet); grid-column:auto; }
 .card-fishing { --panel-accent:var(--cyan); grid-column:auto; }
 .card-party { --panel-accent:var(--violet); grid-column:auto; }
+.card-adventure { --panel-accent:var(--cyan); grid-column:auto; }
 .card-inventory { --panel-accent:var(--gold); }
 .card-ledger { --panel-accent:#7c90bb; }
 .title { margin:2px 0 10px; font-size:17px; }
@@ -800,6 +809,42 @@ body[data-game-view="field"] .card-fishing { grid-area:fishing; }
 .resource-badge { flex:0 0 auto; padding:5px 7px; color:var(--muted); border:1px solid var(--line); font:700 9px ui-monospace,monospace; text-transform:uppercase; }
 .resource-badge strong { margin-left:4px; color:var(--gold); font-size:12px; }
 .arena-tier-details { min-height:54px; margin:7px 0 10px; }
+
+/* Adventure route surface */
+.adventure-heading { align-items:flex-start; }
+.adventure-heading .tag { flex:0 0 auto; }
+.adventure-map { position:relative; aspect-ratio:1659 / 948; min-height:0; margin:12px 0 10px; overflow:hidden; border:1px solid rgba(80,217,255,.42); background-color:#050a16; background-image:linear-gradient(90deg,rgba(5,10,22,.62),rgba(5,10,22,.12)),url('./assets/world/frontier-route-map.png'); background-position:center,center; background-repeat:no-repeat; background-size:cover,contain; box-shadow:inset 0 0 45px rgba(3,7,17,.58); }
+.adventure-map::after { content:""; position:absolute; inset:0; pointer-events:none; background:linear-gradient(180deg,rgba(5,10,22,.08),rgba(5,10,22,.52)); }
+.adventure-map-copy { position:absolute; z-index:1; left:15px; bottom:14px; display:grid; max-width:300px; gap:4px; padding:10px 12px; border-left:3px solid var(--cyan); background:rgba(5,10,22,.78); box-shadow:0 8px 24px rgba(0,0,0,.3); }
+.adventure-map-copy strong { font:800 14px ui-monospace,monospace; }
+.adventure-map-copy span { color:var(--gold); font-size:11px; }
+.adventure-progress { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:9px; margin:9px 0; color:var(--muted); font:700 10px ui-monospace,monospace; text-transform:uppercase; }
+.adventure-progress-track { height:7px; overflow:hidden; border:1px solid var(--line); background:#050812; }
+.adventure-progress-track i { display:block; height:100%; background:linear-gradient(90deg,var(--violet),var(--cyan)); box-shadow:0 0 12px rgba(80,217,255,.35); }
+.adventure-routes { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+.adventure-route { display:grid; grid-template-columns:42px minmax(0,1fr) auto; align-items:center; gap:9px; min-width:0; padding:10px; color:var(--text); text-align:left; cursor:pointer; border:1px solid var(--line); border-left:3px solid var(--route-accent,var(--cyan)); background:rgba(6,10,22,.64); transition:border-color .14s,background .14s,transform .14s; }
+.adventure-route:hover:not(:disabled) { transform:translateY(-2px); border-color:var(--route-accent,var(--cyan)); background:rgba(80,217,255,.08); }
+.adventure-route:disabled { cursor:not-allowed; opacity:.54; }
+.adventure-route.is-selected { border-color:var(--route-accent,var(--cyan)); background:color-mix(in srgb,var(--route-accent,var(--cyan)) 11%,rgba(6,10,22,.78)); box-shadow:inset 0 0 20px color-mix(in srgb,var(--route-accent,var(--cyan)) 8%,transparent); }
+.adventure-route.is-complete .adventure-route-mark { color:var(--green); }
+.adventure-route-icon-wrap { display:grid; place-items:center; width:38px; height:38px; border:1px solid color-mix(in srgb,var(--route-accent,var(--cyan)) 55%,var(--line)); background:rgba(5,9,19,.8); }
+.adventure-route-icon { width:30px; height:30px; }
+.adventure-route-icon-fallback { color:var(--route-accent,var(--cyan)); font-size:22px; }
+.adventure-route-copy { display:grid; min-width:0; gap:4px; }
+.adventure-route-copy strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:800 11px ui-monospace,monospace; }
+.adventure-route-copy small { color:var(--muted); font-size:10px; line-height:1.35; }
+.adventure-route-mark { color:var(--route-accent,var(--cyan)); font:900 16px ui-monospace,monospace; }
+.adventure-encounter { margin-top:10px; padding:12px; border:1px solid var(--line); border-left:3px solid var(--cyan); background:rgba(6,10,22,.55); }
+.adventure-encounter.is-reward { border-left-color:var(--gold); background:rgba(255,207,92,.06); }
+.adventure-encounter strong { display:block; margin:4px 0; font:800 17px ui-monospace,monospace; }
+.adventure-encounter p { margin:5px 0 8px; color:var(--muted); font-size:12px; }
+.adventure-requirement { padding:7px 8px; color:var(--gold); border:1px solid rgba(255,207,92,.3); background:rgba(255,207,92,.05); }
+.adventure-actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:9px; }
+.adventure-empty { display:grid; gap:5px; margin-top:10px; padding:14px; border:1px dashed var(--line-bright); background:rgba(6,10,22,.45); }
+.adventure-empty strong { font:800 14px ui-monospace,monospace; }
+.adventure-empty span { color:var(--muted); font-size:12px; }
+.adventure-empty.is-complete { border-color:rgba(98,230,167,.55); }
+.adventure-empty.is-failed { border-color:rgba(255,99,125,.55); }
 
 .btn {
   min-height:40px;
@@ -873,14 +918,14 @@ body[data-game-view="field"] .card-fishing { grid-area:fishing; }
 .crafting-activity-button.is-active { color:#06101a; background:var(--gold); }
 .recipe-preview { margin-top:4px; color:var(--muted); }
 .workshop-note { margin:-3px 0 10px; padding-bottom:8px; border-bottom:1px solid var(--line); }
-.xp-drop-host { position:absolute; top:17px; right:76px; z-index:4; width:90px; height:44px; overflow:visible; pointer-events:none; }
+.xp-drop-host { position:absolute; top:17px; right:76px; z-index:4; width:150px; height:62px; overflow:visible; pointer-events:none; }
 .xp-drop {
   position:absolute;
   right:0;
   top:0;
   color:var(--skill-accent);
-  font:900 12px/1 ui-monospace,monospace;
-  letter-spacing:.04em;
+  font:900 18px/1.1 ui-monospace,monospace;
+  letter-spacing:.06em;
   text-shadow:0 2px 3px #02040a,0 0 12px color-mix(in srgb,var(--skill-accent) 70%,transparent);
   animation:xp-rise 1s var(--ease-out) forwards;
 }
@@ -985,6 +1030,7 @@ body[data-game-view="field"] .card-fishing { grid-area:fishing; }
       "workshop workshop"
       "save save";
   }
+  body[data-game-view="adventure"] .dashboard-grid { grid-template-columns:1fr; }
   #skills { grid-template-columns:repeat(2,minmax(0,1fr)); }
   body[data-game-view="field"] .dashboard-grid {
     grid-template-columns:repeat(2,minmax(0,1fr));
@@ -1009,18 +1055,25 @@ body[data-game-view="field"] .card-fishing { grid-area:fishing; }
   .operations-heading { align-items:flex-start; }
   .operations-heading-actions { align-items:flex-end; flex-direction:column; }
   .operations-list { grid-template-columns:1fr; }
-  body[data-game-view="hub"] .dashboard-grid,body[data-game-view="field"] .dashboard-grid {
+  body[data-game-view="hub"] .dashboard-grid,body[data-game-view="field"] .dashboard-grid,body[data-game-view="adventure"] .dashboard-grid {
     display:grid;
     grid-template-columns:1fr;
   }
   body[data-game-view="hub"] .dashboard-grid { grid-template-areas:"skills" "honing" "upgrades" "workshop" "save"; }
   body[data-game-view="field"] .dashboard-grid { grid-template-areas:"party" "arena" "frontier" "fishing"; }
+  body[data-game-view="adventure"] .dashboard-grid { grid-template-areas:"adventure"; }
+  body[data-game-view="adventure"] .card-adventure { grid-area:adventure; }
   #skills { grid-template-columns:1fr; }
   .card { margin:0; }
   .party-heading { align-items:stretch; flex-direction:column; }
   .party-header-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); width:100%; }
   .party-header-actions .btn { min-height:42px; }
   .party-lanes,.party-members { grid-template-columns:1fr; }
+  .adventure-map { min-height:0; }
+  .adventure-routes { grid-template-columns:1fr; }
+  .adventure-progress { grid-template-columns:1fr; gap:5px; }
+  .adventure-actions { display:grid; grid-template-columns:1fr; }
+  .adventure-actions .btn { width:100%; }
   .resource-groups { grid-template-columns:1fr; }
   .recycle-panel { align-items:stretch; flex-direction:column; }
   .recycle-panel .btn { width:100%; }

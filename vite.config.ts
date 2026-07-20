@@ -5,6 +5,8 @@ export default defineConfig(({ mode }) => {
   return {
     base: './',
     server: {
+      port: 5173,
+      strictPort: true,
       proxy: {
         '/v1': {
           target: env.MOMENTUM_BACKEND_PROXY_URL || 'http://127.0.0.1:3000',
