@@ -17,7 +17,7 @@ jobs:
     runs-on: windows-latest
     env:
       VITE_MOMENTUM_PARTY_MODE: authoritative
-      VITE_MOMENTUM_BACKEND_URL: ${{ inputs.backend_url || vars.MOMENTUM_BACKEND_URL }}
+      VITE_MOMENTUM_BACKEND_URL: ${{ inputs.backend_url || vars.MOMENTUM_BACKEND_URL || secrets.MOMENTUM_BACKEND_URL }}
 
     steps:
       - name: Check out source
@@ -39,7 +39,7 @@ jobs:
         shell: pwsh
         run: |
           if ([string]::IsNullOrWhiteSpace($env:VITE_MOMENTUM_BACKEND_URL)) {
-            throw 'Set the MOMENTUM_BACKEND_URL repository variable or provide a backend_url when running this workflow manually.'
+            throw 'Set the MOMENTUM_BACKEND_URL repository variable or secret, or provide a backend_url when running this workflow manually.'
           }
 
       - name: Build Tauri Windows installers
