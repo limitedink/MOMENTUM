@@ -70,6 +70,48 @@ describe('websocket protocol', () => {
     }), false).ok).toBe(true);
   });
 
+  it('accepts four-slot mission starts and mid-run assignment changes without accepting client forecasts', () => {
+    const emptyStart = parseClientMessage(envelope('party.command', {
+      commandId: 'mission-empty',
+      expectedRevision: 0,
+      command: { type: 'expedition.start', expeditionId: 'combat:forest-hunt', assignments: [] }
+    }), false);
+    expect(emptyStart.ok).toBe(true);
+    const modernStart = parseClientMessage(envelope('party.command', {
+      commandId: 'mission-1',
+      expectedRevision: 0,
+      command: {
+        type: 'expedition.start',
+        expeditionId: 'combat:forest-hunt',
+        assignments: [
+          { slotId: 'slot-1', playerId: 'player-1', roleId: 'dps', targetId: 'mire-stalker' },
+          { slotId: 'slot-2', playerId: 'player-2', roleId: 'tank', targetId: 'mire-stalker' }
+        ]
+      }
+    }), false);
+    expect(modernStart.ok).toBe(true);
+    expect(parseClientMessage(envelope('party.command', {
+      commandId: 'assignment-1',
+      expectedRevision: 1,
+      command: { type: 'expedition.assignment.set', slotId: 'slot-2', roleId: 'healer', targetId: 'mire-stalker' }
+    }), false).ok).toBe(true);
+    expect(parseClientMessage(envelope('party.command', {
+      commandId: 'assignment-clear-1',
+      expectedRevision: 2,
+      command: { type: 'expedition.assignment.clear', slotId: 'slot-2' }
+    }), false).ok).toBe(true);
+    expect(parseClientMessage(envelope('party.command', {
+      commandId: 'abandon-1',
+      expectedRevision: 3,
+      command: { type: 'expedition.abandon' }
+    }), false).ok).toBe(true);
+    expect(parseClientMessage(envelope('party.command', {
+      commandId: 'spoofed-forecast',
+      expectedRevision: 0,
+      command: { type: 'expedition.start', expeditionId: 'combat:forest-hunt', assignments: [], successPercent: 100 }
+    }), false).ok).toBe(false);
+  });
+
   it('measures and decodes text frames without accepting binary frames', () => {
     const text = Buffer.from(envelope('ping'));
     expect(rawMessageByteLength(text)).toBe(text.byteLength);

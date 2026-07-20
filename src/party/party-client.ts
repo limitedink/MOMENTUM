@@ -6,6 +6,8 @@ import {
   type PartyActivityId,
   type PartyClientState,
   type PartySnapshot,
+  type ModernExpeditionAssignment,
+  type ModernExpeditionSnapshot,
   type Unsubscribe
 } from './party-types';
 import { assertTransport, normalizeCommandType } from './party-transport';
@@ -104,6 +106,11 @@ export function createPartyClient(value: unknown): MomentumPartyClient {
     requestSnapshot: () => requireSessionController(controller).requestSnapshot(),
     setActivity: (activityId: PartyActivityId) => requireSessionController(controller).setActivity(activityId),
     startExpedition: () => requireSessionController(controller).startExpedition(),
+    startExpeditionMission: (expeditionId: ModernExpeditionSnapshot['expeditionId'], assignments: ModernExpeditionAssignment[]) => transport.startExpeditionMission?.(expeditionId, assignments) ?? Promise.resolve(false),
+    setExpeditionAssignment: (slotId: ModernExpeditionAssignment['slotId'], roleId: string, targetId?: string | null) => transport.setExpeditionAssignment?.(slotId, roleId, targetId) ?? Promise.resolve(false),
+    clearExpeditionAssignment: (slotId: ModernExpeditionAssignment['slotId']) => transport.clearExpeditionAssignment?.(slotId) ?? Promise.resolve(false),
+    abandonExpedition: () => transport.abandonExpedition?.() ?? Promise.resolve(false),
+    resetModernExpedition: () => transport.resetModernExpedition?.() ?? Promise.resolve(false),
     pauseExpedition: () => requireSessionController(controller).pauseExpedition(),
     resumeExpedition: () => requireSessionController(controller).resumeExpedition(),
     toggleExpedition: async () => {
@@ -114,7 +121,8 @@ export function createPartyClient(value: unknown): MomentumPartyClient {
       return requireSessionController(controller).startExpedition();
     },
     claimReward: async (rewardId?: string) => {
-      const reward = requireSession().getSnapshot().expedition.pendingRewards;
+      const snapshot = requireSession().getSnapshot();
+      const reward = snapshot.expedition.modern?.pendingReward || snapshot.expedition.pendingRewards;
       return reward ? requireSessionController(controller).claimReward(rewardId || reward.id) : false;
     },
     subscribe: (listener: (state: PartyClientState, reason: string) => void): Unsubscribe => {

@@ -6,6 +6,10 @@ export type AuthoritativePartyStatus = 'idle' | 'active' | 'completed';
 
 export type AuthoritativeCommandBody =
   | { type: 'expedition.start'; destination: 'forest' }
+  | { type: 'expedition.start'; expeditionId: 'cooking:campfire-supper' | 'combat:forest-hunt'; assignments: Array<{ slotId: 'slot-1' | 'slot-2' | 'slot-3' | 'slot-4'; playerId: string; roleId: string; targetId?: string | null }> }
+  | { type: 'expedition.assignment.set'; slotId: 'slot-1' | 'slot-2' | 'slot-3' | 'slot-4'; roleId: string; targetId?: string | null }
+  | { type: 'expedition.assignment.clear'; slotId: 'slot-1' | 'slot-2' | 'slot-3' | 'slot-4' }
+  | { type: 'expedition.abandon' }
   | { type: 'expedition.contribute'; amount: number }
   | { type: 'expedition.reset' }
   | { type: 'expedition.reward.claim'; rewardId: string }

@@ -37,6 +37,8 @@ const skills = [
   { id:'Cooking',  basePerSec: 1 / 2.5, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
   { id:'Woodcutting', basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
 ];
+const COMPONENT_COMBAT_SKILL_IDS = ['Strength','Melee Accuracy','Marksmanship','Ranged','Magic','Reflexes','Healing','Light Armour Proficiency','Medium Armour Proficiency','Heavy Armour Proficiency'];
+let combatComponentSkills = null;
 
 const UI_ICONS = {
   skill: {
@@ -47,7 +49,7 @@ const UI_ICONS = {
     Ore:[0,0], Bars:[33.333,0], Scrap:[66.667,0], 'Raw Fish':[100,0],
     'Cooked Fish':[0,33.333], 'Burnt Fish':[33.333,33.333], 'Pine Logs':[66.667,33.333], 'Oak Logs':[100,33.333],
     'Yew Logs':[0,66.667], 'Ancient Logs':[33.333,66.667], 'Basic Bait':[66.667,66.667], 'Uncommon Fish':[100,66.667],
-    'Rare Gems':[0,100], 'Smoked Rations':[33.333,100], 'Surgefin Rations':[66.667,100]
+    'Rare Gems':[0,100], Gold:[33.333,100], 'Smoked Rations':[33.333,100], 'Surgefin Rations':[66.667,100]
   },
   loadout: {
     melee:[0,0], ranged:[33.333,0], gun:[66.667,0], magic:[100,0],
@@ -59,8 +61,19 @@ function iconMarkup(sheet, key, extraClass = '') {
   if (!position) return '';
   return `<span class="game-icon icon-${sheet} ${extraClass}" style="--icon-x:${position[0]}%;--icon-y:${position[1]}%" aria-hidden="true"></span>`;
 }
+function resourceIconMarkup(key, extraClass = 'resource-icon') {
+  const customIcons = {
+    'Boss Keys':'./assets/ui-icons/boss-key.png',
+    Salvage:'./assets/ui-icons/salvage.png',
+    'Crafted Components':'./assets/ui-icons/crafted-parts.png',
+    'Crafted Parts':'./assets/ui-icons/crafted-parts.png'
+  };
+  return customIcons[key]
+    ? `<img class="${extraClass} resource-image-icon" src="${customIcons[key]}" alt="">`
+    : iconMarkup('resource', key, extraClass);
+}
 function resourceChipMarkup(label, value, iconKey = label) {
-  const icon = iconMarkup('resource', iconKey, 'resource-icon') || '<span class="resource-fallback" aria-hidden="true">◆</span>';
+  const icon = resourceIconMarkup(iconKey) || '<span class="resource-fallback" aria-hidden="true">◆</span>';
   return `<div class="resource-chip">${icon}<span>${label}</span><strong>${value}</strong></div>`;
 }
 
@@ -69,6 +82,7 @@ let hone = null;
 let honingMult = 1.8;
 let keys = 0;
 let rareGems = 0;
+let gold = 0;
 let scrap = 0;
 let basicBait = 0;
 let uncommonFish = 0;
@@ -203,7 +217,6 @@ let lastFightResult = null;   // stores result after arena closes
 ===================================== */
 const skillsDiv = document.getElementById('skills');
 const honeSelect = document.getElementById('honeSelect');
-const honedLabel = document.getElementById('honedLabel');
 const effReadout = document.getElementById('effReadout');
 const activeCountTag = document.getElementById('activeCountTag');
 const totalsDiv = document.getElementById('totals');
@@ -265,6 +278,7 @@ const skillUpModal = document.getElementById('skillUpModal');
 const gearModal = document.getElementById('gearModal');
 const gearList = document.getElementById('gearList');
 const loadoutModal = document.getElementById('loadoutModal');
+const loadoutBuildSummary = document.getElementById('loadoutBuildSummary');
 const loadoutSlots = document.getElementById('loadoutSlots');
 const inventoryList = document.getElementById('inventoryList');
 const lootInventoryList = document.getElementById('lootInventoryList');
@@ -1057,8 +1071,25 @@ window.MomentumGameRewards = Object.freeze({
       bossKeys && `+${bossKeys} Boss Keys`, pineLogs && `+${pineLogs} Pine Logs`,
       cookedFish && `+${cookedFish} Cooked Fish`, game && `+${game} Game`
     ].filter(Boolean).join(' · ');
-    showToast(`Party reward claimed${summary ? ` · ${summary}` : ''}`, 4200);
-    logActivity(`Party reward claimed: ${summary || 'activity experience'}`, 'party');
+    const applyExpeditionResource = (resource, amount) => {
+      const value = Math.max(0, Number(amount) || 0);
+      if (!value) return;
+      if (resource === 'Gold') gold += value;
+      if (resource === 'Boss Keys') keys += value;
+      if (resource === 'Scrap') scrap += value;
+      if (resource === 'Raw Fish') skills.find(skill => skill.id === 'Fishing').qty += value;
+      if (resource === 'Cooked Fish') skills.find(skill => skill.id === 'Cooking').qty += value;
+      if (resource === 'Pine Logs') { woodInventory.pine += value; if (woodcutting) woodcutting.qty += value; }
+    };
+    const modernLedger = reward.expeditionLedger;
+    if (modernLedger) {
+      Object.entries(modernLedger.farmingRewards || {}).forEach(([resource, amount]) => applyExpeditionResource(resource, amount));
+      Object.entries(modernLedger.completionRewards || {}).forEach(([resource, amount]) => applyExpeditionResource(resource, amount));
+      if (modernLedger.outcome === 'failed') showToast('Combat completion failed · farming rewards preserved', 4200);
+    }
+    const modernSummary = modernLedger ? [...Object.entries(modernLedger.farmingRewards || {}), ...Object.entries(modernLedger.completionRewards || {})].filter(([, amount]) => Number(amount) > 0).map(([resource, amount]) => `+${amount} ${resource}`).join(' · ') : '';
+    showToast(`Party reward claimed${summary || modernSummary ? ` · ${[summary, modernSummary].filter(Boolean).join(' · ')}` : ''}`, 4200);
+    logActivity(`Party reward claimed: ${summary || modernSummary || 'activity experience'}`, 'party');
     saveGame();
     return true;
   }
@@ -1305,7 +1336,7 @@ let selectedArenaStyle = null;
    SAVE / LOAD
 ===================================== */
 const SAVE_KEY = 'momentum-save';
-const SAVE_VERSION = 15;
+const SAVE_VERSION = 17;
 const AUTO_SAVE_MS = 10_000;
 let resetInProgress = false;
 
@@ -1321,6 +1352,8 @@ function createSaveData() {
     honingMult,
     keys,
     rareGems,
+    gold,
+    combatComponentSkills: combatComponentSkills ? { ...combatComponentSkills } : null,
     scrap,
     basicBait,
     uncommonFish,
@@ -1382,7 +1415,7 @@ function loadGame() {
 
   try {
     const save = JSON.parse(raw);
-    if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, SAVE_VERSION].includes(save.version)) return false;
+    if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, SAVE_VERSION].includes(save.version)) return false;
 
     save.skills.forEach(savedSkill => {
       const skill = skills.find(s => s.id === savedSkill.id) || (savedSkill.id === 'Music' ? ensureSkillState('Music') : null);
@@ -1402,6 +1435,7 @@ function loadGame() {
     honingMult = save.honingMult;
     keys = save.keys;
     rareGems = save.rareGems;
+    gold = save.version >= 16 ? Math.max(0, Number(save.gold) || 0) : 0;
     scrap = save.version >= 2 ? save.scrap ?? 0 : 0;
     basicBait = save.version >= 5 ? save.basicBait ?? 0 : 0;
     uncommonFish = save.version >= 5 ? save.uncommonFish ?? 0 : 0;
@@ -1472,6 +1506,10 @@ function loadGame() {
     arenaTierUnlocked = save.version >= 4 ? save.arenaTierUnlocked : 1;
     selectedArenaTier = save.version >= 4 ? Math.min(save.selectedArenaTier, arenaTierUnlocked) : 1;
     arenaWins = save.version >= 4 ? [...save.arenaWins] : [0, 0, 0];
+    const convertedCombatSkills = window.MomentumExpeditions?.rules?.convertLegacyCombatSkills?.(skills.find(skill => skill.id === 'Combat')?.lvl || 1) || {};
+    combatComponentSkills = save.version >= 17 && save.combatComponentSkills && typeof save.combatComponentSkills === 'object'
+      ? Object.fromEntries(COMPONENT_COMBAT_SKILL_IDS.map(id => [id, Math.max(0, Number(save.combatComponentSkills[id]) || 0)]))
+      : convertedCombatSkills;
     ensureWorldRuntime(save.version >= 15 ? save.world || null : null, save.version);
 
     updateSaveStatus(save.savedAt);
@@ -2429,6 +2467,9 @@ function renderLootInventory() {
 
 function renderLoadout() {
   if (!loadoutSlots) return;
+  if (loadoutBuildSummary) {
+    loadoutBuildSummary.innerHTML = `<span class="eyebrow">ACTIVE BUILD</span><strong>${combatBuildLabel()}</strong><span class="small">Combat talents and equipped gear shape your expedition role.</span>`;
+  }
   loadoutSlots.innerHTML = LOADOUT_SLOTS.map(slot => {
     const item = ITEMS[equipment[slot]];
     return `<div class="loadout-slot ${item ? 'is-equipped' : 'is-empty'}">${iconMarkup('loadout',slot,'slot-icon')}<div class="slot-copy"><div class="slot-name">${slot === 'magic' ? 'Magic Spell' : slot}</div><strong>${item?.name || 'Empty'}</strong><div class="small">${itemStats(item)}</div>${item ? `<button class="btn" data-unequip="${slot}">Unequip</button>` : ''}</div></div>`;
@@ -2438,7 +2479,7 @@ function renderLoadout() {
   const materials = [['Ore',skills[0].qty],['Bars',skills[1].qty],['Scrap',scrap],['Raw Fish',fishing.qty],['Cooked Fish',skills.find(skill=>skill.id==='Cooking').qty],['Burnt Fish',burntFish],['Pine Logs',woodInventory.pine],['Oak Logs',woodInventory.oak],['Yew Logs',woodInventory.yew],['Ancient Logs',woodInventory.ancient],['Basic Bait',basicBait],['Uncommon Fish',uncommonFish],['Rare Gems',rareGems]];
   const owned = [...ownedItems].map(id => ITEMS[id]).filter(Boolean);
   const foods = ['cookedFish','smokedRation','surgefinRation'].map(id => ITEMS[id]);
-  inventoryList.innerHTML = `<div class="inventory-materials">${materials.map(([n,q])=>`<div>${iconMarkup('resource',n,'material-icon')}<span>${n}</span><strong>${Number(q).toFixed(0)}</strong></div>`).join('')}<div>${iconMarkup('resource','Smoked Rations','material-icon')}<span>Smoked Rations</span><strong>${smokedRations}</strong></div><div>${iconMarkup('resource','Surgefin Rations','material-icon')}<span>Surgefin Rations</span><strong>${surgefinRations}</strong></div><div class="inventory-salvage"><span>Salvage</span><strong>${salvageMaterials}</strong></div></div><h3>Owned Equipment</h3>${owned.filter(item=>item.slot!=='food' && !item.dynamicLoot).map(item=>`<div class="inventory-item"><div class="inventory-item-copy">${iconMarkup('loadout',item.slot,'item-icon')}<div><strong>${item.name}</strong><div class="small">${itemStats(item)}</div></div></div><button class="btn" data-equip="${item.id}">Equip</button></div>`).join('')}<h3>Skill Instruments</h3>${skillToolInventory.map(instance=>{ const tool=getSkillToolDefinition(instance.toolId); return `<div class="inventory-item skill-tool-inventory"><div class="inventory-item-copy"><span class="skill-icon-fallback">♫</span><div><strong>${tool?.name || instance.toolId}</strong><div class="small">${tool?.description || 'Skill training tool'}</div></div></div><button class="btn btn-quiet" data-discard-tool="${instance.instanceId}">Salvage</button></div>`; }).join('')}<h3>Food</h3>${foods.map(item=>`<div class="inventory-item"><div class="inventory-item-copy">${iconMarkup('resource',item.name === 'Cooked Fish' ? 'Cooked Fish' : `${item.name}s`,'item-icon')}<div><strong>${item.name} ×${Math.floor(foodCount(item.id))}</strong><div class="small">${item.detail}</div></div></div><button class="btn" data-equip="${item.id}" ${foodCount(item.id)<1?'disabled':''}>Equip</button></div>`).join('')}`;
+  inventoryList.innerHTML = `<div class="inventory-materials">${materials.map(([n,q])=>`<div>${resourceIconMarkup(n,'material-icon')}<span>${n}</span><strong>${Number(q).toFixed(0)}</strong></div>`).join('')}<div>${resourceIconMarkup('Smoked Rations','material-icon')}<span>Smoked Rations</span><strong>${smokedRations}</strong></div><div>${resourceIconMarkup('Surgefin Rations','material-icon')}<span>Surgefin Rations</span><strong>${surgefinRations}</strong></div><div class="inventory-salvage">${resourceIconMarkup('Salvage','material-icon')}<span>Salvage</span><strong>${salvageMaterials}</strong></div></div><h3>Owned Equipment</h3>${owned.filter(item=>item.slot!=='food' && !item.dynamicLoot).map(item=>`<div class="inventory-item"><div class="inventory-item-copy">${iconMarkup('loadout',item.slot,'item-icon')}<div><strong>${item.name}</strong><div class="small">${itemStats(item)}</div></div></div><button class="btn" data-equip="${item.id}">Equip</button></div>`).join('')}<h3>Skill Instruments</h3>${skillToolInventory.map(instance=>{ const tool=getSkillToolDefinition(instance.toolId); return `<div class="inventory-item skill-tool-inventory"><div class="inventory-item-copy"><span class="skill-icon-fallback">♫</span><div><strong>${tool?.name || instance.toolId}</strong><div class="small">${tool?.description || 'Skill training tool'}</div></div></div><button class="btn btn-quiet" data-discard-tool="${instance.instanceId}">Salvage</button></div>`; }).join('')}<h3>Food</h3>${foods.map(item=>`<div class="inventory-item"><div class="inventory-item-copy">${resourceIconMarkup(item.name === 'Cooked Fish' ? 'Cooked Fish' : `${item.name}s`,'item-icon')}<div><strong>${item.name} ×${Math.floor(foodCount(item.id))}</strong><div class="small">${item.detail}</div></div></div><button class="btn" data-equip="${item.id}" ${foodCount(item.id)<1?'disabled':''}>Equip</button></div>`).join('')}`;
   inventoryList.querySelectorAll('[data-equip]').forEach(btn => btn.onclick = () => equipItem(btn.dataset.equip));
   inventoryList.querySelectorAll('[data-discard-tool]').forEach(btn => btn.onclick = () => {
     const tool = skillToolInventory.find(instance => instance.instanceId === btn.dataset.discardTool);
@@ -2655,6 +2696,25 @@ function queueSkillXpDrop(skill, amount) {
 
 
 const loadedSave = loadGame();
+if (!combatComponentSkills) combatComponentSkills = window.MomentumExpeditions?.rules?.convertLegacyCombatSkills?.(skills.find(skill => skill.id === 'Combat')?.lvl || 1) || Object.fromEntries(COMPONENT_COMBAT_SKILL_IDS.map(id => [id, skills.find(skill => skill.id === 'Combat')?.lvl || 1]));
+window.MomentumCombatProfile = Object.freeze({
+  getSnapshot() {
+    return { playerId:'local-player', combatSkills:{ ...combatComponentSkills }, gold, legacyCombatLevel:skills.find(skill => skill.id === 'Combat')?.lvl || 1 };
+  },
+  respec(allocation = combatComponentSkills) {
+    const rules = window.MomentumExpeditions?.rules;
+    if (!rules?.respecCombatSkills) return { accepted:false, reason:'rules-unavailable' };
+    const current = this.getSnapshot();
+    const result = rules.respecCombatSkills({ playerId:current.playerId, combatSkills:current.combatSkills, gold:current.gold, gear:[], equippedGearIds:[], talents:[], loadout:{}, legacyCombatLevel:current.legacyCombatLevel }, allocation);
+    if (result.accepted) {
+      combatComponentSkills = { ...result.profile.combatSkills };
+      gold = result.profile.gold;
+      showToast(`Combat skills respecialized · -${result.cost} Gold`);
+      saveGame();
+    }
+    return result;
+  }
+});
 if (!worldRuntime) ensureWorldRuntime();
 if (loadedSave) applyOfflineProgress(JSON.parse(localStorage.getItem(SAVE_KEY)).savedAt);
 renderSkills();
@@ -2666,7 +2726,6 @@ renderWorld(true);
 applySettings();
 setGameView('hub');
 honeSelect.value = hone || '';
-honedLabel.textContent = hone || 'None';
 startWarmup();
 if (loadedSave) {
   showToast('Save loaded');
@@ -2682,7 +2741,7 @@ document.addEventListener('visibilitychange', () => {
 /* =====================================
    MAIN LOOP AND IDLE PRODUCTION
 ===================================== */
-honeSelect.onchange = ()=>{ hone = honeSelect.value || null; honedLabel.textContent = hone || 'None'; };
+honeSelect.onchange = ()=>{ hone = honeSelect.value || null; };
 
 function startWarmup() {
   warmup.targetA = productiveSkills().length;
@@ -2915,7 +2974,7 @@ skills.filter(s => s._els?.card?.isConnected).forEach(s=>{
   const ore = skills.find(s=>s.id==='Mining')?.qty ?? 0;
   const bars = skills.find(s=>s.id==='Smithing')?.qty ?? 0;
   const combatXP = skills.find(s=>s.id==='Combat')?.xp ?? 0;
-  const totalsSignature = JSON.stringify([ore.toFixed(1),bars.toFixed(1),skills.find(s=>s.id==='Crafting').qty.toFixed(1),scrap.toFixed(1),skills.find(s=>s.id==='Fishing').qty.toFixed(1),skills.find(s=>s.id==='Cooking').qty.toFixed(1),basicBait,uncommonFish,woodInventory.pine.toFixed(0),woodInventory.oak.toFixed(0),woodInventory.yew.toFixed(0),woodInventory.ancient.toFixed(0),Math.floor(keys),rareGems,Math.ceil(fishingBuffSecs),burntFish.toFixed(1),Math.floor(huntingXp),trappedGame]);
+  const totalsSignature = JSON.stringify([ore.toFixed(1),bars.toFixed(1),skills.find(s=>s.id==='Crafting').qty.toFixed(1),scrap.toFixed(1),skills.find(s=>s.id==='Fishing').qty.toFixed(1),skills.find(s=>s.id==='Cooking').qty.toFixed(1),basicBait,uncommonFish,woodInventory.pine.toFixed(0),woodInventory.oak.toFixed(0),woodInventory.yew.toFixed(0),woodInventory.ancient.toFixed(0),Math.floor(keys),rareGems,Math.floor(gold),Math.ceil(fishingBuffSecs),burntFish.toFixed(1),Math.floor(huntingXp),trappedGame]);
   if (totalsSignature !== totalsRenderSignature) {
     totalsRenderSignature = totalsSignature;
     totalsDiv.innerHTML = `
@@ -2923,8 +2982,7 @@ skills.filter(s => s._els?.card?.isConnected).forEach(s=>{
         <section><h3>Forging</h3>${resourceChipMarkup('Ore',ore.toFixed(1))}${resourceChipMarkup('Bars',bars.toFixed(1))}${resourceChipMarkup('Crafted Parts',skills.find(s=>s.id==='Crafting').qty.toFixed(1),'Crafted Components')}${resourceChipMarkup('Scrap',scrap.toFixed(1))}</section>
         <section><h3>Provisions</h3>${resourceChipMarkup('Raw Fish',skills.find(s=>s.id==='Fishing').qty.toFixed(1))}${resourceChipMarkup('Cooked Fish',skills.find(s=>s.id==='Cooking').qty.toFixed(1))}${resourceChipMarkup('Basic Bait',basicBait)}${resourceChipMarkup('Uncommon Fish',uncommonFish)}</section>
         <section><h3>Timber</h3>${resourceChipMarkup('Pine',woodInventory.pine.toFixed(0),'Pine Logs')}${resourceChipMarkup('Oak',woodInventory.oak.toFixed(0),'Oak Logs')}${resourceChipMarkup('Yew',woodInventory.yew.toFixed(0),'Yew Logs')}${resourceChipMarkup('Ancient',woodInventory.ancient.toFixed(0),'Ancient Logs')}</section>
-        <section><h3>Frontier</h3>${resourceChipMarkup('Boss Keys',Math.floor(keys),'Rare Gems')}${resourceChipMarkup('Rare Gems',rareGems)}${resourceChipMarkup('Fishing Boost',fishingBuffSecs > 0 ? `${Math.ceil(fishingBuffSecs)}s` : 'None','Raw Fish')}${resourceChipMarkup('Burnt Fish',burntFish.toFixed(1))}</section>
-        <section><h3>Party Rewards</h3>${resourceChipMarkup('Hunting XP',Math.floor(huntingXp))}${resourceChipMarkup('Game',trappedGame)}</section>
+        <section><h3>Frontier</h3>${resourceChipMarkup('Boss Keys',Math.floor(keys))}${resourceChipMarkup('Rare Gems',rareGems)}${resourceChipMarkup('Fishing Boost',fishingBuffSecs > 0 ? `${Math.ceil(fishingBuffSecs)}s` : 'None','Raw Fish')}${resourceChipMarkup('Burnt Fish',burntFish.toFixed(1))}</section>
       </div>
     `;
   }
@@ -2938,14 +2996,11 @@ skills.filter(s => s._els?.card?.isConnected).forEach(s=>{
 updateObjective();
 renderWorld();
 renderOperations();
-const statusSignature = JSON.stringify([skills.filter(s=>s.active).length,m.toFixed(2),Math.floor(keys),skills.find(skill=>skill.id==='Smithing').qty.toFixed(0),rareGems,combatBuildLabel(),buffText]);
+const statusSignature = JSON.stringify([Math.floor(gold)]);
 if (statusSignature !== statusRenderSignature) {
   statusRenderSignature = statusSignature;
   statusEl.innerHTML = `
-    <span class="statLabel">Active</span><span class="statValue">${skills.filter(s=>s.active).length}</span>
-    <span class="statLabel">Efficiency</span><span class="statValue">${m.toFixed(2)}×</span>
-    <span class="hud-resource">Keys <strong>${Math.floor(keys)}</strong></span><span class="hud-resource">Bars <strong>${skills.find(skill=>skill.id==='Smithing').qty.toFixed(0)}</strong></span><span class="hud-resource">Gems <strong>${rareGems}</strong></span><span class="hud-resource">Build <strong>${combatBuildLabel()}</strong></span><span class="statLabel">Buff</span>
-    <span class="statValue ${globalBuff.secs>0 ? 'green' : ''}">${buffText}</span>
+    <span class="gold-status" aria-label="Gold ${Math.floor(gold)}"><img class="gold-status-icon" src="./assets/ui-icons/gold-coin.png" alt=""><span class="gold-status-copy"><small>GOLD</small><strong>${Math.floor(gold)}</strong></span></span>
   `;
 }
   requestAnimationFrame(tick);

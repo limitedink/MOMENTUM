@@ -66,7 +66,30 @@ export interface PartyStateGetMessage {
 
 export interface ExpeditionStartCommand {
   type: 'expedition.start';
-  destination: string;
+  destination?: string;
+  expeditionId?: string;
+  assignments?: Array<{
+    slotId: string;
+    playerId: string;
+    roleId: string;
+    targetId?: string | null;
+  }>;
+}
+
+export interface ExpeditionAssignmentSetCommand {
+  type: 'expedition.assignment.set';
+  slotId: string;
+  roleId: string;
+  targetId?: string | null;
+}
+
+export interface ExpeditionAssignmentClearCommand {
+  type: 'expedition.assignment.clear';
+  slotId: string;
+}
+
+export interface ExpeditionAbandonCommand {
+  type: 'expedition.abandon';
 }
 
 export interface ExpeditionContributeCommand {
@@ -88,7 +111,7 @@ export interface ExpeditionRewardClaimCommand {
   rewardId: string;
 }
 
-export type PartyCommand = ExpeditionStartCommand | ExpeditionContributeCommand | ExpeditionResetCommand | PartyActivitySetCommand | ExpeditionRewardClaimCommand;
+export type PartyCommand = ExpeditionStartCommand | ExpeditionAssignmentSetCommand | ExpeditionAssignmentClearCommand | ExpeditionAbandonCommand | ExpeditionContributeCommand | ExpeditionResetCommand | PartyActivitySetCommand | ExpeditionRewardClaimCommand;
 
 export interface PartyCommandMessage {
   protocolVersion: typeof WEBSOCKET_PROTOCOL_VERSION;
@@ -153,6 +176,24 @@ export interface PartyStateSnapshotPayload {
     partyXp: Partial<Record<'forest_patrol' | 'pine_chopping' | 'camp_cooking' | 'rest', number>>;
     rewards: { bossKeys: number; pineLogs: number; cookedFish: number; game: number };
   }>>;
+  expedition: {
+    expeditionId: string;
+    assignments: Array<{
+      slotId: string;
+      playerId: string;
+      roleId: string;
+      targetId: string | null;
+      active: boolean;
+      assignedAt: string;
+      disconnectedAt: string | null;
+    }>;
+    forecast: {
+      successPercent: number;
+      dangerPercent: number;
+      roleCoveragePercent: number;
+      farmingMultiplier: number;
+    } | null;
+  };
   updatedAt: string;
   serverTimestamp: number;
 }
@@ -223,6 +264,28 @@ function parsePartyCommand(value: unknown): PartyCommand | null {
   if (value.type === 'expedition.start' && hasExactKeys(value, ['type', 'destination']) && typeof value.destination === 'string') {
     return value as unknown as ExpeditionStartCommand;
   }
+  if (value.type === 'expedition.start' && hasExactKeys(value, ['type', 'expeditionId', 'assignments']) &&
+    typeof value.expeditionId === 'string' && value.expeditionId.length > 0 && Array.isArray(value.assignments) &&
+    value.assignments.every(assignment => isRecord(assignment) &&
+      hasExactKeys(assignment, ['slotId', 'playerId', 'roleId']) ||
+      (isRecord(assignment) && hasExactKeys(assignment, ['slotId', 'playerId', 'roleId', 'targetId']))) &&
+    value.assignments.every(assignment => isRecord(assignment) && typeof assignment.slotId === 'string' &&
+      typeof assignment.playerId === 'string' && typeof assignment.roleId === 'string' &&
+      (assignment.targetId === undefined || assignment.targetId === null || typeof assignment.targetId === 'string'))) {
+    return value as unknown as ExpeditionStartCommand;
+  }
+  if (value.type === 'expedition.assignment.set' &&
+    (hasExactKeys(value, ['type', 'slotId', 'roleId']) || hasExactKeys(value, ['type', 'slotId', 'roleId', 'targetId'])) &&
+    typeof value.slotId === 'string' && typeof value.roleId === 'string' &&
+    (value.targetId === undefined || value.targetId === null || typeof value.targetId === 'string')) {
+    return value as unknown as ExpeditionAssignmentSetCommand;
+  }
+  if (value.type === 'expedition.assignment.clear' && hasExactKeys(value, ['type', 'slotId']) && typeof value.slotId === 'string') {
+    return value as unknown as ExpeditionAssignmentClearCommand;
+  }
+  if (value.type === 'expedition.abandon' && hasExactKeys(value, ['type'])) {
+    return value as unknown as ExpeditionAbandonCommand;
+  }
   if (value.type === 'expedition.contribute' && hasExactKeys(value, ['type', 'amount']) &&
     typeof value.amount === 'number') {
     return value as unknown as ExpeditionContributeCommand;
@@ -236,6 +299,7 @@ function parsePartyCommand(value: unknown): PartyCommand | null {
   if (value.type === 'expedition.reward.claim' && hasExactKeys(value, ['type', 'rewardId']) && typeof value.rewardId === 'string') {
     return value as unknown as ExpeditionRewardClaimCommand;
   }
+  if (value.type === 'expedition.start' || value.type === 'expedition.assignment.set') return null;
   return value as unknown as PartyCommand;
 }
 

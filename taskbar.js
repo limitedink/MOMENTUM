@@ -21,15 +21,21 @@
     tick:null,
     management:document.getElementById('partyManagement'),
     lanes:document.getElementById('partyLanes'),
+    expeditionBrief:document.getElementById('expeditionBrief'),
+    expeditionAssignments:document.getElementById('expeditionAssignments'),
     members:document.getElementById('partyMembers'),
     actions:document.getElementById('partyActionRow'),
     checkin:document.getElementById('partyCheckin'),
     identity:document.getElementById('partyIdentity'),
     identityName:document.getElementById('partyIdentityName'),
     identityDetail:document.getElementById('partyIdentityDetail'),
+    partyRoster:document.getElementById('partyRoster'),
+    dockPartyRoster:document.getElementById('dockPartyRoster'),
     dock:document.getElementById('taskbarDock'),
     dockLabel:document.getElementById('dockExpeditionLabel'),
     dockLanes:document.getElementById('dockLanes'),
+    dockExpeditionBrief:document.getElementById('dockExpeditionBrief'),
+    dockExpeditionAssignments:document.getElementById('dockExpeditionAssignments'),
     dockMembers:document.getElementById('dockMembers'),
     dockActions:document.getElementById('dockActionRow'),
     dockNotable:document.getElementById('dockNotable'),
@@ -45,6 +51,8 @@
   let partyManagementBusy = false;
   let authoritativeProgressTimer = null;
   let completionRefreshPending = false;
+  let selectedExpeditionId = 'combat:forest-hunt';
+  const expeditionAssignmentDrafts = new Map();
 
   function currentRuntimeState() {
     return partyClient.getState();
@@ -62,6 +70,19 @@
     return currentStoreState().snapshot;
   }
 
+  function modernSnapshot(snapshot = null) {
+    return snapshot?.expedition?.modern || null;
+  }
+
+  function partyMemberCount(snapshot = null) {
+    if (isAuthoritative()) return currentRuntimeState().authoritative.scope.memberPlayerIds.length || currentRuntimeState().authoritative.party?.members?.length || 0;
+    return snapshot?.party?.members?.length || 1;
+  }
+
+  function activePlayerId() {
+    return isAuthoritative() ? currentRuntimeState().identity.authenticatedPlayerId : currentStoreState().session.authenticatedPlayerId;
+  }
+
   function isConnected() {
     return partyClient.getConnectionState() === CONNECTION_STATES.CONNECTED;
   }
@@ -77,6 +98,59 @@
 
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, character => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[character]));
+  }
+
+  function expeditionFramework() {
+    return window.MomentumExpeditions || null;
+  }
+
+  function localProfile(playerId, displayName) {
+    const framework = expeditionFramework();
+    const skillLevels = {};
+    try {
+      if (typeof skills !== 'undefined') skills.forEach(skill => { skillLevels[skill.id] = Number(skill.lvl) || 0; });
+    } catch {}
+    const combatLevel = Number(skillLevels.Combat) || 1;
+    const profileSnapshot = playerId === currentStoreState().session.authenticatedPlayerId ? window.MomentumCombatProfile?.getSnapshot?.() : null;
+    const profile = framework?.rules?.convertLegacyCombatProfile?.({ playerId, displayName, combatLevel, skills:skillLevels, gold:typeof gold === 'number' ? gold : 0 });
+    if (profile && profileSnapshot) profile.combatSkills = { ...profile.combatSkills, ...profileSnapshot.combatSkills };
+    return profile || { playerId, displayName, combatSkills:{}, skills:skillLevels, gold:0, gear:[], equippedGearIds:[], talents:[], loadout:{} };
+  }
+
+  function localAssignments(snapshot, definition) {
+    const modern = modernSnapshot(snapshot);
+    if (modern && modern.expeditionId === definition.id && modern.status !== 'idle') return modern.assignments || [];
+    return expeditionAssignmentDrafts.get(definition.id) || [];
+  }
+
+  function draftAssignments(definition) {
+    return (expeditionAssignmentDrafts.get(definition.id) || []).filter(assignment =>
+      definition.roles.some(role => role.id === assignment.roleId)
+    );
+  }
+
+  function updateDraftAssignment(definition, slotId, roleId) {
+    const currentPlayerId = activePlayerId();
+    const assignments = draftAssignments(definition).filter(assignment => assignment.slotId !== slotId);
+    const policy = expeditionFramework()?.slotPolicy;
+    if (roleId && policy && !policy.canPlayerOccupySlot(assignments, currentPlayerId, slotId, partyMemberCount(isAuthoritative() ? null : currentSnapshot()))) return;
+    if (roleId) {
+      const target = definition.targets.find(item => item.requiredRoleId === roleId) || definition.targets[0];
+      assignments.push({ slotId, playerId:currentPlayerId, roleId, targetId:target?.id || null, active:true, assignedAt:new Date().toISOString() });
+    }
+    assignments.sort((a, b) => a.slotId.localeCompare(b.slotId));
+    expeditionAssignmentDrafts.set(definition.id, assignments);
+    render(true);
+  }
+
+  function localForecast(snapshot, definition) {
+    const framework = expeditionFramework();
+    if (!framework) return { assignments:[], successPercent:0, dangerPercent:0, roleCoveragePercent:0, farmingMultiplier:0, warnings:[], reward:{ resources:{} } };
+    const assignments = localAssignments(snapshot, definition);
+    const profiles = Object.fromEntries((snapshot.party.members || []).map(member => [member.id, localProfile(member.id, member.name)]));
+    const currentId = currentStoreState().session.authenticatedPlayerId;
+    profiles[currentId] = localProfile(currentId, 'You');
+    return framework.rules.forecastExpedition(definition, assignments, profiles);
   }
 
   function adventureSignature() {
@@ -148,7 +222,7 @@
       if (accepted) window.MomentumGameRewards?.claimPartyReward(reward);
       return accepted;
     }
-    const reward = currentSnapshot().expedition.pendingRewards;
+    const reward = currentSnapshot().expedition.modern?.pendingReward || currentSnapshot().expedition.pendingRewards;
     if (!reward || commandIsPending(COMMAND_TYPES.CLAIM_REWARD)) return false;
     return partyClient.claimReward(reward.id);
   }
@@ -181,7 +255,7 @@
   function renderLanes(host, snapshot) {
     const lanes = snapshot.expedition.lanes || {};
     host.innerHTML = DEFINITIONS.lanes.map(lane => {
-      const value = Number(lanes[lane.id]) || 0;
+      const value = Math.min(lane.target, Math.max(0, Number(lanes[lane.id]) || 0));
       return `<div class="party-lane"><div><span>${lane.name}</span><strong>${Math.floor(value)}/${lane.target}</strong></div><div class="party-lane-meter"><i style="width:${Math.min(100, value / lane.target * 100)}%;background:${lane.color}"></i></div></div>`;
     }).join('');
   }
@@ -189,7 +263,7 @@
   function renderMembers(host, snapshot) {
     const members = snapshot.party.members || [];
     const slots = Array.from({ length:4 }, (_, index) => members[index] || null);
-    host.innerHTML = slots.map(member => member ? `<div class="party-member${member.id === currentStoreState().session.authenticatedPlayerId ? ' is-player' : ''}"><span class="party-avatar">◆</span><span class="party-member-name"><strong>${affinityLabel(member)} ${escapeHtml(member.name)}</strong><small>${formatActivity(member)} · Passive activity output</small></span><span class="party-presence">YOU</span></div>` : emptyMemberSlotMarkup()).join('');
+    host.innerHTML = slots.map(member => member ? `<div class="party-member${member.id === currentStoreState().session.authenticatedPlayerId ? ' is-player' : ''}"><span class="party-avatar">◆</span><span class="party-member-name"><strong>${affinityLabel(member)} ${escapeHtml(member.name)}</strong><small>Party member · Expedition slot assignments</small></span><span class="party-presence">YOU</span></div>` : emptyMemberSlotMarkup()).join('');
   }
 
   function actionMarkup(snapshot, compact = false) {
@@ -202,6 +276,113 @@
 
   function bindActions(host) {
     host.querySelectorAll('[data-party-activity]').forEach(button => { button.onclick = () => { void setActivity(button.dataset.partyActivity); }; });
+  }
+
+  function expeditionRoleOptionMarkup(definition, selectedRole) {
+    return definition.roles.map(role => `<option value="${escapeHtml(role.id)}"${role.id === selectedRole ? ' selected' : ''}>${escapeHtml(role.name)}</option>`).join('');
+  }
+
+  function assignmentEfficiency(assignments, assignment) {
+    const index = (assignments || []).filter(candidate => candidate.playerId === assignment.playerId).findIndex(candidate => candidate.slotId === assignment.slotId);
+    return [1, 0.85, 0.65, 0.45][Math.max(0, index)] || 0.45;
+  }
+
+  function renderExpeditionAssignments(host, definition, assignments, forecast, compact = false, authoritative = false) {
+    if (!host) return;
+    const fitBySlot = new Map((forecast?.assignments || []).map(assignment => [assignment.slotId, assignment.fit]));
+    const currentPlayerId = activePlayerId();
+    const authoritativeActive = authoritative && currentRuntimeState().authoritative.state?.activity.status === 'active';
+    const localModernActive = !authoritative && modernSnapshot(currentSnapshot())?.status === 'active';
+    const assignmentBySlot = new Map((assignments || []).map(assignment => [assignment.slotId, assignment]));
+    host.innerHTML = Array.from({ length:4 }, (_, index) => {
+      const slotId = `slot-${index + 1}`;
+      const assignment = assignmentBySlot.get(slotId);
+      const policy = expeditionFramework()?.slotPolicy;
+      const canOccupy = policy ? policy.canPlayerOccupySlot(assignments || [], currentPlayerId, slotId, partyMemberCount(authoritative ? null : currentSnapshot())) : true;
+      const editable = (!authoritative || !assignment || assignment.playerId === currentPlayerId) && canOccupy && (!authoritative || isConnected());
+      if (!assignment) return `<div class="expedition-slot is-empty"><div class="expedition-slot-head"><span>Slot ${index + 1}</span><span>OPEN</span></div>${editable ? `<select class="btn expedition-role-select" data-expedition-role="${slotId}" aria-label="Role for ${slotId}"><option value="">Choose a role</option>${expeditionRoleOptionMarkup(definition, '')}</select>` : '<small>Awaiting assignment</small>'}</div>`;
+      const role = definition.roles.find(candidate => candidate.id === assignment.roleId) || definition.roles[0];
+      const fit = fitBySlot.get(assignment.slotId);
+      const efficiency = fit?.slotEfficiency || assignmentEfficiency(assignments, assignment);
+      return `<div class="expedition-slot"><div class="expedition-slot-head"><span>${escapeHtml(assignment.slotId)}</span><span>${assignment.active ? 'ACTIVE' : 'OFFLINE'}</span></div><strong>${escapeHtml(assignment.playerId === currentPlayerId ? 'You' : shortPlayerId(assignment.playerId))}</strong><small>${escapeHtml(role?.name || assignment.roleId)}${fit ? ` · Fit ${Math.round(fit.score)}` : ''} · ${Math.round(efficiency * 100)}% efficiency</small>${editable ? `<select class="btn expedition-role-select" data-expedition-role="${escapeHtml(assignment.slotId)}" aria-label="Role for ${escapeHtml(assignment.slotId)}">${expeditionRoleOptionMarkup(definition, assignment.roleId)}</select><button class="btn btn-small btn-quiet" data-expedition-clear="${escapeHtml(assignment.slotId)}">Clear</button>` : ''}</div>`;
+    }).join('');
+    host.classList.toggle('compact', compact);
+    host.querySelectorAll('[data-expedition-role]').forEach(select => {
+      select.onchange = () => {
+        const slotId = select.dataset.expeditionRole;
+        if (!slotId) return;
+        if (authoritative && authoritativeActive) {
+          if (select.value) void partyClient.setExpeditionAssignment(slotId, select.value, null);
+          else void partyClient.clearExpeditionAssignment(slotId);
+        } else if (localModernActive) {
+          if (select.value) void partyClient.setExpeditionAssignment(slotId, select.value, null);
+          else void partyClient.clearExpeditionAssignment(slotId);
+        } else updateDraftAssignment(definition, slotId, select.value);
+      };
+    });
+    host.querySelectorAll('[data-expedition-clear]').forEach(button => {
+      button.onclick = () => {
+        const slotId = button.dataset.expeditionClear;
+        if (!slotId) return;
+        if (authoritative && authoritativeActive) void partyClient.clearExpeditionAssignment(slotId);
+        else if (localModernActive) void partyClient.clearExpeditionAssignment(slotId);
+        else updateDraftAssignment(definition, slotId, '');
+      };
+    });
+  }
+
+  function expeditionBriefMarkup(definition, forecast, options = {}) {
+    const compact = Boolean(options.compact);
+    const authoritative = Boolean(options.authoritative);
+    const state = options.state;
+    const missionLocked = state?.activity?.status === 'active' || state?.activity?.status === 'completed';
+    const hasPendingReward = Boolean(state?.modern?.pendingReward || (authoritative && state?.pendingRewards && Object.values(state.pendingRewards).some(rewards => Array.isArray(rewards) && rewards.length)));
+    const canStart = Boolean(isConnected() && options.isLeader && state?.activity?.status === 'idle' && !hasPendingReward && !commandIsPending());
+    const canReset = Boolean(isConnected() && options.isLeader && state?.activity?.status === 'completed' && !hasPendingReward && !commandIsPending());
+    const resourceForecast = Object.entries(forecast?.reward?.resources || {}).slice(0, compact ? 2 : 4).map(([resource, amount]) => `+${Number(amount).toFixed(1)} ${escapeHtml(resource)}`).join(' · ') || 'No farming forecast yet';
+    const warnings = forecast?.warnings?.[0] || (state?.activity?.status === 'active' ? 'Assignments can change while the mission is running.' : 'Choose roles that fit your build before starting.');
+    const definitions = expeditionFramework()?.definitions || [];
+    const missionButtons = definitions.map(candidate => `<button class="btn btn-small${candidate.id === definition.id ? ' is-selected' : ''}" data-expedition-select="${escapeHtml(candidate.id)}" ${missionLocked ? 'disabled' : ''}>${escapeHtml(candidate.kind === 'combat' ? '⚔ Combat' : '♨ Cooking')}</button>`).join('');
+    const disabledReason = !isConnected() ? 'Reconnect to manage the expedition.' : !options.isLeader ? 'Only the party leader can start or abandon this expedition.' : hasPendingReward ? 'Claim the pending expedition reward first.' : state?.activity?.status === 'completed' ? 'Reset the completed expedition before starting another.' : '';
+    const resetButton = state?.activity?.status === 'completed' ? `<button class="btn btn-small" data-expedition-reset ${canReset ? '' : 'disabled'}>Reset Expedition</button>` : '';
+    const startButton = `<div class="expedition-control-group"><button class="btn btn-small" data-expedition-start="${escapeHtml(definition.id)}" ${canStart ? '' : 'disabled'}>Start Expedition</button>${resetButton}${state?.activity?.status === 'active' && options.isLeader ? `<button class="btn btn-small btn-danger" data-expedition-abandon>Abandon Expedition</button>` : ''}${!canStart && disabledReason ? `<small class="expedition-control-note">${escapeHtml(disabledReason)}</small>` : ''}</div>`;
+    const derived = options.derived;
+    const combatReadout = definition.kind === 'combat' && derived ? `<div class="expedition-brief-note">Combat Rating <strong>${Math.round(derived.combatRating)}</strong> · Defense Rating <strong>${Math.round(derived.defenseRating)}</strong> · Gold <strong>${Math.floor(options.profile?.gold || 0)}</strong> · Respec ${Math.round(options.respecCost || 0)} Gold</div>` : '';
+    return `<div class="expedition-brief-heading"><div><strong>${escapeHtml(definition.name)}</strong><span>${escapeHtml(definition.description)}</span></div><div class="expedition-brief-actions">${missionButtons}${startButton}</div></div><div class="expedition-brief-meters"><div class="expedition-brief-meter"><small>Projected success</small><strong>${Math.round(forecast?.successPercent || state?.expedition?.forecast?.successPercent || 0)}%</strong></div><div class="expedition-brief-meter is-danger"><small>Danger rate</small><strong>${Math.round(forecast?.dangerPercent || state?.expedition?.forecast?.dangerPercent || 0)}%</strong></div><div class="expedition-brief-meter is-reward"><small>Farming forecast</small><strong>${escapeHtml(resourceForecast)}</strong></div></div>${combatReadout}<div class="expedition-brief-note">${escapeHtml(warnings)}</div>`;
+  }
+
+  function bindExpeditionBrief(host, snapshot, definition, authoritative = false) {
+    host?.querySelectorAll('[data-expedition-select]').forEach(button => {
+      button.onclick = () => { selectedExpeditionId = button.dataset.expeditionSelect || selectedExpeditionId; render(true); };
+    });
+    host?.querySelectorAll('[data-expedition-start]').forEach(button => {
+      button.onclick = () => {
+        void partyClient.startExpeditionMission(definition.id, draftAssignments(definition).map(assignment => ({ slotId:assignment.slotId, playerId:assignment.playerId, roleId:assignment.roleId, targetId:assignment.targetId })));
+      };
+    });
+    host?.querySelector('[data-expedition-abandon]')?.addEventListener('click', () => {
+      if (window.confirm('Abandon this expedition? Farming rewards will be preserved, but completion rewards will be forfeited.')) void partyClient.abandonExpedition();
+    });
+    host?.querySelector('[data-expedition-reset]')?.addEventListener('click', () => { void partyClient.resetExpedition(); });
+  }
+
+  function renderLocalExpedition(snapshot, compact = false) {
+    const framework = expeditionFramework();
+    if (!framework) return;
+    const persistedModern = modernSnapshot(snapshot);
+    const activeModernId = persistedModern && persistedModern.status !== 'idle' ? persistedModern.expeditionId : selectedExpeditionId;
+    const definition = framework.getDefinition(activeModernId) || framework.combat;
+    if (persistedModern && persistedModern.status !== 'idle') selectedExpeditionId = persistedModern.expeditionId;
+    const forecast = localForecast(snapshot, definition);
+    const assignments = localAssignments(snapshot, definition);
+    const currentId = currentStoreState().session.authenticatedPlayerId;
+    const profile = localProfile(currentId, 'You');
+    const derived = definition.kind === 'combat' ? framework.rules.deriveCombatProfile(profile) : null;
+    const host = compact ? elements.dockExpeditionBrief : elements.expeditionBrief;
+    const slots = compact ? elements.dockExpeditionAssignments : elements.expeditionAssignments;
+    const modern = modernSnapshot(snapshot) || { status:'idle', expeditionId:definition.id, assignments:[], forecast:null, pendingReward:null };
+    if (host) { host.innerHTML = expeditionBriefMarkup(definition, forecast, { compact, derived, profile, respecCost:framework.rules.respecCost(profile), state:{ activity:{ status:modern.status }, modern }, isLeader:true }); bindExpeditionBrief(host, snapshot, definition); }
+    renderExpeditionAssignments(slots, definition, assignments, forecast, compact, false);
   }
 
   function pendingCommandLabel(storeState) {
@@ -222,10 +403,11 @@
     const storeState = currentStoreState();
     const snapshot = storeState.snapshot;
     const expedition = snapshot.expedition;
+    const modern = modernSnapshot(snapshot);
     const player = currentPlayer(snapshot);
     const pendingSignature = storeState.session.pendingCommands.map(command => `${command.type}:${command.commandId}`).join(',');
     const error = commandError(storeState);
-    const signature = `${storeState.session.lastAcceptedRevision}:${storeState.session.connection.status}:${pendingSignature}:${error}:${snapshot.elapsedTicks}:${expedition.status}:${expedition.pendingRewards?.id || 'clear'}:${player?.activity || ''}:${presentation.compact}:${adventureSignature()}`;
+    const signature = `${storeState.session.lastAcceptedRevision}:${storeState.session.connection.status}:${pendingSignature}:${error}:${snapshot.elapsedTicks}:${expedition.status}:${modern?.status || 'idle'}:${modern?.pendingReward?.id || 'clear'}:${modern?.assignments?.map(assignment => `${assignment.slotId}:${assignment.roleId}`).join(',') || ''}:${player?.activity || ''}:${selectedExpeditionId}:${presentation.compact}:${adventureSignature()}`;
     if (!force && signature === lastRenderSignature) return;
     lastRenderSignature = signature;
     renderIdentity(currentRuntimeState());
@@ -233,7 +415,7 @@
 
     const connectionStatus = storeState.session.connection.status;
     if (elements.transportLabel) elements.transportLabel.textContent = 'PARTY STATE';
-    const expeditionLabel = expedition.status === 'active' ? 'Active' : expedition.status === 'paused' ? 'Paused' : 'Ready';
+    const expeditionLabel = modern?.status === 'active' ? 'Active' : modern?.status === 'completed' ? 'Complete' : 'Ready';
     const fallbackLabel = currentRuntimeState().fallbackReason ? 'Local fallback · ' : '';
     const connectionText = fallbackLabel + (connectionStatus === CONNECTION_STATES.DISCONNECTED ? 'Disconnected · showing last snapshot' : connectionStatus === CONNECTION_STATES.CONNECTING ? 'Connecting · showing last snapshot' : connectionStatus === CONNECTION_STATES.RECONNECTING ? 'Reconnecting · showing last snapshot' : connectionStatus === CONNECTION_STATES.ERROR ? 'Connection problem · showing last snapshot' : `${expeditionLabel} · local snapshot`);
     elements.status.textContent = currentRuntimeState().fallbackReason ? 'Party state · Local preview' : connectionStatus === CONNECTION_STATES.CONNECTED ? `Party state · ${expeditionLabel}` : connectionStatus === CONNECTION_STATES.ERROR ? 'Party state · Broken' : connectionStatus === CONNECTION_STATES.DISCONNECTED ? 'Party state · Offline' : `Party state · ${connectionStatus === CONNECTION_STATES.RECONNECTING ? 'Reconnecting' : 'Connecting'}`;
@@ -245,34 +427,35 @@
     }
 
     const toggle = document.getElementById('partyExpeditionToggle');
-    const toggleType = expedition.status === 'active' ? COMMAND_TYPES.PAUSE_EXPEDITION : expedition.status === 'paused' ? COMMAND_TYPES.RESUME_EXPEDITION : COMMAND_TYPES.START_EXPEDITION;
-    if (toggle) {
-      toggle.hidden = false;
-      toggle.textContent = expedition.status === 'active' ? 'Pause' : expedition.status === 'paused' ? 'Resume' : expedition.pendingRewards ? 'Claim reward' : 'Start Expedition';
-      toggle.disabled = !isConnected() || Boolean(expedition.pendingRewards) || commandIsPending(toggleType);
-    }
+    if (toggle) toggle.hidden = true;
 
     renderLanes(elements.lanes, snapshot);
+    renderLocalExpedition(snapshot);
     renderMembers(elements.members, snapshot);
-    elements.actions.innerHTML = actionMarkup(snapshot);
-    elements.actions.setAttribute('aria-busy', String(commandIsPending(COMMAND_TYPES.SET_ACTIVITY)));
-    bindActions(elements.actions);
+    elements.actions.innerHTML = '';
+    elements.actions.hidden = true;
 
     renderLanes(elements.dockLanes, snapshot);
+    renderLocalExpedition(snapshot, true);
     renderMembers(elements.dockMembers, snapshot);
-    elements.dockActions.innerHTML = actionMarkup(snapshot, true);
-    elements.dockActions.setAttribute('aria-busy', String(commandIsPending(COMMAND_TYPES.SET_ACTIVITY)));
-    bindActions(elements.dockActions);
+    elements.dockActions.innerHTML = '';
+    elements.dockActions.hidden = true;
     elements.dockLabel.textContent = `Forest Expedition · ${expedition.status} · ${expedition.completedExpeditions} complete`;
 
     const latestEvent = escapeHtml(snapshot.recentEvents[0]?.text || 'Progress continues quietly.');
-    elements.dockNotable.innerHTML = `${expedition.pendingRewards ? `<strong>Reward ready</strong><br>${rewardDescription(expedition.pendingRewards)} ${rewardButtonMarkup('Claim')}` : latestEvent}${adventureSummaryMarkup()}`;
-    if (expedition.pendingRewards) {
-      elements.checkin.innerHTML = `<strong>Expedition complete.</strong> ${rewardDescription(expedition.pendingRewards)} ${rewardButtonMarkup('Claim reward')}`;
+    const modernReward = modern?.pendingReward;
+    const rewardNotice = modernReward
+      ? `<strong>Reward ready</strong><br>${escapeHtml(modernReward.ledger.outcome === 'failed' ? 'Farming preserved · completion forfeited' : 'Completion rewards ready')} ${rewardButtonMarkup('Claim')}`
+      : expedition.pendingRewards ? `<strong>Reward ready</strong><br>${rewardDescription(expedition.pendingRewards)} ${rewardButtonMarkup('Claim')}` : latestEvent;
+    elements.dockNotable.innerHTML = `${rewardNotice}${adventureSummaryMarkup()}`;
+    if (modern?.pendingReward) {
+      const outcome = modern.pendingReward.ledger.outcome === 'failed' ? 'Farming preserved; completion rewards were forfeited.' : 'Completion rewards are ready.';
+      elements.checkin.innerHTML = `<strong>Expedition reward ready.</strong> ${escapeHtml(outcome)} ${rewardButtonMarkup('Claim reward')}`;
     } else {
       const lastClaimed = expedition.claimedRewards?.[0];
       const claimedText = lastClaimed ? ` Last reward claimed: ${rewardDescription(lastClaimed)}.` : '';
-      elements.checkin.innerHTML = `<span>Recommended activity: <strong>${DEFINITIONS.activities[recommendedActivity()].name}</strong>. ${latestEvent}${claimedText}</span>`;
+      const assignedSlots = localAssignments(snapshot, expeditionFramework()?.getDefinition(selectedExpeditionId) || expeditionFramework()?.combat).length;
+      elements.checkin.innerHTML = `<span>${assignedSlots ? `You have ${assignedSlots} expedition slot${assignedSlots === 1 ? '' : 's'} assigned.` : 'Choose a role in an open expedition slot when you are ready.'} ${latestEvent}${claimedText}</span>`;
     }
     bindRewardButtons(elements.dockNotable);
     bindRewardButtons(elements.checkin);
@@ -285,17 +468,37 @@
 
   function renderIdentity(runtimeState) {
     if (!elements.identityName || !elements.identityDetail) return;
+    const modern = runtimeState.mode === 'authoritative'
+      ? runtimeState.authoritative.state?.expedition
+      : runtimeState.client.snapshot.expedition.modern;
+    const status = runtimeState.mode === 'authoritative'
+      ? authoritativeActivityLabel(runtimeState.authoritative.state)
+      : modern?.status === 'active' ? 'In progress' : modern?.status === 'completed' ? 'Complete' : 'Ready';
+    const renderRoster = (host) => {
+      if (!host) return;
+      const currentId = runtimeState.mode === 'authoritative' ? runtimeState.identity.authenticatedPlayerId : runtimeState.client.session.authenticatedPlayerId;
+      const partyMembers = runtimeState.mode === 'authoritative'
+        ? runtimeState.authoritative.party?.members || []
+        : runtimeState.client.snapshot.party.members.map(member => ({ playerId:member.id, displayName:member.name, isLeader:member.id === currentId }));
+      const presence = runtimeState.mode === 'authoritative' ? runtimeState.authoritative.presence : {};
+      const slots = Array.from({ length:4 }, (_, index) => partyMembers[index] || null);
+      host.innerHTML = slots.map((member, index) => member
+        ? `<div class="party-roster-slot${member.playerId === currentId ? ' is-player' : ''}" title="${escapeHtml(member.displayName || 'Party member')}"><span class="party-roster-avatar">${escapeHtml((member.displayName || '?').slice(0, 1).toUpperCase())}</span><small>${escapeHtml(member.playerId === currentId ? 'You' : member.displayName || `P${index + 1}`)}</small><i>${runtimeState.mode === 'authoritative' ? (presence[member.playerId]?.status === 'online' ? '●' : '○') : '●'}</i></div>`
+        : '<button class="party-roster-slot is-empty" type="button" disabled title="Steam invites coming soon"><span>+</span><small>Invite</small></button>').join('');
+    };
+    renderRoster(elements.partyRoster);
+    renderRoster(elements.dockPartyRoster);
     if (runtimeState.mode === 'authoritative') {
       const name = runtimeState.identity.displayName || 'Player';
       const party = runtimeState.authoritative.party;
       elements.identityName.textContent = name;
-      elements.identityDetail.textContent = party ? `Party roster · ${party.members.length}/${party.maxMembers}` : 'No party membership';
+      elements.identityDetail.textContent = party ? `${party.members.length === 1 ? 'Solo' : `Party ${party.members.length}/${party.maxMembers}`} · ${status}` : `Solo · ${status}`;
       elements.identity?.classList.toggle('is-online', runtimeState.connection === CONNECTION_STATES.CONNECTED);
       return;
     }
     const player = runtimeState.client.snapshot.party.members.find(member => member.id === runtimeState.client.session.authenticatedPlayerId);
     elements.identityName.textContent = player?.name || 'Player';
-    elements.identityDetail.textContent = runtimeState.fallbackReason ? `Local preview · ${runtimeState.fallbackReason}` : 'Local party profile';
+    elements.identityDetail.textContent = `${runtimeState.client.snapshot.party.members.length === 1 ? 'Solo' : `Party ${runtimeState.client.snapshot.party.members.length}/4`} · ${status}`;
     elements.identity?.classList.toggle('is-online', runtimeState.client.session.connection.status === CONNECTION_STATES.CONNECTED);
   }
 
@@ -346,6 +549,12 @@
     if (reward.rewards?.pineLogs) parts.push(`+${reward.rewards.pineLogs} Pine Logs`);
     if (reward.rewards?.cookedFish) parts.push(`+${reward.rewards.cookedFish} Cooked Fish`);
     if (reward.rewards?.game) parts.push(`+${reward.rewards.game} Game`);
+    if (reward.expeditionLedger) {
+      const ledger = reward.expeditionLedger;
+      Object.entries(ledger.farmingRewards || {}).forEach(([resource, amount]) => { if (amount) parts.push(`+${amount} ${resource} farmed`); });
+      Object.entries(ledger.completionRewards || {}).forEach(([resource, amount]) => { if (amount) parts.push(`+${amount} ${resource}`); });
+      parts.push(ledger.outcome === 'failed' ? 'Completion failed · farming preserved' : `${ledger.completionTierId || 'Completion'} secured`);
+    }
     return parts.map(escapeHtml).join(' · ');
   }
 
@@ -397,9 +606,7 @@
       const leader = member.isLeader || playerId === authoritative.scope.leaderPlayerId;
       const label = member.displayName || `Player ${shortPlayerId(playerId)}`;
       const badges = `${playerId === currentPlayerId ? '<span class="party-badge is-you">YOU</span>' : ''}${leader ? '<span class="party-badge is-leader">LEADER</span>' : ''}`;
-      const activityId = authoritative.state?.memberActivities?.[playerId] || 'rest';
-      const activity = DEFINITIONS.activities[activityId] || DEFINITIONS.activities.rest;
-      return `<div class="party-member${playerId === currentPlayerId ? ' is-player' : ' is-authoritative-member'}" data-party-member-id="${escapeHtml(playerId)}"><span class="party-avatar">${playerId === currentPlayerId ? '◆' : '◌'}</span><span class="party-member-name"><strong>${escapeHtml(label)}</strong><span class="party-member-badges">${badges}</span><small>${activity.icon} ${escapeHtml(activity.rosterName)} · ${status === 'online' ? 'Online' : 'Offline'}</small></span><span class="party-presence">${status.toUpperCase()}</span></div>`;
+      return `<div class="party-member${playerId === currentPlayerId ? ' is-player' : ' is-authoritative-member'}" data-party-member-id="${escapeHtml(playerId)}"><span class="party-avatar">${playerId === currentPlayerId ? '◆' : '◌'}</span><span class="party-member-name"><strong>${escapeHtml(label)}</strong><span class="party-member-badges">${badges}</span><small>Party member · ${status === 'online' ? 'Online' : 'Offline'}</small></span><span class="party-presence">${status.toUpperCase()}</span></div>`;
     }).join('') : '<div class="small party-empty-state">No party membership is currently available.</div>';
   }
 
@@ -450,25 +657,49 @@
   function authoritativeActionMarkup(runtimeState, compact = false) {
     const activity = runtimeState.authoritative.state?.activity;
     const party = runtimeState.authoritative.party;
-    if (!runtimeState.authoritative.scope.partyId) return '<div class="small party-authoritative-note">Join a party to unlock shared server progress.</div>';
-    const currentPlayerId = runtimeState.identity.authenticatedPlayerId;
-    const selectedActivity = runtimeState.authoritative.state?.memberActivities?.[currentPlayerId || ''] || 'rest';
-    const activityButtons = Object.entries(DEFINITIONS.activities).map(([id, definition]) => `<button class="btn party-action party-activity-action${selectedActivity === id ? ' is-selected' : ''}" data-authoritative-activity="${id}" title="${escapeHtml(definition.rewardFocus)}" ${!isConnected() || commandIsPending() ? 'disabled' : ''}><span>${definition.icon}</span>${compact ? '' : `${escapeHtml(definition.name)}<small>${escapeHtml(definition.rewardFocus)}</small>`}</button>`).join('');
-    const activityPicker = `<div class="party-activity-picker"><div class="small party-authoritative-note">Your party activity · selected activity is your primary reward focus; party activity adds shared XP.</div><div class="party-activity-actions">${activityButtons}</div></div>`;
+    if (!runtimeState.authoritative.scope.partyId) return '<div class="small party-authoritative-note">Join a party to unlock shared expedition progress.</div>';
     const pendingReward = authoritativePendingReward(runtimeState);
     const rewardReady = pendingReward ? `<div class="party-reward-ready"><strong>Reward ready</strong><span>${authoritativeRewardDescription(pendingReward)}</span>${authoritativeRewardButtonMarkup('Claim reward', pendingReward)}</div>` : '';
     if (activity?.status === 'active') {
-      return `${activityPicker}${rewardReady}<div class="small party-authoritative-note">The expedition progresses automatically from server time. Change activity whenever you like; time already spent is kept.</div>`;
+      return `${rewardReady}<div class="small party-authoritative-note">The expedition progresses automatically from server time. Role changes affect future contribution only.</div>`;
     }
-    if (activity?.status === 'completed') return `${activityPicker}${rewardReady}<div class="small party-authoritative-note">Expedition complete. ${pendingReward ? 'Claim your reward, then the party leader can reset it.' : 'The party leader can reset it.'}</div>`;
+    if (activity?.status === 'completed') return `${rewardReady}<div class="small party-authoritative-note">Expedition complete. ${pendingReward ? 'Claim your reward, then the party leader can reset it.' : 'The party leader can reset it.'}</div>`;
     const leaderName = partyLeaderLabel(runtimeState);
     return `${activityPicker}${rewardReady}<div class="small party-authoritative-note">${leaderName === 'You' ? 'You can start the shared forest expedition when your party is ready.' : `${escapeHtml(leaderName)} starts the shared forest expedition.`}</div>`;
   }
 
   function bindAuthoritativeActions(host) {
-    host.querySelectorAll('[data-authoritative-activity]').forEach(button => {
-      button.onclick = () => { void partyClient.setActivity(button.dataset.authoritativeActivity); };
-    });
+    bindRewardButtons(host);
+  }
+
+  function renderAuthoritativeExpedition(runtimeState, compact = false) {
+    const framework = expeditionFramework();
+    if (!framework) return;
+    const authoritativeState = runtimeState.authoritative.state;
+    const currentExpeditionId = authoritativeState?.expedition?.expeditionId;
+    const definition = framework.getDefinition(currentExpeditionId) || framework.getDefinition(selectedExpeditionId) || framework.combat;
+    if (currentExpeditionId && framework.getDefinition(currentExpeditionId)) selectedExpeditionId = currentExpeditionId;
+    const forecastState = authoritativeState?.expedition?.forecast;
+    const forecast = {
+      successPercent:forecastState?.successPercent || 0,
+      dangerPercent:forecastState?.dangerPercent || 0,
+      roleCoveragePercent:forecastState?.roleCoveragePercent || 0,
+      farmingMultiplier:forecastState?.farmingMultiplier || 0,
+      warnings:[],
+      assignments:[],
+      reward:{ resources:{} }
+    };
+    const missionActive = authoritativeState?.activity.status === 'active' || authoritativeState?.activity.status === 'completed';
+    const assignments = missionActive
+      ? authoritativeState?.expedition?.assignments || []
+      : draftAssignments(definition);
+    const party = runtimeState.authoritative.party;
+    const leaderId = party?.leaderId || runtimeState.authoritative.scope.leaderPlayerId;
+    const isLeader = Boolean(leaderId && leaderId === runtimeState.identity.authenticatedPlayerId);
+    const host = compact ? elements.dockExpeditionBrief : elements.expeditionBrief;
+    const slots = compact ? elements.dockExpeditionAssignments : elements.expeditionAssignments;
+    if (host) { host.innerHTML = expeditionBriefMarkup(definition, forecast, { compact, authoritative:true, state:authoritativeState, isLeader }); bindExpeditionBrief(host, null, definition, true); }
+    renderExpeditionAssignments(slots, definition, assignments, forecast, compact, true);
   }
 
   function renderAuthoritative(runtimeState, force = false) {
@@ -480,7 +711,7 @@
     const party = authoritative.party;
     const displayName = runtimeState.identity.displayName || '';
     const rewardId = authoritativePendingReward(runtimeState)?.id || 'none';
-    const signature = `authoritative:${connectionStatus}:${authoritative.scope.partyId || 'none'}:${party?.updatedAt || 'none'}:${party?.members.length || 0}:${displayName}:${authoritativeState?.revision ?? 'none'}:${rewardId}:${pending}:${error}:${partyManagementBusy}:${presentation.compact}:${adventureSignature()}`;
+    const signature = `authoritative:${connectionStatus}:${authoritative.scope.partyId || 'none'}:${party?.updatedAt || 'none'}:${party?.members.length || 0}:${displayName}:${authoritativeState?.revision ?? 'none'}:${authoritativeState?.expedition?.expeditionId || selectedExpeditionId}:${authoritativeState?.expedition?.assignments?.map(assignment => `${assignment.slotId}:${assignment.playerId}:${assignment.roleId}:${assignment.active}`).join(',') || ''}:${rewardId}:${pending}:${error}:${partyManagementBusy}:${presentation.compact}:${adventureSignature()}`;
     if (!force && signature === lastRenderSignature) return;
     lastRenderSignature = signature;
     renderIdentity(runtimeState);
@@ -504,29 +735,28 @@
     const isPartyLeader = Boolean(leaderId && leaderId === runtimeState.identity.authenticatedPlayerId);
     const canToggle = Boolean(authoritative.scope.partyId) && isPartyLeader && isConnected() && !pending;
     if (toggle) {
-      toggle.hidden = !authoritative.scope.partyId || !isPartyLeader;
-      toggle.textContent = !authoritative.scope.partyId ? 'No Party' : authoritativeState?.activity.status === 'completed' ? 'Reset Expedition' : authoritativeState?.activity.status === 'active' ? 'Server Running' : 'Start Expedition';
-      toggle.disabled = !canToggle || authoritativeState?.activity.status === 'active';
+      toggle.hidden = true;
+      toggle.disabled = true;
     }
 
     renderAuthoritativeState(elements.lanes, authoritativeState);
+    renderAuthoritativeExpedition(runtimeState);
     renderAuthoritativeMembers(elements.members, runtimeState);
-    elements.actions.innerHTML = authoritativeActionMarkup(runtimeState);
-    elements.actions.setAttribute('aria-busy', String(Boolean(pending)));
-    bindAuthoritativeActions(elements.actions);
+    elements.actions.innerHTML = '';
+    elements.actions.hidden = true;
     renderAuthoritativeState(elements.dockLanes, authoritativeState, true);
+    renderAuthoritativeExpedition(runtimeState, true);
     renderAuthoritativeMembers(elements.dockMembers, runtimeState);
-    elements.dockActions.innerHTML = authoritativeActionMarkup(runtimeState, true);
-    elements.dockActions.setAttribute('aria-busy', String(Boolean(pending)));
-    bindAuthoritativeActions(elements.dockActions);
+    elements.dockActions.innerHTML = '';
+    elements.dockActions.hidden = true;
     elements.dockLabel.textContent = `Forest Expedition · ${stateLabel}`;
     const pendingReward = authoritativePendingReward(runtimeState);
     elements.dockNotable.innerHTML = `${error || (pendingReward ? `<strong>Reward ready</strong><br>${authoritativeRewardDescription(pendingReward)}` : authoritativeState ? 'Progress runs automatically while the party is online.' : 'Waiting for party state.')}${adventureSummaryMarkup()}`;
     bindRewardButtons(elements.dockNotable);
     bindAdventureButton(elements.dockNotable);
-    const yourActivityId = authoritativeState?.memberActivities?.[runtimeState.identity.authenticatedPlayerId || ''] || 'rest';
-    const yourActivity = DEFINITIONS.activities[yourActivityId] || DEFINITIONS.activities.rest;
-    elements.checkin.innerHTML = authoritative.scope.partyId ? `<span>${authoritativeState ? `Shared forest expedition is ${stateLabel.toLowerCase()}.` : 'Waiting for the server to provide the shared expedition state.'} You are on <strong>${yourActivity.icon} ${escapeHtml(yourActivity.name)}</strong>. ${authoritativeState?.activity.status === 'active' ? 'Progress updates automatically while the server runs the expedition.' : ''}</span>` : '<span>No party membership is currently available. The local fallback remains available by selecting local mode.</span>';
+    const currentDefinition = expeditionFramework()?.getDefinition(authoritativeState?.expedition?.expeditionId || selectedExpeditionId);
+    const currentAssignmentCount = authoritativeState?.expedition?.assignments?.filter(assignment => assignment.playerId === runtimeState.identity.authenticatedPlayerId).length || 0;
+    elements.checkin.innerHTML = authoritative.scope.partyId ? `<span>${authoritativeState ? `Shared ${currentDefinition?.kind || 'expedition'} mission is ${stateLabel.toLowerCase()}.` : 'Waiting for the server to provide the shared expedition state.'} ${currentAssignmentCount ? `You occupy ${currentAssignmentCount} expedition slot${currentAssignmentCount === 1 ? '' : 's'}.` : 'Choose a role in an open slot when you are ready.'}</span>` : '<span>No party membership is currently available. The local fallback remains available by selecting local mode.</span>';
     bindRewardButtons(elements.actions);
     bindRewardButtons(elements.dockActions);
   }
@@ -537,6 +767,8 @@
     const authoritativeState = runtimeState.authoritative.state;
     renderAuthoritativeState(elements.lanes, authoritativeState);
     renderAuthoritativeState(elements.dockLanes, authoritativeState, true);
+    renderAuthoritativeExpedition(runtimeState);
+    renderAuthoritativeExpedition(runtimeState, true);
     if (authoritativeState?.activity.status === 'active' && authoritativeProgressPercent(authoritativeState) >= 100 && !completionRefreshPending) {
       completionRefreshPending = true;
       void partyClient.requestSnapshot().catch(() => undefined).finally(() => { completionRefreshPending = false; });
@@ -619,6 +851,10 @@
     requestSnapshot,
     setActivity,
     startExpedition:() => partyClient.startExpedition(),
+    startExpeditionMission:(expeditionId, assignments) => partyClient.startExpeditionMission(expeditionId, assignments),
+    setExpeditionAssignment:(slotId, roleId, targetId) => partyClient.setExpeditionAssignment(slotId, roleId, targetId),
+    clearExpeditionAssignment:slotId => partyClient.clearExpeditionAssignment(slotId),
+    abandonExpedition:() => partyClient.abandonExpedition(),
     pauseExpedition:() => partyClient.pauseExpedition(),
     resumeExpedition:() => partyClient.resumeExpedition(),
     resetExpedition:() => partyClient.resetExpedition(),
@@ -633,6 +869,10 @@
     setCompact,
     render,
     startExpedition:() => partyClient.startExpedition(),
+    startExpeditionMission:(expeditionId, assignments) => partyClient.startExpeditionMission(expeditionId, assignments),
+    setExpeditionAssignment:(slotId, roleId, targetId) => partyClient.setExpeditionAssignment(slotId, roleId, targetId),
+    clearExpeditionAssignment:slotId => partyClient.clearExpeditionAssignment(slotId),
+    abandonExpedition:() => partyClient.abandonExpedition(),
     pauseExpedition:() => partyClient.pauseExpedition(),
     resumeExpedition:() => partyClient.resumeExpedition(),
     claimReward

@@ -128,13 +128,17 @@ function errorMessage(code: string): string {
     case 'duplicate_command_mismatch': return 'That command ID was already used with different content.';
     case 'invalid_command': return 'That authoritative command is unavailable.';
     case 'invalid_destination': return 'That expedition destination is unavailable.';
+    case 'invalid_expedition': return 'That expedition is unavailable.';
+    case 'invalid_assignment': return 'That expedition assignment is invalid.';
+    case 'assignment_not_allowed': return 'That assignment is not available to you.';
+    case 'expedition_not_active': return 'The expedition is not active.';
     case 'invalid_contribution': return 'That contribution amount is invalid.';
     case 'invalid_activity': return 'That party activity is unavailable.';
     case 'activity_not_idle': return 'The expedition is not idle.';
     case 'activity_not_active': return 'The expedition is not active.';
     case 'activity_not_completed': return 'The expedition is not completed.';
     case 'reward_not_available': return 'That expedition reward is no longer available.';
-    case 'not_party_leader': return 'Only the party leader can reset the expedition.';
+    case 'not_party_leader': return 'Only the party leader can manage the expedition.';
     case 'rate_limited': return 'Party commands are temporarily rate limited.';
     case 'transport_disconnected': return 'The authoritative party connection is disconnected.';
     case 'transport_reconnecting': return 'The authoritative party connection is reconnecting.';
@@ -166,8 +170,24 @@ function isSupportedCommand(value: unknown): value is AuthoritativeCommand {
   if (!isRecord(value) || typeof value.commandId !== 'string' || value.commandId.length < 1 || value.commandId.length > MAX_COMMAND_ID_LENGTH || !COMMAND_ID_PATTERN.test(value.commandId) ||
     typeof value.expectedRevision !== 'number' || !Number.isSafeInteger(value.expectedRevision) || value.expectedRevision < 0 || !isRecord(value.command)) return false;
   if (value.command.type === 'expedition.start') {
-    return hasExactKeys(value.command, ['type', 'destination']) && value.command.destination === 'forest';
+    if (hasExactKeys(value.command, ['type', 'destination'])) return value.command.destination === 'forest';
+    return hasExactKeys(value.command, ['type', 'expeditionId', 'assignments']) &&
+      ['cooking:campfire-supper', 'combat:forest-hunt'].includes(String(value.command.expeditionId)) &&
+      Array.isArray(value.command.assignments) && value.command.assignments.length <= 4 &&
+      value.command.assignments.every(assignment => isRecord(assignment) &&
+        typeof assignment.slotId === 'string' && /^slot-[1-4]$/.test(assignment.slotId) &&
+        typeof assignment.playerId === 'string' && typeof assignment.roleId === 'string' &&
+        (assignment.targetId === undefined || assignment.targetId === null || typeof assignment.targetId === 'string'));
   }
+  if (value.command.type === 'expedition.assignment.set') {
+    return (hasExactKeys(value.command, ['type', 'slotId', 'roleId']) || hasExactKeys(value.command, ['type', 'slotId', 'roleId', 'targetId'])) &&
+      typeof value.command.slotId === 'string' && /^slot-[1-4]$/.test(value.command.slotId) && typeof value.command.roleId === 'string' &&
+      (value.command.targetId === undefined || value.command.targetId === null || typeof value.command.targetId === 'string');
+  }
+  if (value.command.type === 'expedition.assignment.clear') {
+    return hasExactKeys(value.command, ['type', 'slotId']) && typeof value.command.slotId === 'string' && /^slot-[1-4]$/.test(value.command.slotId);
+  }
+  if (value.command.type === 'expedition.abandon') return hasExactKeys(value.command, ['type']);
   if (value.command.type === 'expedition.contribute') {
     return hasExactKeys(value.command, ['type', 'amount']) && typeof value.command.amount === 'number' && Number.isSafeInteger(value.command.amount) && value.command.amount >= 1 && value.command.amount <= 10;
   }

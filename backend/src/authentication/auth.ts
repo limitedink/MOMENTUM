@@ -5,6 +5,7 @@ import type { Session } from '../domain/sessions/session.js';
 import { createPostgresPlayerRepository } from '../domain/players/postgres-player-repository.js';
 import { createPostgresSessionRepository } from '../domain/sessions/postgres-session-repository.js';
 import { hashToken } from '../domain/tokens/token-service.js';
+import { DEFAULT_PLAYER_PROFILE, normalizeStoredPlayerProfile } from '../domain/players/player-profile.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -86,6 +87,12 @@ export async function registerAuthRoutes(app: FastifyInstance, database: Pool) {
     const { raw, hash } = generateAccessToken();
 
     const session = await sessions.create({ playerId: player.id, tokenHash: hash });
+    await database.query(
+      `INSERT INTO player_profiles (player_id, profile_json)
+       VALUES ($1, $2::jsonb)
+       ON CONFLICT (player_id) DO NOTHING`,
+      [player.id, JSON.stringify(DEFAULT_PLAYER_PROFILE)]
+    );
 
     reply.code(201).send({
       player: { id: player.id, displayName: player.displayName, createdAt: player.createdAt },
@@ -100,6 +107,33 @@ export async function registerAuthRoutes(app: FastifyInstance, database: Pool) {
     reply.send({
       player: { id: player.id, displayName: player.displayName, createdAt: player.createdAt }
     });
+  });
+
+  app.get('/v1/profile', { preHandler: createAuthHook(database) }, async (request, reply) => {
+    const player = request.currentPlayer!;
+    const result = await database.query<{ profile_json: unknown }>(
+      `INSERT INTO player_profiles (player_id, profile_json)
+       VALUES ($1, $2::jsonb)
+       ON CONFLICT (player_id) DO UPDATE SET updated_at = NOW()
+       RETURNING profile_json`,
+      [player.id, JSON.stringify(DEFAULT_PLAYER_PROFILE)]
+    );
+    reply.send({ profile: result.rows[0]?.profile_json || DEFAULT_PLAYER_PROFILE });
+  });
+
+  app.put('/v1/profile', { preHandler: createAuthHook(database) }, async (request, reply) => {
+    const profile = normalizeStoredPlayerProfile(request.body);
+    if (!profile) {
+      reply.code(400).send({ error: 'invalid_profile', message: 'Profile data is invalid or contains unsupported values.' });
+      return;
+    }
+    await database.query(
+      `INSERT INTO player_profiles (player_id, profile_json)
+       VALUES ($1, $2::jsonb)
+       ON CONFLICT (player_id) DO UPDATE SET profile_json = EXCLUDED.profile_json, updated_at = NOW()`,
+      [request.currentPlayer!.id, JSON.stringify(profile)]
+    );
+    reply.send({ profile });
   });
 
   // POST /v1/sessions/current/revoke - revokes the calling session

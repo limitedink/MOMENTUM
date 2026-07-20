@@ -77,6 +77,10 @@ export interface PartyRuntime {
   markPartyMembershipChanged(): void;
   setActivity(activityId: PartyActivityId): Promise<boolean>;
   startExpedition(): Promise<boolean>;
+  startExpeditionMission(expeditionId: 'cooking:campfire-supper' | 'combat:forest-hunt', assignments: Array<{ slotId: 'slot-1' | 'slot-2' | 'slot-3' | 'slot-4'; playerId: string; roleId: string; targetId?: string | null }>): Promise<boolean>;
+  setExpeditionAssignment(slotId: 'slot-1' | 'slot-2' | 'slot-3' | 'slot-4', roleId: string, targetId?: string | null): Promise<boolean>;
+  clearExpeditionAssignment(slotId: 'slot-1' | 'slot-2' | 'slot-3' | 'slot-4'): Promise<boolean>;
+  abandonExpedition(): Promise<boolean>;
   pauseExpedition(): Promise<boolean>;
   resumeExpedition(): Promise<boolean>;
   resetExpedition(): Promise<boolean>;
@@ -440,10 +444,16 @@ export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRunt
   }
 
   async function toggleExpedition(): Promise<boolean> {
-    if (mode === PARTY_RUNTIME_MODES.LOCAL) return localClient!.toggleExpedition();
+    if (mode === PARTY_RUNTIME_MODES.LOCAL) {
+      const modern = localClient!.getSnapshot().expedition.modern;
+      if (modern?.status === 'active') return localClient!.abandonExpedition();
+      if (modern?.status === 'completed') return localClient!.resetModernExpedition();
+      return localClient!.startExpeditionMission('combat:forest-hunt', []);
+    }
     const status = state.state?.activity.status;
     if (status === 'idle' || status === undefined) return submitAuthoritative({ type: 'expedition.start', destination: 'forest' });
     if (status === 'completed') return submitAuthoritative({ type: 'expedition.reset' });
+    if (state.state?.expedition?.expeditionId && state.state.expedition.expeditionId !== 'forest') return submitAuthoritative({ type: 'expedition.abandon' });
     return unsupportedAuthoritativeAction();
   }
 
@@ -480,9 +490,21 @@ export function createPartyRuntime(options: PartyRuntimeOptions = {}): PartyRunt
       ? localClient!.setActivity(activityId)
       : submitAuthoritative({ type: 'party.activity.set', activityId }),
     startExpedition: () => mode === PARTY_RUNTIME_MODES.LOCAL ? localClient!.startExpedition() : submitAuthoritative({ type: 'expedition.start', destination: 'forest' }),
+    startExpeditionMission: (expeditionId: 'cooking:campfire-supper' | 'combat:forest-hunt', assignments: Array<{ slotId: 'slot-1' | 'slot-2' | 'slot-3' | 'slot-4'; playerId: string; roleId: string; targetId?: string | null }>) => mode === PARTY_RUNTIME_MODES.AUTHORITATIVE
+      ? submitAuthoritative({ type: 'expedition.start', expeditionId, assignments })
+      : localClient!.startExpeditionMission(expeditionId, assignments.map(assignment => ({ ...assignment, active: true, assignedAt: Date.now() }))),
+    setExpeditionAssignment: (slotId: 'slot-1' | 'slot-2' | 'slot-3' | 'slot-4', roleId: string, targetId?: string | null) => mode === PARTY_RUNTIME_MODES.AUTHORITATIVE
+      ? submitAuthoritative({ type: 'expedition.assignment.set', slotId, roleId, targetId })
+      : localClient!.setExpeditionAssignment(slotId, roleId, targetId),
+    clearExpeditionAssignment: (slotId: 'slot-1' | 'slot-2' | 'slot-3' | 'slot-4') => mode === PARTY_RUNTIME_MODES.AUTHORITATIVE
+      ? submitAuthoritative({ type: 'expedition.assignment.clear', slotId })
+      : localClient!.clearExpeditionAssignment(slotId),
+    abandonExpedition: () => mode === PARTY_RUNTIME_MODES.AUTHORITATIVE
+      ? submitAuthoritative({ type: 'expedition.abandon' })
+      : localClient!.abandonExpedition(),
     pauseExpedition: () => mode === PARTY_RUNTIME_MODES.LOCAL ? localClient!.pauseExpedition() : unsupportedAuthoritativeAction(),
     resumeExpedition: () => mode === PARTY_RUNTIME_MODES.LOCAL ? localClient!.resumeExpedition() : unsupportedAuthoritativeAction(),
-    resetExpedition: () => mode === PARTY_RUNTIME_MODES.LOCAL ? unsupportedAuthoritativeAction() : submitAuthoritative({ type: 'expedition.reset' }),
+    resetExpedition: () => mode === PARTY_RUNTIME_MODES.LOCAL ? localClient!.resetModernExpedition() : submitAuthoritative({ type: 'expedition.reset' }),
     contribute: (amount = 1) => mode === PARTY_RUNTIME_MODES.LOCAL ? unsupportedAuthoritativeAction() : submitAuthoritative({ type: 'expedition.contribute', amount }),
     toggleExpedition,
     claimReward: (rewardId?: string) => mode === PARTY_RUNTIME_MODES.LOCAL ? localClient!.claimReward(rewardId) : rewardId ? submitAuthoritative({ type: 'expedition.reward.claim', rewardId }) : Promise.resolve(false),

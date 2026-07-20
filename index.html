@@ -24,7 +24,7 @@
         <h1>MOMENTUM</h1>
         <p class="game-subtitle">Train in the background. Forge a build. Push the frontier together.</p>
       </div>
-      <div class="header-actions"><div class="identity-readout" id="partyIdentity" aria-live="polite"><small>PLAYER IDENTITY</small><strong id="partyIdentityName">Connecting…</strong><span id="partyIdentityDetail">Acquiring party profile</span></div><button class="btn btn-quiet" id="openSettingsBtn" aria-haspopup="dialog"><span aria-hidden="true">⚙</span> Settings</button><div class="header-mark" aria-hidden="true">M</div></div>
+      <div class="header-actions"><div class="identity-readout" id="partyIdentity" aria-live="polite"><small>PLAYER IDENTITY</small><div class="identity-party-row"><span class="identity-avatar" id="partyIdentityAvatar" aria-hidden="true">◆</span><strong id="partyIdentityName">Connecting…</strong></div><span id="partyIdentityDetail">Acquiring party profile</span><div class="party-roster" id="partyRoster" aria-label="Party roster"></div></div><button class="btn btn-quiet" id="openSettingsBtn" aria-haspopup="dialog"><span aria-hidden="true">⚙</span> Settings</button><div class="header-mark" aria-hidden="true">M</div></div>
     </header>
     <div class="command-rail">
       <nav class="game-view-tabs" aria-label="Primary game views">
@@ -88,7 +88,7 @@
           <div class="small section-intro">Supercharge one track to 1.8× output.</div>
           <label class="field-label" for="honeSelect">Honed skill</label>
           <select id="honeSelect" class="btn"></select>
-          <div class="inline-stats small"><span>Honed <strong id="honedLabel">None</strong></span><span>Boss buff <strong id="buffLabel">none</strong></span></div>
+          <div class="inline-stats small"><span>Boss buff <strong id="buffLabel">none</strong></span></div>
         </section>
 
         <!-- Boss Gate -->
@@ -132,6 +132,8 @@
           <div class="small party-status-line"><span id="partyExpeditionStatus">Party state · Ready</span><span id="partySyncStatus">Party state · Ready</span><span id="partyTickLabel">Expedition 1</span></div>
           <div id="partyManagement" class="party-management"></div>
           <div id="partyLanes" class="party-lanes"></div>
+          <div id="expeditionBrief" class="expedition-brief" aria-live="polite"></div>
+          <div id="expeditionAssignments" class="expedition-assignments" aria-label="Expedition assignment slots"></div>
           <div id="partyMembers" class="party-members"></div>
           <div class="party-action-row" id="partyActionRow"></div>
           <div class="small party-checkin" id="partyCheckin">Your expedition keeps moving while you work. Pick the role that suits your build.</div>
@@ -271,6 +273,7 @@
   <div id="loadoutModal" role="dialog" aria-modal="true" aria-labelledby="loadoutTitle">
     <div class="loadout-panel">
       <div class="flex modal-heading"><div><div class="eyebrow">CHARACTER</div><h2 class="title" id="loadoutTitle">Field Loadout</h2></div><button class="btn" id="closeLoadout">Close</button></div>
+      <div id="loadoutBuildSummary" class="loadout-build-summary" aria-live="polite"></div>
       <div id="loadoutSlots" class="loadout-grid"></div>
       <div class="inventory-heading"><h3 class="title">Inventory</h3><span class="small">Materials stack freely; equipment has no slot cap.</span></div>
       <div id="inventoryList"></div>
@@ -393,8 +396,11 @@
 
   <aside id="taskbarDock" class="taskbar-dock" aria-label="Collapsed Momentum party panel" aria-hidden="true">
     <div class="taskbar-dock-heading"><strong>Momentum expedition</strong><button class="btn btn-small" id="expandTaskbarBtn">Return to game</button></div>
+    <div id="dockPartyRoster" class="party-roster compact" aria-label="Compact party roster"></div>
     <div class="small" id="dockExpeditionLabel">Forest Expedition · Active</div>
     <div id="dockLanes" class="party-lanes compact"></div>
+    <div id="dockExpeditionBrief" class="expedition-brief compact" aria-live="polite"></div>
+    <div id="dockExpeditionAssignments" class="expedition-assignments compact" aria-label="Compact expedition assignment slots"></div>
     <div id="dockMembers" class="party-members compact"></div>
     <div class="party-action-row compact" id="dockActionRow"></div>
     <div class="small dock-notable" id="dockNotable">Progress continues quietly.</div>

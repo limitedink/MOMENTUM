@@ -93,6 +93,47 @@ export interface ClaimedReward extends PendingReward {
   claimedAt: number;
 }
 
+export interface ModernExpeditionAssignment {
+  slotId: 'slot-1' | 'slot-2' | 'slot-3' | 'slot-4';
+  playerId: string;
+  roleId: string;
+  targetId?: string | null;
+  active: boolean;
+  assignedAt: number;
+}
+
+export interface ModernExpeditionLedger {
+  expeditionId: string;
+  outcome: 'completed' | 'failed';
+  farmingRewards: Record<string, number>;
+  completionRewards: Record<string, number>;
+  completionTierId: string | null;
+  status: 'pending' | 'preserved-on-failure';
+  successPercent: number;
+  dangerPercent: number;
+}
+
+export interface ModernExpeditionReward {
+  id: string;
+  ledger: ModernExpeditionLedger;
+  claimedAt?: number;
+}
+
+export interface ModernExpeditionSnapshot {
+  expeditionId: 'cooking:campfire-supper' | 'combat:forest-hunt';
+  status: 'idle' | 'active' | 'completed';
+  assignments: ModernExpeditionAssignment[];
+  forecast: {
+    successPercent: number;
+    dangerPercent: number;
+    roleCoveragePercent: number;
+    farmingMultiplier: number;
+  } | null;
+  startedAt: number | null;
+  completesAt: number | null;
+  pendingReward: ModernExpeditionReward | null;
+}
+
 export interface PartyEvent {
   text: string;
   tick: number;
@@ -123,6 +164,7 @@ export interface Expedition {
   lastContributions: ContributionSummary[] | null;
   pendingRewards: PendingReward | null;
   claimedRewards: ClaimedReward[];
+  modern?: ModernExpeditionSnapshot;
 }
 
 /** The only server-owned state rendered by the client. */
@@ -221,6 +263,11 @@ export interface MomentumPartyTransport {
   getSessionIdentity(): Promise<PartySessionIdentity>;
   requestSnapshot(): Promise<PartySnapshot>;
   submitCommand(command: PartyCommand): Promise<boolean>;
+  startExpeditionMission?(expeditionId: ModernExpeditionSnapshot['expeditionId'], assignments: ModernExpeditionAssignment[]): Promise<boolean>;
+  setExpeditionAssignment?(slotId: ModernExpeditionAssignment['slotId'], roleId: string, targetId?: string | null): Promise<boolean>;
+  clearExpeditionAssignment?(slotId: ModernExpeditionAssignment['slotId']): Promise<boolean>;
+  abandonExpedition?(): Promise<boolean>;
+  resetModernExpedition?(): Promise<boolean>;
   subscribeToSnapshots(listener: SnapshotListener): Unsubscribe;
   subscribeToConnection(listener: ConnectionListener): Unsubscribe;
   subscribeToCommandResults(listener: CommandResultListener): Unsubscribe;
@@ -244,6 +291,24 @@ export interface AuthoritativePartyState {
   contributions: Record<string, number>;
   memberActivities: Record<string, PartyActivityId>;
   pendingRewards: Record<string, PartyReward[]>;
+  expedition?: {
+    expeditionId: string;
+    assignments: Array<{
+      slotId: 'slot-1' | 'slot-2' | 'slot-3' | 'slot-4';
+      playerId: string;
+      roleId: string;
+      targetId: string | null;
+      active: boolean;
+      assignedAt: string;
+      disconnectedAt: string | null;
+    }>;
+    forecast: {
+      successPercent: number;
+      dangerPercent: number;
+      roleCoveragePercent: number;
+      farmingMultiplier: number;
+    } | null;
+  };
   updatedAt: string;
   serverTimestamp: number;
 }
@@ -258,6 +323,16 @@ export interface PartyReward {
     pineLogs: number;
     cookedFish: number;
     game: number;
+  };
+  expeditionLedger?: {
+    expeditionId: string;
+    outcome: 'completed' | 'failed';
+    farmingRewards: Record<string, number>;
+    completionRewards: Record<string, number>;
+    completionTierId: string | null;
+    status: 'pending' | 'preserved-on-failure';
+    successPercent: number;
+    dangerPercent: number;
   };
 }
 
@@ -310,6 +385,11 @@ export interface MomentumPartyClient {
   requestSnapshot(): Promise<PartySnapshot>;
   setActivity(activityId: PartyActivityId): Promise<boolean>;
   startExpedition(): Promise<boolean>;
+  startExpeditionMission(expeditionId: ModernExpeditionSnapshot['expeditionId'], assignments: ModernExpeditionAssignment[]): Promise<boolean>;
+  setExpeditionAssignment(slotId: ModernExpeditionAssignment['slotId'], roleId: string, targetId?: string | null): Promise<boolean>;
+  clearExpeditionAssignment(slotId: ModernExpeditionAssignment['slotId']): Promise<boolean>;
+  abandonExpedition(): Promise<boolean>;
+  resetModernExpedition(): Promise<boolean>;
   pauseExpedition(): Promise<boolean>;
   resumeExpedition(): Promise<boolean>;
   toggleExpedition(): Promise<boolean>;
@@ -326,6 +406,7 @@ declare global {
     MomentumSkillFramework: typeof import('../game/skills').MomentumSkillFramework;
     MomentumLootFramework: typeof import('../game/loot').momentumLootFramework;
     MomentumWorldFramework: typeof import('../game/world').MomentumWorldFramework;
+    MomentumExpeditions: typeof import('../game/expeditions').MomentumExpeditions;
     MomentumPartyTransport: PartyTransportApi;
     LocalMomentumPartyTransport: (options?: { commandDelay?: number; connectDelay?: number; authenticatedPlayerId?: string; storage?: Storage }) => MomentumPartyTransport & {
       resolveElapsed(): number;

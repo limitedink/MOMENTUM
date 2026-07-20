@@ -16,8 +16,15 @@ import type {
   PartyMember,
   PartySnapshot,
   PendingReward,
+  ModernExpeditionAssignment,
+  ModernExpeditionLedger,
+  ModernExpeditionReward,
+  ModernExpeditionSnapshot,
   MomentumPartyTransport
 } from './party-types';
+import { getExpeditionDefinition, forecastExpedition, resolveExpeditionOutcome } from '../game/expeditions';
+import type { ExpeditionAssignment, PlayerProfileSnapshot } from '../game/expeditions';
+import { canPlayerOccupySlot, normalizeAssignmentsForPartySize, type ExpeditionSlotId } from '../game/expeditions';
 
 declare const woodInventory: { pine: number } | undefined;
 declare const skills: Array<{ id: string; qty: number; lvl: number }> | undefined;
@@ -57,6 +64,7 @@ type LocalPartyState = {
   party: PartyMember[];
   ledger: PartyEvent[];
   notable: string[];
+  modern: ModernExpeditionSnapshot;
 };
 
 type LocalPartySave = LocalPartyState;
@@ -70,11 +78,24 @@ type LocalTransport = MomentumPartyTransport & {
 const DEFAULT_AUTHENTICATED_PLAYER_ID = 'local-player';
 const LEGACY_AUTHENTICATED_PLAYER_ID = 'player';
 const LEGACY_GHOST_IDS = new Set(['faith', 'sofia', 'maya']);
+const MODERN_EXPEDITION_IDS = new Set(['cooking:campfire-supper', 'combat:forest-hunt']);
 
 function createDefaultParty(authenticatedPlayerId: string, displayName = 'You'): PartyMember[] {
   return [
   { id: authenticatedPlayerId, name: displayName, type: 'human', affinity: 'balanced', activity: 'forest_patrol', efficiency: 1, lastActivityTick: 0, totals: { threat: 0, timber: 0, supplies: 0 } }
   ];
+}
+
+function createDefaultModernExpedition(): ModernExpeditionSnapshot {
+  return {
+    expeditionId: 'combat:forest-hunt',
+    status: 'idle',
+    assignments: [],
+    forecast: null,
+    startedAt: null,
+    completesAt: null,
+    pendingReward: null
+  };
 }
 
 function isRecord(value: unknown): value is RawRecord {
@@ -112,6 +133,7 @@ function createDefaultState(authenticatedPlayerId: string, displayName = 'You'):
     party: cloneDefaultParty(authenticatedPlayerId, displayName),
     ledger: [],
     notable: [],
+    modern: createDefaultModernExpedition(),
     partyId: 'local-party'
   };
 }
@@ -137,6 +159,61 @@ function normalizeClaimedRewards(value: unknown): ClaimedReward[] {
     const reward = normalizeReward(item);
     return reward ? { ...reward, claimedAt: isRecord(item) ? numberOr(item.claimedAt, 0) : 0 } : null;
   }).filter((reward): reward is ClaimedReward => reward !== null).slice(0, 30);
+}
+
+function normalizeModernAssignment(value: unknown, memberIds: ReadonlySet<string>): ModernExpeditionAssignment | null {
+  if (!isRecord(value) || typeof value.slotId !== 'string' || !/^slot-[1-4]$/.test(value.slotId) ||
+    typeof value.playerId !== 'string' || !memberIds.has(value.playerId) || typeof value.roleId !== 'string') return null;
+  return {
+    slotId: value.slotId as ModernExpeditionAssignment['slotId'],
+    playerId: value.playerId,
+    roleId: value.roleId,
+    targetId: typeof value.targetId === 'string' ? value.targetId : null,
+    active: value.active !== false,
+    assignedAt: numberOr(value.assignedAt, Date.now())
+  };
+}
+
+function normalizeModern(value: unknown, party: readonly PartyMember[]): ModernExpeditionSnapshot {
+  const defaults = createDefaultModernExpedition();
+  const raw = isRecord(value) ? value : {};
+  const expeditionId = typeof raw.expeditionId === 'string' && MODERN_EXPEDITION_IDS.has(raw.expeditionId)
+    ? raw.expeditionId as ModernExpeditionSnapshot['expeditionId'] : defaults.expeditionId;
+  const memberIds = new Set(party.map(member => member.id));
+  const parsedAssignments = Array.isArray(raw.assignments)
+    ? raw.assignments.map(item => normalizeModernAssignment(item, memberIds)).filter((item): item is ModernExpeditionAssignment => item !== null).slice(0, 4)
+    : [];
+  const assignments = normalizeAssignmentsForPartySize(parsedAssignments, party.length);
+  const rawForecast = isRecord(raw.forecast) ? raw.forecast : null;
+  const rawReward = isRecord(raw.pendingReward) && isRecord(raw.pendingReward.ledger) ? raw.pendingReward : null;
+  const ledger = rawReward && isRecord(rawReward.ledger) ? rawReward.ledger : null;
+  return {
+    expeditionId,
+    status: raw.status === 'active' || raw.status === 'completed' ? raw.status : 'idle',
+    assignments,
+    forecast: rawForecast ? {
+      successPercent: numberOr(rawForecast.successPercent, 0),
+      dangerPercent: numberOr(rawForecast.dangerPercent, 0),
+      roleCoveragePercent: numberOr(rawForecast.roleCoveragePercent, 0),
+      farmingMultiplier: numberOr(rawForecast.farmingMultiplier, 0)
+    } : null,
+    startedAt: raw.startedAt === null ? null : numberOr(raw.startedAt, 0) || null,
+    completesAt: raw.completesAt === null ? null : numberOr(raw.completesAt, 0) || null,
+    pendingReward: rawReward && ledger ? {
+      id: typeof rawReward.id === 'string' ? rawReward.id : `local-modern-${Date.now()}`,
+      ledger: {
+        expeditionId: typeof ledger.expeditionId === 'string' ? ledger.expeditionId : expeditionId,
+        outcome: ledger.outcome === 'failed' ? 'failed' : 'completed',
+        farmingRewards: isRecord(ledger.farmingRewards) ? Object.fromEntries(Object.entries(ledger.farmingRewards).map(([key, amount]) => [key, numberOr(amount, 0)])) : {},
+        completionRewards: isRecord(ledger.completionRewards) ? Object.fromEntries(Object.entries(ledger.completionRewards).map(([key, amount]) => [key, numberOr(amount, 0)])) : {},
+        completionTierId: typeof ledger.completionTierId === 'string' ? ledger.completionTierId : null,
+        status: ledger.status === 'preserved-on-failure' ? 'preserved-on-failure' : 'pending',
+        successPercent: numberOr(ledger.successPercent, 0),
+        dangerPercent: numberOr(ledger.dangerPercent, 0)
+      },
+      claimedAt: rawReward.claimedAt === undefined ? undefined : numberOr(rawReward.claimedAt, 0)
+    } : null
+  };
 }
 
 function normalizeMember(value: unknown, fallback: PartyMember, authenticatedPlayerId: string): PartyMember {
@@ -200,9 +277,9 @@ export function normalizePartySave(value: unknown, authenticatedPlayerId = DEFAU
     completedExpeditions: nonNegativeInteger(raw.completedExpeditions, 0),
     expeditionStatus,
     lanes: {
-      threat: numberOr(lanes.threat, 0),
-      timber: numberOr(lanes.timber, 0),
-      supplies: numberOr(lanes.supplies, 0)
+      threat: Math.min(DEFINITIONS.lanes.find(lane => lane.id === 'threat')?.target || 100, numberOr(lanes.threat, 0)),
+      timber: Math.min(DEFINITIONS.lanes.find(lane => lane.id === 'timber')?.target || 100, numberOr(lanes.timber, 0)),
+      supplies: Math.min(DEFINITIONS.lanes.find(lane => lane.id === 'supplies')?.target || 100, numberOr(lanes.supplies, 0))
     },
     pendingRewards: pendingRewards && !claimedIds.has(pendingRewards.id) ? pendingRewards : null,
     claimedRewards,
@@ -210,6 +287,7 @@ export function normalizePartySave(value: unknown, authenticatedPlayerId = DEFAU
     party,
     ledger,
     notable,
+    modern: normalizeModern(raw.modern, party),
     partyId: typeof raw.partyId === 'string' && raw.partyId.length > 0 ? raw.partyId : defaults.partyId
   };
 }
@@ -260,7 +338,8 @@ function buildSnapshot(state: LocalPartyState): PartySnapshot {
       contributions,
       lastContributions,
       pendingRewards,
-      claimedRewards
+      claimedRewards,
+      modern: clone(state.modern)
     },
     recentEvents,
     notable: [...state.notable],
@@ -271,6 +350,45 @@ function buildSnapshot(state: LocalPartyState): PartySnapshot {
 
 function rewardDescription(reward: PendingReward): string {
   return `+${reward.pineLogs} Pine Logs · +${reward.cookedFish} Cooked Fish`;
+}
+
+function localModernAssignment(value: ModernExpeditionAssignment): ExpeditionAssignment {
+  return {
+    slotId: value.slotId,
+    playerId: value.playerId,
+    roleId: value.roleId,
+    targetId: value.targetId,
+    active: value.active,
+    assignedAt: new Date(value.assignedAt).toISOString()
+  };
+}
+
+function localModernProfile(player: PartyMember): PlayerProfileSnapshot {
+  const skillLevels = typeof skills === 'undefined' ? {} : Object.fromEntries(skills.map(skill => [skill.id, skill.lvl]));
+  const combatLevel = Number(skillLevels.Combat) || 1;
+  const profile = (globalThis as typeof globalThis & { MomentumCombatProfile?: { getSnapshot?: () => Partial<PlayerProfileSnapshot> } }).MomentumCombatProfile?.getSnapshot?.();
+  return {
+    playerId: player.id,
+    displayName: player.name,
+    combatSkills: profile?.combatSkills || {
+      Strength: combatLevel,
+      'Melee Accuracy': combatLevel,
+      Marksmanship: combatLevel,
+      Ranged: combatLevel,
+      Magic: combatLevel,
+      Reflexes: combatLevel,
+      Healing: combatLevel,
+      'Light Armour Proficiency': combatLevel,
+      'Medium Armour Proficiency': combatLevel,
+      'Heavy Armour Proficiency': combatLevel
+    },
+    skills: skillLevels,
+    gold: 0,
+    gear: profile?.gear || [],
+    equippedGearIds: profile?.equippedGearIds || [],
+    talents: profile?.talents || [],
+    loadout: profile?.loadout || {}
+  };
 }
 
 export function createLocalMomentumPartyTransport(options: LocalTransportOptions = {}): LocalTransport {
@@ -334,6 +452,135 @@ export function createLocalMomentumPartyTransport(options: LocalTransportOptions
     }
   }
 
+  function modernForecast() {
+    const definition = getExpeditionDefinition(state.modern.expeditionId);
+    if (!definition) return null;
+    const assignments = state.modern.assignments.map(localModernAssignment);
+    const profiles = Object.fromEntries(state.party.map(member => [member.id, localModernProfile(member)]));
+    return forecastExpedition(definition, assignments, profiles);
+  }
+
+  function refreshModernForecast(): void {
+    const forecast = modernForecast();
+    state.modern.forecast = forecast ? {
+      successPercent: forecast.successPercent,
+      dangerPercent: forecast.dangerPercent,
+      roleCoveragePercent: forecast.roleCoveragePercent,
+      farmingMultiplier: forecast.reward.farmingMultiplier
+    } : null;
+  }
+
+  function modernReward(progress: number, outcome: 'completed' | 'failed', completionRewards: Record<string, number> = {}): ModernExpeditionReward {
+    const forecast = modernForecast();
+    const farmingRewards = Object.fromEntries(Object.entries(forecast?.reward.resources || {}).map(([resource, amount]) => [resource, Math.max(0, Math.floor(amount * progress * 100) / 100)]));
+    const success = outcome === 'completed';
+    const tier = forecast?.reward.completionTiers.slice().reverse().find(candidate => forecast.successPercent >= candidate.minimumSuccess) || null;
+    return {
+      id: `modern-expedition-${state.modern.expeditionId}-${Date.now()}`,
+      ledger: {
+        expeditionId: state.modern.expeditionId,
+        outcome,
+        farmingRewards,
+        completionRewards: success ? completionRewards : {},
+        completionTierId: success ? tier?.id || null : null,
+        status: success ? 'pending' : 'preserved-on-failure',
+        successPercent: forecast?.successPercent || 0,
+        dangerPercent: forecast?.dangerPercent || 0
+      }
+    };
+  }
+
+  function resolveModernCompletion(): boolean {
+    if (state.modern.status !== 'active' || !state.modern.completesAt || Date.now() < state.modern.completesAt) return false;
+    const definition = getExpeditionDefinition(state.modern.expeditionId);
+    if (!definition) return false;
+    const assignments = state.modern.assignments.map(localModernAssignment);
+    const profiles = Object.fromEntries(state.party.map(member => [member.id, localModernProfile(member)]));
+    const outcome = resolveExpeditionOutcome(definition, `local-${state.modern.startedAt}`, assignments, profiles);
+    const completionRewards = outcome.completionLedger
+      ? Object.values(outcome.completionLedger.completionByPlayer)[0] || {}
+      : {};
+    state.modern.pendingReward = modernReward(1, outcome.status, completionRewards);
+    state.modern.status = 'completed';
+    state.modern.completesAt = Date.now();
+    refreshModernForecast();
+    addEvent(`${definition.name} completed. ${outcome.status === 'completed' ? 'Completion rewards are ready.' : 'Farming rewards were preserved.'}`, true);
+    return true;
+  }
+
+  function startModernExpedition(expeditionId: ModernExpeditionSnapshot['expeditionId'], assignments: ModernExpeditionAssignment[]): boolean {
+    const definition = getExpeditionDefinition(expeditionId);
+    if (!definition || state.modern.status !== 'idle' || state.modern.pendingReward || state.pendingRewards) return false;
+    const memberIds = new Set(state.party.map(member => member.id));
+    const valid = assignments.length <= 4 && assignments.every(assignment =>
+      memberIds.has(assignment.playerId) && definition.roles.some(role => role.id === assignment.roleId)
+    );
+    if (!valid) return false;
+    const normalizedAssignments = normalizeAssignmentsForPartySize(assignments, state.party.length);
+    if (normalizedAssignments.length !== assignments.length) return false;
+    const normalized = normalizedAssignments.map(assignment => ({ ...assignment, active: true, assignedAt: Date.now() }));
+    state.modern = {
+      expeditionId,
+      status: 'active',
+      assignments: normalized,
+      forecast: null,
+      startedAt: Date.now(),
+      completesAt: Date.now() + definition.durationMs,
+      pendingReward: null
+    };
+    refreshModernForecast();
+    addEvent(`${definition.name} launched.`, true);
+    return true;
+  }
+
+  function setModernAssignment(slotId: ExpeditionSlotId, roleId: string, targetId: string | null = null): boolean {
+    const definition = getExpeditionDefinition(state.modern.expeditionId);
+    if (!definition || state.modern.status === 'completed' || !definition.roles.some(role => role.id === roleId)) return false;
+    const currentPlayerId = authenticatedPlayerId;
+    if (!canPlayerOccupySlot(state.modern.assignments, currentPlayerId, slotId, state.party.length)) return false;
+    const existing = state.modern.assignments.find(assignment => assignment.slotId === slotId);
+    if (existing && existing.playerId !== currentPlayerId) return false;
+    state.modern.assignments = state.modern.assignments.filter(assignment => assignment.slotId !== slotId);
+    state.modern.assignments.push({ slotId, playerId: currentPlayerId, roleId, targetId, active: true, assignedAt: Date.now() });
+    state.modern.assignments.sort((a, b) => a.slotId.localeCompare(b.slotId));
+    refreshModernForecast();
+    return true;
+  }
+
+  function clearModernAssignment(slotId: ExpeditionSlotId): boolean {
+    if (state.modern.status === 'completed') return false;
+    const existing = state.modern.assignments.find(assignment => assignment.slotId === slotId);
+    if (existing && existing.playerId !== authenticatedPlayerId) return false;
+    state.modern.assignments = state.modern.assignments.filter(assignment => assignment.slotId !== slotId);
+    refreshModernForecast();
+    return true;
+  }
+
+  function abandonModernExpedition(): boolean {
+    if (state.modern.status !== 'active' || !state.modern.startedAt) return false;
+    const definition = getExpeditionDefinition(state.modern.expeditionId);
+    const duration = Math.max(1, (state.modern.completesAt || Date.now()) - state.modern.startedAt);
+    const progress = Math.max(0, Math.min(1, (Date.now() - state.modern.startedAt) / duration));
+    state.modern.pendingReward = modernReward(progress, 'failed');
+    state.modern.status = 'idle';
+    state.modern.assignments = [];
+    state.modern.startedAt = null;
+    state.modern.completesAt = null;
+    refreshModernForecast();
+    addEvent(`${definition?.name || 'Expedition'} abandoned. Farming rewards were preserved.`, true);
+    return true;
+  }
+
+  function resetModernExpedition(): boolean {
+    if (state.modern.status !== 'completed' || state.modern.pendingReward) return false;
+    state.modern.status = 'idle';
+    state.modern.assignments = [];
+    state.modern.startedAt = null;
+    state.modern.completesAt = null;
+    refreshModernForecast();
+    return true;
+  }
+
   function hasClaimedReward(id: string): boolean {
     return state.claimedRewards.some(reward => reward.id === id);
   }
@@ -367,14 +614,16 @@ export function createLocalMomentumPartyTransport(options: LocalTransportOptions
   }
 
   function applySimulationTick(): boolean {
-    if (state.expeditionStatus !== 'active' || state.completedExpeditions >= 999999) return false;
+    const modernCompleted = resolveModernCompletion();
+    if (state.expeditionStatus !== 'active' || state.completedExpeditions >= 999999) return modernCompleted;
     state.elapsedTicks += 1;
     state.party.forEach(member => {
       const activity = DEFINITIONS.activities[member.activity] || DEFINITIONS.activities.rest;
       Object.entries(activity.output).forEach(([lane, base]) => {
         const amount = base * member.efficiency;
         if (lane === 'threat' || lane === 'timber' || lane === 'supplies') {
-          state.lanes[lane] += amount;
+          const target = DEFINITIONS.lanes.find(candidate => candidate.id === lane)?.target || 100;
+          state.lanes[lane] = Math.min(target, state.lanes[lane] + amount);
           member.totals[lane] = (member.totals[lane] || 0) + amount;
         }
       });
@@ -400,10 +649,11 @@ export function createLocalMomentumPartyTransport(options: LocalTransportOptions
   }
 
   function resolveElapsed(options: { allowDisconnected?: boolean; emit?: boolean } = {}): number {
-    if ((!isConnected() && !options.allowDisconnected) || state.expeditionStatus !== 'active') return 0;
+    if ((!isConnected() && !options.allowDisconnected) || (state.expeditionStatus !== 'active' && state.modern.status !== 'active')) return 0;
     const elapsed = Math.max(0, Math.floor((Date.now() - Number(state.lastResolvedAt || Date.now())) / TICK_MS));
     const capped = Math.min(elapsed, 60 * 60 * 4);
     for (let tick = 0; tick < capped; tick += 1) applySimulationTick();
+    if (state.modern.status === 'active') resolveModernCompletion();
     if (capped > 0) {
       const snapshot = commitAuthoritativeState();
       if (options.emit !== false) notifySnapshot(snapshot);
@@ -445,6 +695,11 @@ export function createLocalMomentumPartyTransport(options: LocalTransportOptions
     }
     if (command.type === COMMAND_TYPES.CLAIM_REWARD) {
       const claimCommand = command as Extract<PartyCommand, { type: typeof COMMAND_TYPES.CLAIM_REWARD }>;
+      if (state.modern.pendingReward?.id === claimCommand.payload.rewardId) {
+        state.modern.pendingReward = null;
+        addEvent('Modern expedition reward claimed.', true);
+        return { ok: true };
+      }
       const reward = state.pendingRewards;
       if (!reward) return { ok: false, code: 'NO_PENDING_REWARD', message: 'No expedition reward is available.' };
       if (claimCommand.payload.rewardId !== reward.id) return { ok: false, code: 'REWARD_CHANGED', message: 'That reward is no longer current. Refresh and try again.' };
@@ -457,6 +712,18 @@ export function createLocalMomentumPartyTransport(options: LocalTransportOptions
       return { ok: true };
     }
     return { ok: false, code: 'UNKNOWN_COMMAND', message: 'That party command is unavailable.' };
+  }
+
+  function scheduleModernAction(action: () => boolean): Promise<boolean> {
+    if (destroyed || !isConnected()) return Promise.resolve(false);
+    return new Promise(resolve => {
+      setTimeout(() => {
+        if (destroyed || !isConnected()) { resolve(false); return; }
+        const accepted = action();
+        if (accepted) notifySnapshot(commitAuthoritativeState());
+        resolve(accepted);
+      }, commandDelay);
+    });
   }
 
   function scheduleCommandResult(command: PartyCommand): void {
@@ -567,6 +834,11 @@ export function createLocalMomentumPartyTransport(options: LocalTransportOptions
     getSessionIdentity,
     requestSnapshot,
     submitCommand,
+    startExpeditionMission: (expeditionId, assignments) => scheduleModernAction(() => startModernExpedition(expeditionId, assignments)),
+    setExpeditionAssignment: (slotId, roleId, targetId) => scheduleModernAction(() => setModernAssignment(slotId, roleId, targetId)),
+    clearExpeditionAssignment: slotId => scheduleModernAction(() => clearModernAssignment(slotId)),
+    abandonExpedition: () => scheduleModernAction(abandonModernExpedition),
+    resetModernExpedition: () => scheduleModernAction(resetModernExpedition),
     subscribeToSnapshots,
     subscribeToConnection,
     subscribeToCommandResults,

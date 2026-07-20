@@ -86,6 +86,19 @@ function partyStateSnapshotPayload(state: PartyState): PartyStateSnapshotPayload
     contributions: state.contributions,
     memberActivities: state.memberActivities,
     pendingRewards: state.pendingRewards,
+    expedition: {
+      expeditionId: state.expedition.expeditionId,
+      assignments: state.expedition.assignments.map(assignment => ({
+        slotId: assignment.slotId,
+        playerId: assignment.playerId,
+        roleId: assignment.roleId,
+        targetId: assignment.targetId,
+        active: assignment.active,
+        assignedAt: assignment.assignedAt.toISOString(),
+        disconnectedAt: assignment.disconnectedAt?.toISOString() ?? null
+      })),
+      forecast: state.expedition.forecast
+    },
     updatedAt: state.updatedAt.toISOString(),
     serverTimestamp: Date.now()
   };
@@ -222,6 +235,12 @@ export function registerWebSocketRoute(
       const playerId = removed?.session.playerId;
       const partyId = removed?.session.partyId;
       session.status = 'closed';
+
+      if (playerId && partyId && registry.countPlayerConnections(playerId, partyId) === 0) {
+        void partyStateService.markPlayerDisconnected(playerId, partyId).catch(error => {
+          logger.warn({ connectionId, playerId, partyId, error: safeErrorName(error) }, 'failed to segment disconnected expedition assignment');
+        });
+      }
 
       if (removed && playerId && partyId && registry.countPlayerConnections(playerId, partyId) === 0) {
         registry.broadcastParty(
@@ -464,6 +483,11 @@ export function registerWebSocketRoute(
       session.partyId = party?.party.id ?? null;
       registry.register({ session, socket: registrySocket });
       registered = true;
+      if (session.partyId) {
+        void partyStateService.markPlayerConnected(context.player.id, session.partyId).catch(error => {
+          logger.warn({ connectionId, playerId: context.player.id, partyId: session.partyId, error: safeErrorName(error) }, 'failed to resume connected expedition assignment');
+        });
+      }
       pendingSockets.delete(registrySocket);
       if (authTimer) clearTimeout(authTimer);
       authTimer = undefined;

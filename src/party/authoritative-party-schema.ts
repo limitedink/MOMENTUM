@@ -38,7 +38,16 @@ function isDateString(value: unknown): value is string | null {
 export function parseAuthoritativePartyState(value: unknown): AuthoritativePartyState | null {
   if (!isRecord(value)) return null;
   const hasKnownShape = hasExactKeys(value, ['partyId', 'revision', 'activity', 'contributions', 'memberActivities', 'updatedAt', 'serverTimestamp']) ||
-    hasExactKeys(value, ['partyId', 'revision', 'activity', 'contributions', 'memberActivities', 'pendingRewards', 'updatedAt', 'serverTimestamp']);
+    hasExactKeys(value, ['partyId', 'revision', 'activity', 'contributions', 'memberActivities', 'pendingRewards', 'updatedAt', 'serverTimestamp']) ||
+    hasExactKeys(value, ['partyId', 'revision', 'activity', 'contributions', 'memberActivities', 'pendingRewards', 'expedition', 'updatedAt', 'serverTimestamp']);
+  const expeditionValid = value.expedition === undefined || (isRecord(value.expedition) &&
+    typeof value.expedition.expeditionId === 'string' && value.expedition.expeditionId.length > 0 &&
+    Array.isArray(value.expedition.assignments) && value.expedition.assignments.every(assignment => isRecord(assignment) &&
+      typeof assignment.slotId === 'string' && /^slot-[1-4]$/.test(assignment.slotId) &&
+      typeof assignment.playerId === 'string' && assignment.playerId.length > 0 && typeof assignment.roleId === 'string' && assignment.roleId.length > 0 &&
+      nullableString(assignment.targetId) && typeof assignment.active === 'boolean' && isDateString(assignment.assignedAt) && nullableString(assignment.disconnectedAt)) &&
+    (value.expedition.forecast === null || (isRecord(value.expedition.forecast) && finiteNumber(value.expedition.forecast.successPercent) && finiteNumber(value.expedition.forecast.dangerPercent) &&
+      finiteNumber(value.expedition.forecast.roleCoveragePercent) && finiteNumber(value.expedition.forecast.farmingMultiplier))));
   if (!hasKnownShape) return null;
   if (typeof value.partyId !== 'string' || value.partyId.length === 0 || !nonNegativeInteger(value.revision) ||
     !isRecord(value.activity) || !hasExactKeys(value.activity, ['kind', 'status', 'destination', 'startedAt', 'completesAt']) ||
@@ -46,10 +55,14 @@ export function parseAuthoritativePartyState(value: unknown): AuthoritativeParty
     !nullableString(value.activity.destination) || (value.activity.destination !== null && value.activity.destination !== 'forest') ||
     !isDateString(value.activity.startedAt) || !isDateString(value.activity.completesAt) ||
     !isRecord(value.contributions) || Object.values(value.contributions).some(contribution => !nonNegativeInteger(contribution)) ||
-    !isRecord(value.memberActivities) || Object.values(value.memberActivities).some(activity => !['forest_patrol', 'pine_chopping', 'camp_cooking', 'rest'].includes(String(activity))) ||
+    !isRecord(value.memberActivities) || Object.values(value.memberActivities).some(activity => !['forest_patrol', 'pine_chopping', 'camp_cooking', 'rest'].includes(String(activity))) || !expeditionValid ||
     (value.pendingRewards !== undefined && (!isRecord(value.pendingRewards) || Object.values(value.pendingRewards).some(rewards => !Array.isArray(rewards) || rewards.some(reward => !isRecord(reward) || typeof reward.id !== 'string' || !['forest_patrol', 'pine_chopping', 'camp_cooking', 'rest'].includes(String(reward.primaryActivity)) || !nonNegativeInteger(reward.primaryXp) || !isRecord(reward.partyXp) || Object.values(reward.partyXp).some(xp => !nonNegativeInteger(xp)) || !isRecord(reward.rewards) || !nonNegativeInteger(reward.rewards.bossKeys) || !nonNegativeInteger(reward.rewards.pineLogs) || !nonNegativeInteger(reward.rewards.cookedFish) || !nonNegativeInteger(reward.rewards.game))))) ||
     typeof value.updatedAt !== 'string' || !Number.isFinite(Date.parse(value.updatedAt)) || !finiteNumber(value.serverTimestamp)) return null;
-  return { ...value, pendingRewards: (value.pendingRewards || {}) as AuthoritativePartyState['pendingRewards'] } as unknown as AuthoritativePartyState;
+  return {
+    ...value,
+    pendingRewards: (value.pendingRewards || {}) as AuthoritativePartyState['pendingRewards'],
+    expedition: (value.expedition || { expeditionId: 'forest', assignments: [], forecast: null }) as AuthoritativePartyState['expedition']
+  } as unknown as AuthoritativePartyState;
 }
 
 export function parseAuthoritativePartyScope(value: unknown): AuthoritativePartyScope | null {
