@@ -181,6 +181,18 @@ Install the platform prerequisites for Tauri and Rust, then run:
 npm run tauri:dev
 ```
 
+For the two-person LAN playtest, start the backend with:
+
+```bash
+npm run backend:lan
+```
+
+The local-only `.env.playtest` file contains the backend host address. Update that address if the laptop's LAN IP changes, then build with:
+
+```bash
+npm run tauri:build:playtest
+```
+
 ### Backend
 
 Create a PostgreSQL database, copy the example environment file, and update `DATABASE_URL` when necessary:
