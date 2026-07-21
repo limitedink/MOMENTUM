@@ -30,7 +30,7 @@
       <nav class="game-view-tabs" aria-label="Primary game views">
         <button class="game-view-tab is-active" data-game-view="hub"><span aria-hidden="true">◆</span> Hub</button>
         <button class="game-view-tab" data-game-view="adventure"><span aria-hidden="true">✧</span> Adventure</button>
-        <button class="game-view-tab" data-game-view="field"><span aria-hidden="true">⚔</span> Field</button>
+        <button class="game-view-tab" data-game-view="field"><span aria-hidden="true">⚔</span> Solo Frontier</button>
         <button class="game-view-tab" id="viewCharacterBtn" aria-haspopup="dialog"><span aria-hidden="true">◇</span> Loadout</button>
       </nav>
       <div id="status" class="status-bar" aria-label="Current account status"></div>
@@ -53,6 +53,120 @@
     </section>
 
     <main class="row" id="gameViewRoot">
+      <!-- Solo Frontier Battle Desk -->
+      <section class="solo-frontier-shell view-field" id="soloFrontierShell" aria-labelledby="soloFrontierTitle">
+        <div class="frontier-shell-heading">
+          <div>
+            <div class="eyebrow">SOLO FRONTIER // BATTLE DESK</div>
+            <h2 class="title" id="soloFrontierTitle"><span class="title-icon" aria-hidden="true">⚔</span> The Frontier Line</h2>
+            <p class="small">A persistent combat order for one wayfinder. The desk renders the last simulation snapshot; rules stay in the runtime.</p>
+          </div>
+          <div class="frontier-shell-actions">
+            <span class="frontier-mode-badge" id="soloFrontierMode">READY</span>
+            <button class="btn btn-primary" id="soloPushTopBtn">Push Again</button>
+          </div>
+        </div>
+
+        <div class="solo-qa-toolbar" id="soloQaToolbar" hidden aria-label="Solo Frontier QA controls">
+          <span class="eyebrow">QA ROUTE</span>
+          <button class="btn btn-small" id="soloQaSeedStage">Seed Stage 02</button>
+          <button class="btn btn-small" id="soloQaForceDefeat">Force defeat</button>
+          <button class="btn btn-small" id="soloQaFillCache">Fill cache 35</button>
+          <button class="btn btn-small" id="soloQaClearCache">Clear cache</button>
+        </div>
+
+        <div class="frontier-desk-grid">
+          <section class="solo-battle-panel" aria-labelledby="soloBattleTitle">
+            <div class="battle-panel-heading">
+              <div>
+                <div class="eyebrow">LIVE SNAPSHOT</div>
+                <h3 class="title" id="soloBattleTitle"><span id="soloStageLabel">Stage 01</span> <span class="battle-heading-divider">·</span> <span id="soloEnemyLabel">Awaiting order</span></h3>
+              </div>
+              <div class="battle-panel-status" id="soloBattleStatus" aria-live="polite">Desk idle · choose Push or Farm</div>
+            </div>
+            <div class="solo-battle-canvas-wrap">
+              <canvas id="soloBattleCanvas" class="solo-battle-canvas" width="980" height="470" tabindex="0" aria-label="Solo Frontier Battle Desk. Canvas renders the current player and enemy combat snapshot."></canvas>
+              <div class="solo-battle-canvas-note">CANVAS // SNAPSHOT RENDER ONLY</div>
+            </div>
+            <div class="battle-event-strip" id="soloBattleEvent" aria-live="polite">No contact yet. The desk will report attacks, damage, wards, and the next transition here.</div>
+          </section>
+
+          <aside class="frontier-console" aria-label="Solo Frontier controls">
+            <section class="frontier-console-block frontier-order-block">
+              <div class="console-block-heading"><span class="eyebrow">ORDER</span><span class="tag" id="soloOrderBadge">PAUSED</span></div>
+              <div class="frontier-order-actions">
+                <button class="btn btn-primary" id="soloPushBtn">Push</button>
+                <button class="btn" id="soloFarmBtn">Farm</button>
+                <button class="btn btn-quiet" id="soloPauseBtn">Pause</button>
+              </div>
+              <div class="frontier-order-readout"><span>Current stage</span><strong id="soloCurrentStage">Outpost</strong><span>Cleared</span><strong id="soloClearedStage">0 / 30</strong></div>
+            </section>
+
+            <section class="frontier-console-block">
+              <div class="console-block-heading"><span class="eyebrow">ROUTE GUARDRAILS</span><span class="small" id="soloStageProgress">0 victories</span></div>
+              <label class="field-label" for="soloFarmStageSelect">Farm stage</label>
+              <select class="btn full-width" id="soloFarmStageSelect"></select>
+              <label class="field-label" for="soloFallbackStageSelect">Fallback after a wall</label>
+              <select class="btn full-width" id="soloFallbackStageSelect"></select>
+              <div class="frontier-wall-diagnosis" id="soloWallDiagnosis" aria-live="polite">No wall diagnosis yet. A defeat returns to the configured fallback.</div>
+              <div class="frontier-drop-focus" id="soloDropFocus"><span>DROP-TABLE FOCUS</span><strong>Stage targets populate here.</strong></div>
+            </section>
+
+            <section class="frontier-console-block frontier-loadout-block">
+              <div class="console-block-heading"><span class="eyebrow">ACTIVE LOADOUT</span><button class="btn btn-small btn-quiet" id="soloOpenPaperDollBtn">Paper doll</button></div>
+              <div class="frontier-active-weapon"><span class="weapon-glyph" aria-hidden="true">◆</span><span><small>ACTIVE WEAPON</small><strong id="soloActiveWeapon">Frontier Sidearm</strong><em id="soloActiveWeaponStyle">Gun · balanced</em></span></div>
+              <label class="field-label" for="soloStanceSelect">Stance</label>
+              <select class="btn full-width" id="soloStanceSelect"><option value="Aggressive">Aggressive</option><option value="Balanced" selected>Balanced</option><option value="Guarded">Guarded</option></select>
+              <label class="field-label" for="soloTechniqueSelect">Technique</label>
+              <select class="btn full-width" id="soloTechniqueSelect"><option value="Power Strike">Power Strike</option><option value="Burst Fire" selected>Burst Fire</option><option value="Piercing Shot">Piercing Shot</option><option value="Arc Bolt">Arc Bolt</option></select>
+              <div class="frontier-ability-grid">
+                <label><span>DEFENSIVE</span><select class="btn" id="soloDefensiveSelect"><option value="none">None</option><option value="Mend" selected>Mend</option><option value="Arcane Barrier">Arcane Barrier</option></select></label>
+                <label><span>AURA</span><select class="btn" id="soloAuraSelect"><option value="none">None</option><option value="Battle Focus" selected>Battle Focus</option></select></label>
+              </div>
+            </section>
+          </aside>
+        </div>
+
+        <div class="frontier-secondary-grid">
+          <details class="frontier-secondary-panel frontier-skills-panel" id="soloSkillsDetails" open>
+            <summary><span><span class="eyebrow">COMBAT PROGRESSION</span><strong>17 combat skills</strong></span><span class="small" id="soloRecentXpSummary">Recent XP · none</span></summary>
+            <div id="soloCombatSkills" class="solo-combat-skills"></div>
+          </details>
+
+          <details class="frontier-secondary-panel frontier-cache-panel" id="soloCacheDetails">
+            <summary><span><span class="eyebrow">FIELD CACHE</span><strong><span id="soloCacheCount">0</span> / 35 slots</strong></span><span class="small" id="soloCacheSummary">No drops retained</span></summary>
+            <div class="cache-toolbar">
+              <label><span>Minimum rarity</span><select class="btn" id="soloCacheRarityFilter" aria-label="Cache minimum rarity"><option value="common">Common+</option><option value="uncommon">Uncommon+</option><option value="rare">Rare+</option><option value="epic">Epic+</option><option value="legendary">Legendary+</option><option value="mythic">Mythic+</option><option value="ascendant">Ascendant+</option><option value="chase">Chase only</option></select></label>
+              <label><span>View</span><select class="btn" id="soloCacheSlotFilter" aria-label="Cache slot filter"><option value="all">All slots</option><option value="weapon">Weapons</option><option value="armour">Armour</option><option value="ring">Rings</option><option value="trinket">Trinkets</option><option value="accessory">Accessories</option></select></label>
+              <label><span>Sort</span><select class="btn" id="soloCacheSort" aria-label="Cache sort order"><option value="power">Power</option><option value="rarity">Rarity</option><option value="newest">Newest</option><option value="slot">Slot</option></select></label>
+              <label class="cache-favourite-filter"><input type="checkbox" id="soloCacheFavouritesOnly" aria-label="Show favourite cache items only"> Favourites only</label>
+            </div>
+            <div class="cache-workbench">
+              <div id="soloCacheList" class="solo-cache-list"></div>
+              <div id="soloCacheInspector" class="solo-cache-inspector" aria-live="polite">Select a cached item to compare, equip, salvage, or reforge.</div>
+            </div>
+          </details>
+
+          <details class="frontier-secondary-panel frontier-paper-panel" id="soloPaperDollDetails">
+            <summary><span><span class="eyebrow">WAYFINDER PAPER DOLL</span><strong>17 field positions</strong></span><span class="small">Two rings · two trinkets</span></summary>
+            <div id="soloPaperDoll" class="solo-paper-doll"></div>
+          </details>
+        </div>
+
+        <section class="solo-debrief-panel" id="soloDebriefPanel" hidden aria-labelledby="soloDebriefTitle">
+          <div class="debrief-heading"><div><div class="eyebrow">RETURN DEBRIEF</div><h3 class="title" id="soloDebriefTitle">The desk has a report.</h3></div><span class="frontier-mode-badge" id="soloDebriefOutcome">Awaiting result</span></div>
+          <div id="soloDebriefSummary" class="solo-debrief-summary"></div>
+          <div class="solo-debrief-actions" id="soloDebriefActions">
+            <button class="btn btn-primary" data-solo-debrief-action="equip">Equip best drop</button>
+            <button class="btn" data-solo-debrief-action="compare">Compare best drop</button>
+            <button class="btn btn-quiet" data-solo-debrief-action="salvage">Salvage selected</button>
+            <button class="btn" data-solo-debrief-action="farm">Change Farm</button>
+            <button class="btn" data-solo-debrief-action="filter">Adjust Filter</button>
+            <button class="btn btn-primary" data-solo-debrief-action="push">Push Again</button>
+          </div>
+        </section>
+      </section>
+
       <div class="dashboard-grid">
         <!-- Solo Adventure -->
         <section class="card card-adventure view-adventure" id="adventureCard">

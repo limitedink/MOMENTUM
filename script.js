@@ -28,6 +28,7 @@ const LOOT_FRAMEWORK = window.MomentumLootFramework;
 const WORLD_FRAMEWORK = window.MomentumWorldFramework;
 const WORLD_REGION = WORLD_FRAMEWORK?.frontier;
 const SOLO_FRONTIER_FRAMEWORK = window.MomentumSoloFrontier;
+const SOLO_BATTLE_DESK_RENDERER = window.MomentumSoloFrontierBattleDeskRenderer;
 
 const MAX_SKILL_LEVEL = 100;   // set to 99, 100, 120, 500, 1000... your call
 const skills = [
@@ -332,6 +333,51 @@ const offlineModal = document.getElementById('offlineModal');
 const offlineSummary = document.getElementById('offlineSummary');
 const offlineOk = document.getElementById('offlineOk');
 
+// Solo Frontier Battle Desk DOM surface. The Canvas renderer receives only
+// snapshots; all controls remain ordinary DOM inputs for keyboard and touch.
+const soloFrontierShell = document.getElementById('soloFrontierShell');
+const soloBattleCanvas = document.getElementById('soloBattleCanvas');
+const soloStageLabel = document.getElementById('soloStageLabel');
+const soloEnemyLabel = document.getElementById('soloEnemyLabel');
+const soloBattleStatus = document.getElementById('soloBattleStatus');
+const soloBattleEvent = document.getElementById('soloBattleEvent');
+const soloFrontierMode = document.getElementById('soloFrontierMode');
+const soloOrderBadge = document.getElementById('soloOrderBadge');
+const soloCurrentStage = document.getElementById('soloCurrentStage');
+const soloClearedStage = document.getElementById('soloClearedStage');
+const soloStageProgress = document.getElementById('soloStageProgress');
+const soloFarmStageSelect = document.getElementById('soloFarmStageSelect');
+const soloFallbackStageSelect = document.getElementById('soloFallbackStageSelect');
+const soloWallDiagnosis = document.getElementById('soloWallDiagnosis');
+const soloDropFocus = document.getElementById('soloDropFocus');
+const soloActiveWeapon = document.getElementById('soloActiveWeapon');
+const soloActiveWeaponStyle = document.getElementById('soloActiveWeaponStyle');
+const soloStanceSelect = document.getElementById('soloStanceSelect');
+const soloTechniqueSelect = document.getElementById('soloTechniqueSelect');
+const soloDefensiveSelect = document.getElementById('soloDefensiveSelect');
+const soloAuraSelect = document.getElementById('soloAuraSelect');
+const soloCombatSkills = document.getElementById('soloCombatSkills');
+const soloRecentXpSummary = document.getElementById('soloRecentXpSummary');
+const soloCacheDetails = document.getElementById('soloCacheDetails');
+const soloCacheCount = document.getElementById('soloCacheCount');
+const soloCacheSummary = document.getElementById('soloCacheSummary');
+const soloCacheRarityFilter = document.getElementById('soloCacheRarityFilter');
+const soloCacheSlotFilter = document.getElementById('soloCacheSlotFilter');
+const soloCacheSort = document.getElementById('soloCacheSort');
+const soloCacheFavouritesOnly = document.getElementById('soloCacheFavouritesOnly');
+const soloCacheList = document.getElementById('soloCacheList');
+const soloCacheInspector = document.getElementById('soloCacheInspector');
+const soloPaperDollDetails = document.getElementById('soloPaperDollDetails');
+const soloPaperDoll = document.getElementById('soloPaperDoll');
+const soloDebriefPanel = document.getElementById('soloDebriefPanel');
+const soloDebriefOutcome = document.getElementById('soloDebriefOutcome');
+const soloDebriefSummary = document.getElementById('soloDebriefSummary');
+const soloQaToolbar = document.getElementById('soloQaToolbar');
+const soloQaSeedStage = document.getElementById('soloQaSeedStage');
+const soloQaForceDefeat = document.getElementById('soloQaForceDefeat');
+const soloQaFillCache = document.getElementById('soloQaFillCache');
+const soloQaClearCache = document.getElementById('soloQaClearCache');
+
 // Attach confetti to our overlay canvas
 const confettiCanvas = document.getElementById('confettiCanvas');
 
@@ -611,6 +657,23 @@ let worldActiveActivity = null;
 let soloFrontierState = SOLO_FRONTIER_FRAMEWORK.createInitialSoloFrontierState();
 let soloFrontierRuntime = null;
 let soloFrontierLastDebrief = null;
+let soloDeskRenderer = null;
+let soloDeskSelectedItemId = null;
+let soloDeskStance = 'Balanced';
+let soloDeskTechnique = 'Burst Fire';
+let soloDeskDefensiveAbility = 'Mend';
+let soloDeskAura = 'Battle Focus';
+let soloDeskRecentXp = {};
+let soloDeskLastEvent = null;
+let soloDeskLastOutcome = null;
+let soloDeskOutcomeAt = 0;
+let soloDeskDebriefSnapshot = null;
+let soloDeskForceDefeat = false;
+let soloDeskCacheRarity = 'common';
+let soloDeskCacheSlot = 'all';
+let soloDeskCacheSort = 'power';
+let soloDeskCacheFavouritesOnly = false;
+if (soloBattleCanvas && SOLO_BATTLE_DESK_RENDERER) soloDeskRenderer = SOLO_BATTLE_DESK_RENDERER.create(soloBattleCanvas);
 
 const FRONTIER_DIRECTIVES = [
   { id:'echoProtocol', tierId:1, name:'Echo Protocol', description:'Every shockwave is followed by a delayed echo.' },
@@ -1321,30 +1384,416 @@ function equippedGun() { return ITEMS[equipment.gun] || ITEMS.pulseSidearm; }
 
 function soloFrontierCombatInput(stage, seed) {
   const slots = ['melee', 'gun', 'ranged', 'magic'];
-  const activeSlot = slots.find(slot => equipment[slot] && ITEMS[equipment[slot]]) || 'gun';
-  const item = ITEMS[equipment[activeSlot]] || ITEMS.pulseSidearm;
-  const style = activeSlot === 'melee' ? 'medium-melee' : activeSlot;
-  const technique = style === 'magic' ? 'Arc Bolt' : style === 'gun' ? 'Burst Fire' : style === 'ranged' ? 'Piercing Shot' : 'Power Strike';
+  const cache = soloFrontierRuntime?.getState()?.lootCache || soloFrontierState.lootCache;
+  const activeSlot = cache?.equipment?.activeWeaponSlot || slots.find(slot => cache?.equipment?.[slot]) || 'gun';
+  const cachedInstance = cache?.items?.find(instance => instance.instanceId === cache?.equipment?.[activeSlot]);
+  const inspection = cachedInstance ? LOOT_FRAMEWORK?.inspectItem(cachedInstance) : null;
+  const legacyItem = ITEMS[equipment[activeSlot]] || ITEMS.pulseSidearm;
+  const definition = inspection?.definition;
+  const itemStats = inspection?.stats || {};
+  const style = activeSlot === 'melee'
+    ? definition?.weight === 'light' ? 'light-melee' : definition?.weight === 'heavy' ? 'heavy-melee' : 'medium-melee'
+    : activeSlot;
+  const technique = soloDeskTechnique || (style === 'magic' ? 'Arc Bolt' : style === 'gun' ? 'Burst Fire' : style === 'ranged' ? 'Piercing Shot' : 'Power Strike');
+  const equippedSnapshot = LOOT_FRAMEWORK?.calculateEquippedStats?.(cache?.equipment, cache?.items || []) || { stats:{} };
+  const equippedStats = equippedSnapshot.stats || {};
+  const isForcedDefeat = soloDeskForceDefeat;
   return {
     combatSkills: COMBAT_PROGRESSION_FRAMEWORK.compatibility.progressionLevelMap(combatProgression),
-    equippedStats: { hitPoints: playerMaxHp() - 100, accuracy: item.accuracy || 0, evasion: 0, ward: 0, armourPieces: [] },
+    equippedStats: {
+      hitPoints: isForcedDefeat ? -99 : playerMaxHp() - 100 + Number(equippedStats.hp || 0),
+      accuracy: Number(equippedStats.accuracy || 0) + Number(itemStats.accuracy || legacyItem.accuracy || 0),
+      evasion: 0,
+      ward: 0,
+      armourPieces: []
+    },
     activeWeapon: {
-      id: item.id,
-      name: item.name,
+      id: cachedInstance?.instanceId || legacyItem.id,
+      name: definition?.name || legacyItem.name || 'Frontier Sidearm',
       style,
-      damage: weaponDamage(item),
-      accuracy: item.accuracy || 0,
-      attackInterval: item.attackInterval || 1,
+      damage: isForcedDefeat ? 0 : Number(itemStats.damage || legacyItem.damage || weaponDamage(legacyItem)),
+      accuracy: Number(itemStats.accuracy || legacyItem.accuracy || 0),
+      attackInterval: Math.max(.2, Number(itemStats.attackInterval || legacyItem.attackInterval || 1)),
       damageType: style === 'magic' ? 'magical' : 'physical'
     },
-    stance: 'Balanced',
-    technique,
-    defensiveAbility: 'none',
-    aura: 'none',
+    stance: soloDeskStance,
+    technique: isForcedDefeat ? 'Basic Attack' : technique,
+    defensiveAbility: isForcedDefeat ? 'none' : soloDeskDefensiveAbility,
+    aura: isForcedDefeat ? 'none' : soloDeskAura,
     enemy: SOLO_FRONTIER_FRAMEWORK.stage(stage).enemy,
     stage,
     seed
   };
+}
+
+function soloDeskState() {
+  return soloFrontierRuntime?.getState() || soloFrontierState;
+}
+
+function soloDeskRarityIndex(rarity) {
+  return LOOT_FRAMEWORK?.rarities?.findIndex(candidate => candidate.id === rarity) ?? 0;
+}
+
+function soloDeskInspection(instance) {
+  return instance ? LOOT_FRAMEWORK?.inspectItem(instance) : null;
+}
+
+function soloDeskSlotCategory(definition) {
+  if (!definition) return 'other';
+  if (definition.kind === 'weapon' || ['melee', 'gun', 'ranged', 'magic'].includes(definition.slot)) return 'weapon';
+  if (definition.kind === 'armour' || ['helm', 'chest', 'gloves', 'pants', 'boots', 'cloak', 'armor'].includes(definition.slot)) return 'armour';
+  if (definition.slot === 'ring') return 'ring';
+  if (definition.slot === 'trinket') return 'trinket';
+  if (definition.kind === 'accessory' || ['belt', 'amulet'].includes(definition.slot)) return 'accessory';
+  return 'other';
+}
+
+function soloDeskSlotLabel(slot) {
+  return ({
+    melee:'Melee weapon', gun:'Gun', ranged:'Ranged weapon', magic:'Magic focus', helm:'Helm', chest:'Chest',
+    gloves:'Gloves', pants:'Pants', boots:'Boots', belt:'Belt', cloak:'Cloak', amulet:'Amulet', ring1:'Ring I',
+    ring2:'Ring II', trinket1:'Trinket I', trinket2:'Trinket II', food:'Food'
+  })[slot] || slot;
+}
+
+function soloDeskEquippedIds(cache) {
+  return Object.values(cache?.equipment || {}).filter(Boolean);
+}
+
+function soloDeskItemPower(instance) {
+  const inspection = soloDeskInspection(instance);
+  if (!inspection) return 0;
+  const stats = inspection.stats || {};
+  return Number(stats.damage || 0) * 4
+    + Number(stats.maxHit || 0) * 2
+    + Number(stats.hp || 0)
+    + Number(stats.accuracy || 0) * 1.5
+    + Number(stats.range || 0) * .25
+    + Number(stats.bossDamage || 0) * 3;
+}
+
+function soloDeskCurrentStage(state = soloDeskState()) {
+  if (state.currentStage) return state.currentStage;
+  if (state.wall?.stage) return state.wall.stage;
+  if (state.order === 'push' && state.highestClearedStage < 30) return state.highestClearedStage + 1;
+  return state.farmStage || state.highestClearedStage || 1;
+}
+
+function soloDeskCacheMutation(nextCache) {
+  if (!soloFrontierRuntime) return;
+  soloFrontierRuntime.hydrate({ ...soloFrontierRuntime.getState(), lootCache: nextCache });
+  syncSoloFrontierProjection();
+  renderSoloFrontierDesk();
+  saveGame();
+}
+
+function soloDeskRenderSelectors(state) {
+  if (!soloFarmStageSelect || !soloFallbackStageSelect) return;
+  const selectedFarm = state.farmStage || state.highestClearedStage || '';
+  const selectedFallback = state.configuredFallbackStage || '';
+  soloFarmStageSelect.innerHTML = state.highestClearedStage
+    ? Array.from({ length: state.highestClearedStage }, (_, index) => index + 1).map(stage => `<option value="${stage}">Stage ${String(stage).padStart(2, '0')} · ${SOLO_FRONTIER_FRAMEWORK.stage(stage).enemy.name}</option>`).join('')
+    : '<option value="">Clear a stage first</option>';
+  soloFallbackStageSelect.innerHTML = `<option value="">Highest cleared</option>${state.highestClearedStage ? Array.from({ length: state.highestClearedStage }, (_, index) => index + 1).map(stage => `<option value="${stage}">Stage ${String(stage).padStart(2, '0')}</option>`).join('') : ''}`;
+  soloFarmStageSelect.value = selectedFarm ? String(selectedFarm) : '';
+  soloFallbackStageSelect.value = selectedFallback ? String(selectedFallback) : '';
+  soloFarmStageSelect.disabled = state.highestClearedStage < 1;
+  soloFallbackStageSelect.disabled = state.highestClearedStage < 1;
+}
+
+function soloDeskCombatSkillGroups() {
+  return [
+    ['OFFENSE', ['Strength', 'Melee Accuracy', 'Light Melee Weapon Proficiency', 'Medium Melee Weapon Proficiency', 'Heavy Melee Weapon Proficiency', 'Marksmanship', 'Ranged', 'Offensive Magic']],
+    ['SUSTAIN', ['Support Magic', 'Reflexes', 'Healing', 'Vitality']],
+    ['DEFENSE', ['Light Armour Proficiency', 'Medium Armour Proficiency', 'Heavy Armour Proficiency', 'Evasion', 'Warding']]
+  ];
+}
+
+function renderSoloCombatSkills(state) {
+  if (!soloCombatSkills) return;
+  soloCombatSkills.innerHTML = soloDeskCombatSkillGroups().map(([group, ids]) => `<section class="combat-skill-group"><h4>${group}</h4>${ids.map(skillId => {
+    const progress = state.combatProgression[skillId] || { level:1, xp:0 };
+    const next = xpToNext(progress.level);
+    const percent = Number.isFinite(next) ? Math.min(100, progress.xp / Math.max(1, next) * 100) : 100;
+    const recent = Number(soloDeskRecentXp[skillId] || 0);
+    return `<div class="combat-skill-row"><strong title="${skillId}">${skillId}</strong><em>Lv ${progress.level}</em><small>${Math.floor(progress.xp)}/${Number.isFinite(next) ? next : 'MAX'} XP${recent > 0 ? ` · +${Math.round(recent)} recent` : ''}</small><div class="combat-skill-meter"><i style="width:${percent}%"></i></div></div>`;
+  }).join('')}</section>`).join('');
+  const recentTotal = Object.values(soloDeskRecentXp).reduce((sum, amount) => sum + Number(amount || 0), 0);
+  soloRecentXpSummary.textContent = recentTotal > 0 ? `Recent XP · +${Math.round(recentTotal)}` : 'Recent XP · none';
+}
+
+function soloDeskCacheVisibleItems(state) {
+  const minimum = soloDeskRarityIndex(soloDeskCacheRarity);
+  const items = state.lootCache.items.filter(instance => {
+    const inspection = soloDeskInspection(instance);
+    if (!inspection || soloDeskRarityIndex(instance.rarity) < minimum) return false;
+    if (soloDeskCacheFavouritesOnly && !state.lootCache.favoriteIds.includes(instance.instanceId)) return false;
+    if (soloDeskCacheSlot !== 'all' && soloDeskSlotCategory(inspection.definition) !== soloDeskCacheSlot) return false;
+    return true;
+  });
+  return items.sort((left, right) => {
+    if (soloDeskCacheSort === 'rarity') return soloDeskRarityIndex(right.rarity) - soloDeskRarityIndex(left.rarity) || right.itemLevel - left.itemLevel;
+    if (soloDeskCacheSort === 'newest') return right.acquiredAt - left.acquiredAt;
+    if (soloDeskCacheSort === 'slot') return String(left.definitionId).localeCompare(String(right.definitionId));
+    return soloDeskItemPower(right) - soloDeskItemPower(left) || right.itemLevel - left.itemLevel;
+  });
+}
+
+function soloDeskCompareMarkup(instance, cache) {
+  const inspection = soloDeskInspection(instance);
+  if (!inspection) return '';
+  const definitionSlot = inspection.definition.slot;
+  const candidateSlots = definitionSlot === 'ring' ? ['ring1', 'ring2'] : definitionSlot === 'trinket' ? ['trinket1', 'trinket2'] : [definitionSlot];
+  const equippedId = candidateSlots.map(slot => cache.equipment[slot]).find(Boolean);
+  const equipped = equippedId ? cache.items.find(item => item.instanceId === equippedId) : null;
+  const equippedInspection = soloDeskInspection(equipped);
+  const statLines = stats => ['damage', 'attackInterval', 'accuracy', 'hp', 'maxHit', 'bossDamage'].filter(stat => stats?.[stat] !== undefined).map(stat => `${stat}: ${stats[stat]}`).join(' · ') || 'No combat stats';
+  return `<div class="cache-compare"><div><strong>SELECTED</strong><span>${statLines(inspection.stats)}</span></div><div><strong>${equippedInspection ? 'EQUIPPED' : 'EMPTY SLOT'}</strong><span>${equippedInspection ? statLines(equippedInspection.stats) : 'No comparison item'}</span></div></div>`;
+}
+
+function renderSoloCacheInspector(state) {
+  if (!soloCacheInspector) return;
+  const instance = state.lootCache.items.find(candidate => candidate.instanceId === soloDeskSelectedItemId);
+  const inspection = soloDeskInspection(instance);
+  if (!instance || !inspection) {
+    soloCacheInspector.innerHTML = 'Select a cached item to compare, equip, salvage, or reforge.';
+    return;
+  }
+  const equipped = soloDeskEquippedIds(state.lootCache).includes(instance.instanceId);
+  const favourite = state.lootCache.favoriteIds.includes(instance.instanceId);
+  const cost = LOOT_FRAMEWORK.calculateReforgeCost(instance);
+  soloCacheInspector.innerHTML = `<h4 style="color:${inspection.rarity.color}">${inspection.rarity.name} ${inspection.definition.name}</h4><div class="cache-inspector-meta">${soloDeskSlotLabel(inspection.definition.slot)} · item level ${instance.itemLevel} · power ${Math.round(soloDeskItemPower(instance))} · ${favourite ? 'favourited' : 'not favourited'}</div><p class="small">${inspection.signature}</p><div class="loot-affixes">${instance.affixes.length ? instance.affixes.map(affix => `<span>${affix.name} +${affix.value}${affix.unit === '%' ? '%' : ''}</span>`).join('') : '<span>No rolled affixes</span>'}</div><div class="cache-inspector-actions"><button class="btn btn-primary" data-solo-cache-action="equip" data-solo-cache-id="${instance.instanceId}" ${equipped ? 'disabled' : ''}>${equipped ? 'Equipped' : 'Equip + compare'}</button><button class="btn btn-quiet" data-solo-cache-action="favorite" data-solo-cache-id="${instance.instanceId}">${favourite ? 'Unfavourite' : 'Favourite'}</button><button class="btn btn-quiet" data-solo-cache-action="salvage" data-solo-cache-id="${instance.instanceId}" ${equipped || favourite ? 'disabled' : ''}>Manual salvage</button></div>${soloDeskCompareMarkup(instance, state.lootCache)}<div class="cache-reforge"><span class="small">Reforge one affix · ${cost.salvage} Salvage${cost.bars ? ` · ${cost.bars} Bars` : ''}${cost.craftedComponents ? ` · ${cost.craftedComponents} Components` : ''}</span>${instance.affixes.map(affix => `<button type="button" data-solo-cache-action="reforge" data-solo-cache-id="${instance.instanceId}" data-solo-cache-affix="${affix.id}"><span>${affix.name} · ${affix.value}</span><strong>Reforge</strong></button>`).join('') || '<span class="small">Common items have no affixes to reforge.</span>'}</div>`;
+  soloCacheInspector.querySelectorAll('[data-solo-cache-action]').forEach(button => button.addEventListener('click', () => soloDeskCacheAction(button.dataset.soloCacheAction, button.dataset.soloCacheId, button.dataset.soloCacheAffix)));
+}
+
+function renderSoloCache(state) {
+  if (!soloCacheList) return;
+  const count = state.lootCache.items.length;
+  const equippedCount = soloDeskEquippedIds(state.lootCache).length;
+  soloCacheCount.textContent = String(Math.min(35, Math.max(count - equippedCount, 0)));
+  soloCacheSummary.textContent = state.lootCache.grandfatheredOverflow ? 'Grandfathered overflow · salvage to clear' : count >= 35 ? 'FULL · new drops become Salvage' : `${count} retained · ${state.lootCache.capacity - Math.max(0, count - equippedCount)} open slots`;
+  soloCacheRarityFilter.value = soloDeskCacheRarity;
+  soloCacheSlotFilter.value = soloDeskCacheSlot;
+  soloCacheSort.value = soloDeskCacheSort;
+  soloCacheFavouritesOnly.checked = soloDeskCacheFavouritesOnly;
+  const visible = soloDeskCacheVisibleItems(state);
+  soloCacheList.innerHTML = visible.length ? visible.map(instance => {
+    const inspection = soloDeskInspection(instance);
+    const favourite = state.lootCache.favoriteIds.includes(instance.instanceId);
+    const equipped = soloDeskEquippedIds(state.lootCache).includes(instance.instanceId);
+    return `<article class="solo-cache-item${soloDeskSelectedItemId === instance.instanceId ? ' is-selected' : ''}${equipped ? ' is-equipped' : ''}" style="--loot-color:${inspection.rarity.color}" data-solo-cache-item="${instance.instanceId}"><header><strong>${inspection.definition.name}</strong><span>${inspection.rarity.name}</span></header><p>${soloDeskSlotLabel(inspection.definition.slot)} · ilvl ${instance.itemLevel} · ${Math.round(soloDeskItemPower(instance))} power</p><footer><span>${equipped ? 'EQUIPPED' : 'CACHE'} · ${instance.affixes.length} affix${instance.affixes.length === 1 ? '' : 'es'}</span><span class="solo-cache-favourite">${favourite ? '★' : '☆'}</span></footer></article>`;
+  }).join('') : '<div class="solo-cache-empty">No retained drops match this view. Adjust the filter or clear a wall to generate a fresh report.</div>';
+  soloCacheList.querySelectorAll('[data-solo-cache-item]').forEach(card => card.addEventListener('click', () => {
+    soloDeskSelectedItemId = card.dataset.soloCacheItem;
+    renderSoloCache(soloDeskState());
+    renderSoloCacheInspector(soloDeskState());
+  }));
+  renderSoloCacheInspector(state);
+}
+
+function renderSoloPaperDoll(state) {
+  if (!soloPaperDoll) return;
+  const slots = ['melee', 'gun', 'ranged', 'magic', 'helm', 'chest', 'gloves', 'pants', 'boots', 'belt', 'cloak', 'amulet', 'ring1', 'ring2', 'trinket1', 'trinket2', 'food'];
+  soloPaperDoll.innerHTML = slots.map(slot => {
+    const instanceId = state.lootCache.equipment[slot];
+    const instance = instanceId ? state.lootCache.items.find(candidate => candidate.instanceId === instanceId) : null;
+    const inspection = soloDeskInspection(instance);
+    return `<div class="paper-doll-slot${inspection ? ' is-filled' : ''}"><small>${soloDeskSlotLabel(slot)}</small><strong>${inspection?.definition.name || 'Empty'}</strong><span>${inspection ? `${inspection.rarity.name} · ilvl ${instance.itemLevel}` : 'Field position open'}</span></div>`;
+  }).join('');
+}
+
+function renderSoloDebrief(debrief) {
+  if (!soloDebriefPanel || !debrief) return;
+  const stateWall = soloDeskState().wall;
+  const wall = debrief.wall || stateWall;
+  const reportedDeaths = Math.max(Number(debrief.deaths || 0), wall ? 1 : 0);
+  const outcome = wall ? 'DEFEAT // FARM FALLBACK' : 'VICTORY // REPORT READY';
+  soloDebriefPanel.hidden = false;
+  soloDebriefOutcome.textContent = outcome;
+  const best = debrief.strongestKeptDrops?.[0];
+  if (best) soloDeskSelectedItemId = best.instanceId;
+  const xpTotal = Object.values(debrief.skillXp || {}).reduce((sum, amount) => sum + Number(amount || 0), 0);
+  soloDebriefSummary.innerHTML = `<div class="debrief-stat is-good"><small>Victories</small><strong>${debrief.victories}</strong></div><div class="debrief-stat is-danger"><small>Deaths</small><strong>${reportedDeaths}</strong></div><div class="debrief-stat"><small>Combat XP</small><strong>+${Math.round(xpTotal)}</strong></div><div class="debrief-stat"><small>Kept drops</small><strong>${debrief.keptDropCount}</strong></div><div class="debrief-stat"><small>Salvage</small><strong>${debrief.filterSalvage + debrief.fullCacheSalvage}</strong></div><div class="debrief-stat"><small>Next order</small><strong>${wall?.fallbackStage ? `Farm ${wall.fallbackStage}` : debrief.finalOrder.toUpperCase()}</strong></div>${wall ? `<div class="debrief-stat"><small>Wall diagnosis</small><strong>${wall.termination === 'timeout' ? 'Timeout' : wall.reason}</strong></div>` : ''}${best ? `<div class="debrief-stat"><small>Best drop</small><strong>${soloDeskInspection(soloDeskState().lootCache.items.find(item => item.instanceId === best.instanceId))?.definition.name || 'Cached drop'}</strong></div>` : ''}`;
+  renderSoloCacheInspector(soloDeskState());
+}
+
+function soloDeskCacheAction(action, instanceId, affixId) {
+  const state = soloDeskState();
+  const instance = state.lootCache.items.find(candidate => candidate.instanceId === instanceId);
+  if (!instance) return;
+  if (action === 'favorite') {
+    soloDeskCacheMutation(LOOT_FRAMEWORK.setLootFavorite(state.lootCache, instanceId, !state.lootCache.favoriteIds.includes(instanceId)));
+    return;
+  }
+  if (action === 'salvage') {
+    const result = LOOT_FRAMEWORK.salvageCachedItem(state.lootCache, instanceId);
+    if (!result.accepted) { showToast(result.reason); return; }
+    salvageMaterials += result.value;
+    soloDeskSelectedItemId = null;
+    logActivity(`Manual salvage: ${soloDeskInspection(result.item)?.definition.name || 'drop'} · +${result.value} Salvage`, 'loot');
+    showToast(`Manual salvage · +${result.value} Salvage`);
+    soloDeskCacheMutation(result.cache);
+    return;
+  }
+  if (action === 'equip') {
+    const inspection = soloDeskInspection(instance);
+    const requestedSlot = inspection?.definition.slot === 'ring' ? undefined : inspection?.definition.slot === 'trinket' ? undefined : inspection?.definition.slot;
+    const result = LOOT_FRAMEWORK.equipItem(state.lootCache.equipment, instance, requestedSlot);
+    if (!result.accepted) { showToast(result.reason); return; }
+    let nextLoadout = result.loadout;
+    if (inspection?.definition.kind === 'weapon' && !nextLoadout.activeWeaponSlot) nextLoadout = LOOT_FRAMEWORK.setActiveWeaponSlot(nextLoadout, result.slot);
+    soloDeskCacheMutation({ ...state.lootCache, equipment:nextLoadout });
+    soloDeskSelectedItemId = instanceId;
+    showToast(`${inspection.definition.name} equipped for Solo Frontier`);
+    return;
+  }
+  if (action === 'reforge' && affixId) {
+    const smithing = skills.find(skill => skill.id === 'Smithing');
+    const crafting = skills.find(skill => skill.id === 'Crafting');
+    const result = LOOT_FRAMEWORK.reforgeItem(instance, affixId, { salvage:salvageMaterials, bars:smithing?.qty || 0, craftedComponents:crafting?.qty || 0 });
+    if (!result.accepted || !result.item) { showToast(result.reason); return; }
+    salvageMaterials = Number(result.resources.salvage || salvageMaterials);
+    if (smithing) smithing.qty = Number(result.resources.bars ?? smithing.qty);
+    if (crafting) crafting.qty = Number(result.resources.craftedComponents ?? crafting.qty);
+    const items = state.lootCache.items.map(candidate => candidate.instanceId === instanceId ? result.item : candidate);
+    logActivity(`Reforged ${soloDeskInspection(result.item)?.definition.name || 'drop'} · ${affixId}`, 'loot');
+    showToast('Affix reforged');
+    soloDeskCacheMutation({ ...state.lootCache, items });
+  }
+}
+
+function renderSoloFrontierDesk() {
+  if (!soloFrontierShell || !SOLO_BATTLE_DESK_RENDERER) return;
+  const state = soloDeskState();
+  const activeStage = Math.max(1, Math.min(30, soloDeskCurrentStage(state)));
+  const stageDefinition = SOLO_FRONTIER_FRAMEWORK.stage(activeStage);
+  const activeInput = soloFrontierCombatInput(activeStage, `${state.seed}:encounter:${state.encounterSequence}:stage:${activeStage}:victory:${state.currentStageVictories}`);
+  const preview = SOLO_FRONTIER_FRAMEWORK.simulateSoloCombat(activeInput);
+  const elapsed = state.encounterElapsedMs;
+  let currentEvent = null;
+  let playerHitPoints = preview.derivedStats.maxHitPoints;
+  let enemyHitPoints = stageDefinition.enemy.hitPoints;
+  for (const event of preview.events) {
+    if (event.atMs > elapsed) break;
+    currentEvent = event;
+    if (event.type === 'encounter-started') { playerHitPoints = event.playerHitPoints; enemyHitPoints = event.enemyHitPoints; }
+    if (event.type === 'attack') {
+      if (event.actor === 'player') enemyHitPoints = event.targetHitPoints;
+      else playerHitPoints = event.targetHitPoints;
+    }
+    if (event.type === 'healing') playerHitPoints = event.playerHitPoints;
+  }
+  if (!currentEvent) currentEvent = preview.events.find(event => event.type === 'encounter-started') || null;
+  const outcomeActive = soloDeskLastOutcome && performance.now() - soloDeskOutcomeAt < 4_200;
+  const deskActive = state.order !== 'paused' || outcomeActive;
+  const shownStage = outcomeActive ? soloDeskLastOutcome.stage : activeStage;
+  const shownEnemy = SOLO_FRONTIER_FRAMEWORK.stage(shownStage).enemy;
+  const lastAction = currentEvent?.type === 'attack'
+    ? `${currentEvent.actor === 'player' ? activeInput.activeWeapon.name : shownEnemy.name} ${currentEvent.hit ? 'HIT' : 'MISS'}${currentEvent.hit ? ` · ${Math.round(currentEvent.damage)} damage` : ''}`
+    : currentEvent?.type === 'healing' ? `MEND · +${currentEvent.amount} HP`
+      : currentEvent?.type === 'barrier' ? `ARCANE BARRIER · ${currentEvent.granted} WARD`
+        : currentEvent?.type === 'aura-activated' ? 'BATTLE FOCUS · AURA ACTIVE'
+          : currentEvent?.type === 'encounter-started' ? 'CONTACT ACQUIRED'
+            : '';
+  const effects = [];
+  if (currentEvent?.type === 'aura-activated') effects.push('aura');
+  if (currentEvent?.type === 'barrier') effects.push('barrier');
+  if (currentEvent?.type === 'healing') effects.push('heal');
+  if (currentEvent?.type === 'attack' && currentEvent.hit) effects.push(currentEvent.actor === 'player' ? 'hit' : 'defeat');
+  if (outcomeActive) effects.push(soloDeskLastOutcome.outcome === 'victory' ? 'victory' : 'defeat');
+  const stageVictories = Number(state.stageVictories[String(activeStage)] || 0);
+  soloStageLabel.textContent = `Stage ${String(shownStage).padStart(2, '0')}`;
+  soloEnemyLabel.textContent = `${shownEnemy.kind === 'boss' ? 'BOSS' : 'CONTACT'} · ${shownEnemy.name}`;
+  soloBattleStatus.textContent = state.order === 'paused' ? 'Desk idle · choose Push or Farm' : `${state.order.toUpperCase()} online · ${stageVictories}/${stageDefinition.victoriesToClear} victories`;
+  soloBattleEvent.textContent = outcomeActive
+    ? soloDeskLastOutcome.outcome === 'victory' ? `Stage ${shownStage} cleared · the next order is ${state.order.toUpperCase()}.` : `Wall at Stage ${shownStage} · farming ${state.farmStage || state.highestClearedStage || 'the outpost'}.`
+    : lastAction || 'Contact acquired · awaiting the first exchange.';
+  soloFrontierMode.textContent = state.order === 'paused' ? 'READY' : state.order.toUpperCase();
+  soloOrderBadge.textContent = state.order.toUpperCase();
+  soloCurrentStage.textContent = state.currentStage ? `Stage ${String(state.currentStage).padStart(2, '0')}` : state.highestClearedStage ? `Stage ${state.highestClearedStage} cleared` : 'Outpost';
+  soloClearedStage.textContent = `${state.highestClearedStage} / 30`;
+  soloStageProgress.textContent = `${stageVictories}/${stageDefinition.victoriesToClear} victories`;
+  const activeWeaponName = activeInput.activeWeapon.name;
+  soloActiveWeapon.textContent = activeWeaponName;
+  soloActiveWeaponStyle.textContent = `${activeInput.activeWeapon.style} · ${soloDeskStance.toLowerCase()}`;
+  soloWallDiagnosis.textContent = state.wall ? `Wall at Stage ${state.wall.stage} · ${state.wall.termination === 'timeout' ? 'timeout' : state.wall.reason}. Fallback: ${state.wall.fallbackStage ? `Stage ${state.wall.fallbackStage}` : 'highest cleared'}.` : 'No wall diagnosis yet. A defeat returns to the configured fallback.';
+  soloDropFocus.innerHTML = `<span>DROP-TABLE FOCUS</span><strong>${stageDefinition.targetSlots.map(slot => soloDeskSlotLabel(slot)).join(' · ')}</strong>`;
+  soloDeskRenderSelectors(state);
+  renderSoloCombatSkills(state);
+  renderSoloCache(state);
+  renderSoloPaperDoll(state);
+  if (soloDeskDebriefSnapshot) renderSoloDebrief(soloDeskDebriefSnapshot);
+  soloDeskRenderer?.render({
+    stage: deskActive ? shownStage : null,
+    victories: stageVictories,
+    victoriesToClear: stageDefinition.victoriesToClear,
+    enemy: deskActive ? shownEnemy : null,
+    playerName: 'Wayfinder',
+    activeWeapon: activeWeaponName,
+    weaponStyle: activeInput.activeWeapon.style,
+    playerHitPoints,
+    playerMaxHitPoints: preview.derivedStats.maxHitPoints,
+    enemyHitPoints,
+    enemyMaxHitPoints: shownEnemy.hitPoints,
+    lastEvent: currentEvent,
+    lastAction,
+    outcome: outcomeActive ? soloDeskLastOutcome.outcome : null,
+    outcomeLabel: outcomeActive ? (soloDeskLastOutcome.outcome === 'victory' ? `Stage ${shownStage} clear · ${state.order.toUpperCase()} continues` : `Returned to ${state.farmStage ? `Stage ${state.farmStage}` : 'highest cleared'}`) : '',
+    effects,
+    reducedMotion: reduceMotionEnabled()
+  });
+}
+
+function handleSoloFrontierAdvance(result) {
+  if (!result) return;
+  Object.entries(result.debrief?.skillXp || {}).forEach(([skillId, amount]) => {
+    if (Number(amount) > 0) soloDeskRecentXp[skillId] = Number(soloDeskRecentXp[skillId] || 0) + Number(amount);
+  });
+  if (!result.events?.length) return;
+  const event = result.events[result.events.length - 1];
+  soloDeskLastEvent = event;
+  soloDeskLastOutcome = { outcome:event.outcome, stage:event.stage };
+  soloDeskOutcomeAt = performance.now();
+  soloDeskDebriefSnapshot = result.debrief;
+  if (soloDeskForceDefeat) soloDeskForceDefeat = false;
+  renderSoloDebrief(result.debrief);
+}
+
+function soloDeskDebriefAction(action) {
+  const debrief = soloDeskDebriefSnapshot;
+  if (!debrief) return;
+  if (action === 'equip' || action === 'compare') {
+    const best = debrief.strongestKeptDrops?.[0];
+    if (!best) { showToast('No retained drop is available for that action.'); return; }
+    soloDeskSelectedItemId = best.instanceId;
+    soloCacheDetails.open = true;
+    if (action === 'equip') soloDeskCacheAction('equip', best.instanceId);
+    else { soloCacheDetails.scrollIntoView({ block:'center', behavior:reduceMotionEnabled() ? 'auto' : 'smooth' }); renderSoloFrontierDesk(); }
+    return;
+  }
+  if (action === 'salvage') {
+    const target = soloDeskSelectedItemId || debrief.strongestKeptDrops?.[0]?.instanceId;
+    if (target) soloDeskCacheAction('salvage', target);
+    else showToast('Select a cached item before salvaging.');
+    return;
+  }
+  if (action === 'farm') {
+    soloFarmStageSelect?.focus({ preventScroll:true });
+    soloFarmStageSelect?.scrollIntoView({ block:'center', behavior:reduceMotionEnabled() ? 'auto' : 'smooth' });
+    return;
+  }
+  if (action === 'filter') {
+    soloCacheDetails.open = true;
+    soloCacheRarityFilter?.focus({ preventScroll:true });
+    soloCacheDetails.scrollIntoView({ block:'center', behavior:reduceMotionEnabled() ? 'auto' : 'smooth' });
+    return;
+  }
+  if (action === 'push') {
+    window.MomentumSoloFrontierRuntime.push();
+    soloDeskDebriefSnapshot = null;
+    soloDebriefPanel.hidden = true;
+    renderSoloFrontierDesk();
+  }
 }
 
 const ARENA_STYLES = [
@@ -1407,6 +1856,7 @@ function createSaveData() {
     skillSpecializations:{ ...skillSpecializations },
     specializationProgress:{ ...specializationProgress },
     settings:{ ...gameSettings },
+    soloDesk:{ stance:soloDeskStance, technique:soloDeskTechnique, defensive:soloDeskDefensiveAbility, aura:soloDeskAura, cacheRarity:soloDeskCacheRarity, cacheSlot:soloDeskCacheSlot, cacheSort:soloDeskCacheSort, favouritesOnly:soloDeskCacheFavouritesOnly },
     claimedOperations:[...claimedOperations],
     crafting:{ selectedRecipe:craftingSelectedRecipe },
     lootInventory: lootInventory.map(instance => ({ ...instance, affixes: instance.affixes.map(affix => ({ ...affix })) })),
@@ -1517,6 +1967,15 @@ function loadGame() {
       Object.keys(skillSpecializations).forEach(skillId => { if ([null, ...Object.keys(SPECIALIZATIONS[skillId])].includes(save.skillSpecializations?.[skillId] ?? null)) skillSpecializations[skillId] = save.skillSpecializations?.[skillId] ?? null; });
       Object.keys(specializationProgress).forEach(id => { specializationProgress[id] = Number(save.specializationProgress?.[id]) || 0; });
       gameSettings = { ...gameSettings, ...(save.settings || {}) };
+      const savedDesk = save.soloDesk || {};
+      if (['Aggressive', 'Balanced', 'Guarded'].includes(savedDesk.stance)) soloDeskStance = savedDesk.stance;
+      if (['Power Strike', 'Burst Fire', 'Piercing Shot', 'Arc Bolt'].includes(savedDesk.technique)) soloDeskTechnique = savedDesk.technique;
+      if (['none', 'Mend', 'Arcane Barrier'].includes(savedDesk.defensive)) soloDeskDefensiveAbility = savedDesk.defensive;
+      if (['none', 'Battle Focus'].includes(savedDesk.aura)) soloDeskAura = savedDesk.aura;
+      if (LOOT_FRAMEWORK?.rarities?.some(rarity => rarity.id === savedDesk.cacheRarity)) soloDeskCacheRarity = savedDesk.cacheRarity;
+      if (['all', 'weapon', 'armour', 'ring', 'trinket', 'accessory'].includes(savedDesk.cacheSlot)) soloDeskCacheSlot = savedDesk.cacheSlot;
+      if (['power', 'rarity', 'newest', 'slot'].includes(savedDesk.cacheSort)) soloDeskCacheSort = savedDesk.cacheSort;
+      soloDeskCacheFavouritesOnly = Boolean(savedDesk.favouritesOnly);
       claimedOperations.clear();
       if (save.version >= 12) (save.claimedOperations || []).forEach(id => { if (OPERATIONS.some(operation => operation.id === id)) claimedOperations.add(id); });
     }
@@ -2760,17 +3219,84 @@ soloFrontierRuntime = SOLO_FRONTIER_FRAMEWORK.createSoloFrontierRuntime(soloFron
   seed: soloFrontierState.seed
 });
 soloFrontierLastDebrief = soloFrontierState.debrief;
+soloDeskDebriefSnapshot = soloFrontierState.debrief;
 syncSoloFrontierProjection();
 window.MomentumSoloFrontierRuntime = Object.freeze({
   getState() { return soloFrontierRuntime.getState(); },
-  pause() { const next = soloFrontierRuntime.setOrder('paused'); syncSoloFrontierProjection(); saveGame(); return next; },
-  push() { const next = soloFrontierRuntime.setOrder('push'); syncSoloFrontierProjection(); saveGame(); return next; },
-  farm(stage) { const next = soloFrontierRuntime.setOrder('farm', stage); syncSoloFrontierProjection(); saveGame(); return next; },
-  setFallback(stage) { const next = soloFrontierRuntime.setFallbackStage(stage); syncSoloFrontierProjection(); saveGame(); return next; },
-  setFarmStage(stage) { const next = soloFrontierRuntime.setFarmStage(stage); syncSoloFrontierProjection(); saveGame(); return next; },
-  advance(elapsedMs) { const result = soloFrontierRuntime.advance(elapsedMs); syncSoloFrontierProjection(); saveGame(); return result; },
-  catchUp(seconds, options) { return soloFrontierRuntime.catchUp(seconds, options).then(result => { syncSoloFrontierProjection(); saveGame(); return result; }) }
+  pause() { const next = soloFrontierRuntime.setOrder('paused'); syncSoloFrontierProjection(); saveGame(); renderSoloFrontierDesk(); return next; },
+  push() { const next = soloFrontierRuntime.setOrder('push'); soloDeskDebriefSnapshot = null; soloDebriefPanel.hidden = true; syncSoloFrontierProjection(); saveGame(); renderSoloFrontierDesk(); return next; },
+  farm(stage) { const next = soloFrontierRuntime.setOrder('farm', stage); soloDeskDebriefSnapshot = null; soloDebriefPanel.hidden = true; syncSoloFrontierProjection(); saveGame(); renderSoloFrontierDesk(); return next; },
+  setFallback(stage) { const next = soloFrontierRuntime.setFallbackStage(stage); syncSoloFrontierProjection(); saveGame(); renderSoloFrontierDesk(); return next; },
+  setFarmStage(stage) { const next = soloFrontierRuntime.setFarmStage(stage); syncSoloFrontierProjection(); saveGame(); renderSoloFrontierDesk(); return next; },
+  advance(elapsedMs) { const result = soloFrontierRuntime.advance(elapsedMs); handleSoloFrontierAdvance(result); syncSoloFrontierProjection(); saveGame(); renderSoloFrontierDesk(); return result; },
+  catchUp(seconds, options) { return soloFrontierRuntime.catchUp(seconds, options).then(result => { handleSoloFrontierAdvance(result); syncSoloFrontierProjection(); saveGame(); renderSoloFrontierDesk(); return result; }) }
 });
+function soloDeskDebugFillCache(count = 35) {
+  let cache = soloDeskState().lootCache;
+  const target = Math.max(0, Math.min(35, Math.floor(Number(count) || 35)));
+  for (let index = cache.items.length; index < target; index += 1) {
+    const resolution = LOOT_FRAMEWORK.rollLoot({ sourceType:'soloFrontier', sourceId:'solo-frontier', sourceTier:1, playerLevel:1, runId:`debug-cache-${index}`, itemChance:1, minimumRarity:'rare', now:Date.now() + index }, () => .15 + (index % 5) * .1);
+    if (!resolution.item) continue;
+    cache = LOOT_FRAMEWORK.insertLoot(cache, resolution.item).cache;
+  }
+  soloDeskCacheMutation(cache);
+  // QA-only seeding keeps the cache route self-contained so reforge can be
+  // exercised without changing the normal economy or player progression.
+  salvageMaterials = Math.max(salvageMaterials, 100);
+  const smithing = skills.find(skill => skill.id === 'Smithing');
+  const crafting = skills.find(skill => skill.id === 'Crafting');
+  if (smithing) smithing.qty = Math.max(smithing.qty, 10);
+  if (crafting) crafting.qty = Math.max(crafting.qty, 10);
+  return cache.items.length;
+}
+function soloDeskDebugSeedProgress(stage = 2) {
+  if (!soloFrontierRuntime) return false;
+  const cappedStage = Math.max(1, Math.min(29, Math.floor(Number(stage) || 2)));
+  const current = soloFrontierRuntime.getState();
+  const clearedStages = Array.from({ length:cappedStage }, (_, index) => index + 1);
+  soloFrontierRuntime.hydrate({
+    ...current,
+    order:'paused',
+    currentStage:null,
+    farmStage:cappedStage,
+    highestClearedStage:cappedStage,
+    clearedStages,
+    firstClearStages:clearedStages,
+    stageVictories:{},
+    wall:null,
+    encounterElapsedMs:0,
+    encounterSequence:0,
+    debrief:null
+  });
+  soloDeskLastOutcome = null;
+  soloDeskDebriefSnapshot = null;
+  soloDeskForceDefeat = false;
+  soloDebriefPanel.hidden = true;
+  syncSoloFrontierProjection();
+  renderSoloFrontierDesk();
+  saveGame();
+  return cappedStage;
+}
+window.MomentumSoloFrontierDebug = Object.freeze({
+  forceDefeat() {
+    soloDeskForceDefeat = true;
+    if (soloDeskState().order === 'paused') window.MomentumSoloFrontierRuntime.push();
+    // The debug route should expose the fallback/debrief path immediately. The
+    // combat engine still owns the outcome; this only supplies enough elapsed
+    // time for its deterministic timeout when the test flag removes player DPS.
+    const result = soloFrontierRuntime.advance(61_000);
+    handleSoloFrontierAdvance(result);
+    syncSoloFrontierProjection();
+    saveGame();
+    renderSoloFrontierDesk();
+    return result.events?.at(-1)?.outcome === 'defeat';
+  },
+  fillCache(count = 35) { return soloDeskDebugFillCache(count); },
+  seedProgress(stage = 2) { return soloDeskDebugSeedProgress(stage); },
+  clearCache() { const next = LOOT_FRAMEWORK.createLootCache(); soloDeskCacheMutation(next); return true; },
+  clearDebrief() { soloDeskDebriefSnapshot = null; soloDebriefPanel.hidden = true; renderSoloFrontierDesk(); }
+});
+if (soloQaToolbar && new URLSearchParams(window.location.search).has('qa')) soloQaToolbar.hidden = false;
 if (!worldRuntime) ensureWorldRuntime();
 if (loadedSave) void applyOfflineProgress(JSON.parse(localStorage.getItem(SAVE_KEY)).savedAt).then(showOfflineSummary);
 renderSkills();
@@ -2780,9 +3306,10 @@ renderFrontier();
 renderOperations(true);
 renderWorld(true);
 applySettings();
-setGameView('hub');
+setGameView('field');
 honeSelect.value = hone || '';
 startWarmup();
+renderSoloFrontierDesk();
 if (loadedSave) {
   showToast('Save loaded');
 }
@@ -2947,7 +3474,8 @@ function tick(now) {
   // Solo combat is an independent order, so it advances in the same frame as
   // the normal skill tracks instead of occupying a normal skill slot.
   if (soloFrontierRuntime?.getState().order !== 'paused') {
-    soloFrontierRuntime.advance(dt * 1_000);
+    const soloAdvanceResult = soloFrontierRuntime.advance(dt * 1_000);
+    handleSoloFrontierAdvance(soloAdvanceResult);
     syncSoloFrontierProjection();
   }
 
@@ -3057,6 +3585,7 @@ skills.filter(s => s._els?.card?.isConnected).forEach(s=>{
 updateObjective();
 renderWorld();
 renderOperations();
+renderSoloFrontierDesk();
 const statusSignature = JSON.stringify([Math.floor(gold)]);
 if (statusSignature !== statusRenderSignature) {
   statusRenderSignature = statusSignature;
@@ -3523,6 +4052,54 @@ dismissibleModals.forEach(([modalId,closeId]) => {
 /* =====================================
    EVENTS
 ===================================== */
+function soloDeskSetOrder(order, farmStage = null) {
+  if (!window.MomentumSoloFrontierRuntime) return;
+  if (order === 'push') window.MomentumSoloFrontierRuntime.push();
+  else if (order === 'farm') window.MomentumSoloFrontierRuntime.farm(Number(farmStage || soloFarmStageSelect?.value || soloDeskState().highestClearedStage || 1));
+  else window.MomentumSoloFrontierRuntime.pause();
+  soloDeskLastOutcome = null;
+  soloDeskOutcomeAt = 0;
+  renderSoloFrontierDesk();
+}
+
+document.getElementById('soloPushBtn')?.addEventListener('click', () => soloDeskSetOrder('push'));
+document.getElementById('soloPushTopBtn')?.addEventListener('click', () => soloDeskSetOrder('push'));
+document.getElementById('soloFarmBtn')?.addEventListener('click', () => soloDeskSetOrder('farm'));
+document.getElementById('soloPauseBtn')?.addEventListener('click', () => soloDeskSetOrder('paused'));
+soloFarmStageSelect?.addEventListener('change', () => {
+  const stage = Number(soloFarmStageSelect.value);
+  if (stage > 0) {
+    window.MomentumSoloFrontierRuntime.setFarmStage(stage);
+    soloDeskSetOrder('farm', stage);
+  }
+});
+soloFallbackStageSelect?.addEventListener('change', () => {
+  const value = soloFallbackStageSelect.value ? Number(soloFallbackStageSelect.value) : null;
+  window.MomentumSoloFrontierRuntime.setFallback(value);
+});
+soloStanceSelect?.addEventListener('change', () => { soloDeskStance = soloStanceSelect.value; renderSoloFrontierDesk(); saveGame(); });
+soloTechniqueSelect?.addEventListener('change', () => { soloDeskTechnique = soloTechniqueSelect.value; renderSoloFrontierDesk(); saveGame(); });
+soloDefensiveSelect?.addEventListener('change', () => { soloDeskDefensiveAbility = soloDefensiveSelect.value; renderSoloFrontierDesk(); saveGame(); });
+soloAuraSelect?.addEventListener('change', () => { soloDeskAura = soloAuraSelect.value; renderSoloFrontierDesk(); saveGame(); });
+document.getElementById('soloOpenPaperDollBtn')?.addEventListener('click', () => {
+  soloPaperDollDetails.open = true;
+  soloPaperDollDetails.scrollIntoView({ block:'center', behavior:reduceMotionEnabled() ? 'auto' : 'smooth' });
+});
+soloCacheRarityFilter?.addEventListener('change', () => {
+  soloDeskCacheRarity = soloCacheRarityFilter.value;
+  const cache = LOOT_FRAMEWORK.setLootFilters(soloDeskState().lootCache, { globalMinimumRarity:soloDeskCacheRarity });
+  soloDeskCacheMutation(cache);
+});
+soloCacheSlotFilter?.addEventListener('change', () => { soloDeskCacheSlot = soloCacheSlotFilter.value; renderSoloFrontierDesk(); });
+soloCacheSort?.addEventListener('change', () => { soloDeskCacheSort = soloCacheSort.value; renderSoloFrontierDesk(); });
+soloCacheFavouritesOnly?.addEventListener('change', () => { soloDeskCacheFavouritesOnly = soloCacheFavouritesOnly.checked; renderSoloFrontierDesk(); });
+document.querySelectorAll('[data-solo-debrief-action]').forEach(button => button.addEventListener('click', () => soloDeskDebriefAction(button.dataset.soloDebriefAction)));
+soloQaSeedStage?.addEventListener('click', () => window.MomentumSoloFrontierDebug?.seedProgress(2));
+soloQaForceDefeat?.addEventListener('click', () => window.MomentumSoloFrontierDebug?.forceDefeat());
+soloQaFillCache?.addEventListener('click', () => window.MomentumSoloFrontierDebug?.fillCache(35));
+soloQaClearCache?.addEventListener('click', () => window.MomentumSoloFrontierDebug?.clearCache());
+window.addEventListener('resize', () => renderSoloFrontierDesk());
+
 operationsToggle?.addEventListener('click', () => setOperationsExpanded(!operationsExpanded));
 objectiveActionBtn?.addEventListener('click', () => {
   const action = objectiveActionBtn.dataset.objectiveAction;

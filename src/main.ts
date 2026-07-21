@@ -4,6 +4,7 @@ import './game/skills';
 import './game/loot';
 import './game/world';
 import './game/solo-frontier';
+import './game/solo-frontier/solo-frontier-battle-desk';
 import './game/expeditions';
 import './party/party-transport';
 import './party/party-store';
@@ -35,11 +36,11 @@ function loadLegacyScript(url: string): Promise<void> {
 }
 
 async function loadLegacyRuntime(): Promise<void> {
-  try {
-    await loadLegacyScript(confettiUrl);
-  } catch (error) {
+  // Confetti is decorative. Do not let an optional network asset delay the
+  // local runtime, especially in offline or restricted browser sessions.
+  void loadLegacyScript(confettiUrl).catch(error => {
     console.warn('Momentum confetti enhancement unavailable; continuing without it.', error);
-  }
+  });
   for (const url of legacyScriptUrls) await loadLegacyScript(url);
 }
 

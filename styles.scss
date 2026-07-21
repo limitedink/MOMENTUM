@@ -1177,6 +1177,155 @@ body.reduce-motion .xp-drop { opacity:1; transform:none; }
 @media(prefers-reduced-motion:reduce) { .rarity-ascendant { animation:none; } }
 body.reduce-motion .rarity-ascendant { animation:none; }
 
+/* =========================================================
+   Solo Frontier Battle Desk
+   The scene is Canvas; every long-form control stays in the DOM.
+   ========================================================= */
+.solo-frontier-shell { display:none; min-width:0; margin:0 0 10px; }
+body[data-game-view="field"] .solo-frontier-shell { display:block; }
+.frontier-shell-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; padding:13px 15px; border:1px solid rgba(85,217,255,.36); border-bottom:0; background:linear-gradient(90deg,rgba(85,217,255,.08),rgba(12,18,33,.92) 45%); }
+.frontier-shell-heading .title { margin:3px 0 5px; font-size:18px; }
+.frontier-shell-heading p { margin:0; }
+.frontier-shell-actions { display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+.frontier-mode-badge { display:inline-flex; align-items:center; min-height:30px; padding:5px 9px; color:var(--gold); border:1px solid rgba(255,200,87,.5); background:rgba(255,200,87,.07); font:800 10px ui-monospace,monospace; letter-spacing:.08em; text-transform:uppercase; }
+.frontier-desk-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(285px,330px); gap:10px; align-items:stretch; }
+.solo-battle-panel,.frontier-console { min-width:0; border:1px solid var(--line); background:linear-gradient(145deg,rgba(17,27,49,.96),rgba(6,11,23,.98)); box-shadow:var(--shadow-md); }
+.solo-battle-panel { padding:11px; border-top:2px solid var(--cyan); }
+.battle-panel-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
+.battle-panel-heading .title { margin:2px 0 0; font-size:15px; }
+.battle-heading-divider { color:var(--line-bright); }
+.battle-panel-status { color:var(--muted); font:700 10px ui-monospace,monospace; text-align:right; }
+.solo-battle-canvas-wrap { position:relative; overflow:hidden; border:1px solid rgba(85,217,255,.46); background:#060b18; box-shadow:inset 0 0 42px rgba(0,0,0,.62),0 0 20px rgba(85,217,255,.08); }
+.solo-battle-canvas { width:100%; height:auto; min-height:238px; aspect-ratio:980 / 470; border:0; box-shadow:none; }
+.solo-battle-canvas-note { position:absolute; right:10px; bottom:9px; padding:4px 6px; color:rgba(195,204,224,.7); background:rgba(4,8,17,.82); font:700 9px ui-monospace,monospace; letter-spacing:.08em; pointer-events:none; }
+.solo-qa-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:7px 10px; border:1px dashed rgba(255,200,87,.46); border-top:0; background:rgba(255,200,87,.06); }
+.solo-qa-toolbar[hidden] { display:none; }
+.solo-qa-toolbar .eyebrow { margin-right:3px; color:var(--gold); }
+.battle-event-strip { min-height:34px; margin-top:8px; padding:8px 10px; color:var(--muted-strong); border:1px solid rgba(74,103,160,.55); border-left:3px solid var(--gold); background:rgba(5,9,19,.62); font:700 11px/1.35 ui-monospace,monospace; }
+.frontier-console { display:grid; align-content:start; gap:0; }
+.frontier-console-block { padding:11px; border-bottom:1px solid var(--line); }
+.frontier-console-block:last-child { border-bottom:0; }
+.console-block-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.frontier-order-actions { display:grid; grid-template-columns:1.2fr 1fr 1fr; gap:6px; margin:9px 0; }
+.frontier-order-actions .btn { min-width:0; padding-inline:8px; }
+.frontier-order-readout { display:grid; grid-template-columns:1fr auto; gap:4px 8px; color:var(--muted); font:700 10px ui-monospace,monospace; }
+.frontier-order-readout strong { color:var(--text); font-size:12px; text-align:right; }
+.frontier-wall-diagnosis { min-height:48px; margin-top:9px; padding:8px; color:var(--muted); border:1px dashed rgba(255,104,127,.42); background:rgba(255,104,127,.05); font-size:11px; line-height:1.4; }
+.frontier-drop-focus { display:grid; gap:3px; margin-top:7px; padding:8px; border-left:2px solid var(--violet); background:rgba(166,138,255,.06); }
+.frontier-drop-focus span { color:var(--violet); font:800 9px ui-monospace,monospace; letter-spacing:.1em; }
+.frontier-drop-focus strong { color:var(--text); font-size:11px; }
+.frontier-active-weapon { display:flex; align-items:center; gap:8px; margin:9px 0 6px; padding:8px; border:1px solid rgba(255,200,87,.38); background:rgba(255,200,87,.06); }
+.weapon-glyph { display:grid; place-items:center; width:32px; height:32px; color:var(--gold); border:1px solid rgba(255,200,87,.5); font-size:17px; }
+.frontier-active-weapon span:last-child { display:grid; gap:2px; min-width:0; }
+.frontier-active-weapon small,.frontier-active-weapon em { color:var(--muted); font-size:9px; font-style:normal; }
+.frontier-active-weapon strong { overflow:hidden; color:var(--text); font:800 12px ui-monospace,monospace; text-overflow:ellipsis; white-space:nowrap; }
+.frontier-ability-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+.frontier-ability-grid label { display:grid; gap:4px; color:var(--muted); font:800 9px ui-monospace,monospace; letter-spacing:.08em; }
+.frontier-ability-grid .btn { min-width:0; width:100%; padding-inline:8px; font-size:10px; }
+.frontier-secondary-grid { display:grid; grid-template-columns:minmax(0,1.08fr) minmax(0,1fr); gap:10px; margin-top:10px; }
+.frontier-secondary-panel { min-width:0; border:1px solid var(--line); border-top:2px solid var(--violet); background:rgba(9,15,29,.9); }
+.frontier-secondary-panel summary { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:48px; padding:9px 11px; cursor:pointer; list-style:none; }
+.frontier-secondary-panel summary::-webkit-details-marker { display:none; }
+.frontier-secondary-panel summary::after { content:'+'; color:var(--cyan); font:800 18px ui-monospace,monospace; }
+.frontier-secondary-panel[open] summary::after { content:'−'; }
+.frontier-secondary-panel summary>span:first-child { display:grid; gap:2px; min-width:0; }
+.frontier-secondary-panel summary strong { color:var(--text); font:800 12px ui-monospace,monospace; }
+.frontier-secondary-panel summary .small { text-align:right; }
+.solo-combat-skills { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; padding:0 11px 11px; }
+.combat-skill-group { min-width:0; padding:8px; border:1px solid rgba(74,103,160,.45); background:rgba(5,9,19,.5); }
+.combat-skill-group h4 { margin:0 0 6px; color:var(--cyan); font:800 9px ui-monospace,monospace; letter-spacing:.1em; text-transform:uppercase; }
+.combat-skill-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:3px 7px; padding:5px 0; border-top:1px solid rgba(43,58,93,.45); }
+.combat-skill-row:first-of-type { border-top:0; }
+.combat-skill-row strong { overflow:hidden; color:var(--text); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.combat-skill-row em { color:var(--gold); font:800 10px ui-monospace,monospace; font-style:normal; }
+.combat-skill-row small { grid-column:1/-1; color:var(--muted); font:700 9px ui-monospace,monospace; }
+.combat-skill-meter { grid-column:1/-1; height:4px; background:#050812; }
+.combat-skill-meter i { display:block; height:100%; background:linear-gradient(90deg,var(--violet),var(--cyan)); }
+.frontier-cache-panel { grid-column:span 2; border-top-color:var(--gold); }
+.cache-toolbar { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; padding:0 11px 10px; }
+.cache-toolbar label:not(.cache-favourite-filter) { display:grid; gap:4px; color:var(--muted); font:800 9px ui-monospace,monospace; letter-spacing:.08em; text-transform:uppercase; }
+.cache-toolbar .btn { width:100%; min-width:0; min-height:34px; padding-inline:7px; font-size:10px; }
+.cache-favourite-filter { display:flex; align-items:center; gap:6px; align-self:end; min-height:34px; padding:7px 8px; color:var(--muted-strong); border:1px solid var(--line); font-size:10px; }
+.cache-workbench { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(250px,.8fr); gap:10px; padding:0 11px 11px; }
+.solo-cache-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; max-height:340px; overflow:auto; padding-right:2px; }
+.solo-cache-item { min-width:0; padding:8px; border:1px solid color-mix(in srgb,var(--loot-color,#9aa4b2) 52%,var(--line)); border-left:3px solid var(--loot-color,#9aa4b2); background:color-mix(in srgb,var(--loot-color,#9aa4b2) 6%,rgba(5,9,19,.72)); cursor:pointer; }
+.solo-cache-item:hover,.solo-cache-item.is-selected { border-color:var(--loot-color,#9aa4b2); background:color-mix(in srgb,var(--loot-color,#9aa4b2) 12%,rgba(5,9,19,.8)); }
+.solo-cache-item.is-equipped { box-shadow:inset 0 0 0 1px rgba(102,230,169,.62); }
+.solo-cache-item header { display:flex; align-items:flex-start; justify-content:space-between; gap:6px; }
+.solo-cache-item header strong { overflow:hidden; color:var(--text); font:800 10px ui-monospace,monospace; text-overflow:ellipsis; white-space:nowrap; }
+.solo-cache-item header span { flex:0 0 auto; color:var(--loot-color,#9aa4b2); font:800 9px ui-monospace,monospace; }
+.solo-cache-item p { overflow:hidden; margin:4px 0 6px; color:var(--muted); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.solo-cache-item footer { display:flex; align-items:center; justify-content:space-between; gap:5px; color:var(--muted); font:700 9px ui-monospace,monospace; }
+.solo-cache-favourite { color:var(--gold); }
+.solo-cache-inspector { min-height:185px; padding:10px; border:1px solid var(--line); background:rgba(5,9,19,.58); }
+.solo-cache-inspector h4 { margin:0 0 4px; color:var(--text); font:800 14px ui-monospace,monospace; }
+.solo-cache-inspector .cache-inspector-meta { color:var(--muted); font-size:10px; }
+.cache-inspector-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.cache-inspector-actions .btn { min-height:34px; font-size:10px; }
+.cache-compare { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:9px; }
+.cache-compare>div { padding:7px; border:1px solid var(--line); background:rgba(6,10,22,.48); }
+.cache-compare strong { display:block; margin-bottom:3px; color:var(--text); font-size:10px; }
+.cache-compare span { display:block; color:var(--muted); font:700 9px/1.4 ui-monospace,monospace; }
+.cache-reforge { display:grid; gap:5px; margin-top:9px; }
+.cache-reforge button { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; min-height:31px; padding:5px 7px; color:var(--muted-strong); border:1px solid var(--line); background:rgba(12,18,33,.72); font-size:10px; text-align:left; cursor:pointer; }
+.cache-reforge button:hover { color:var(--text); border-color:var(--gold); }
+.solo-cache-empty { grid-column:1/-1; padding:14px; color:var(--muted); border:1px dashed var(--line-bright); font-size:11px; }
+.frontier-paper-panel { border-top-color:var(--green); }
+.solo-paper-doll { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; padding:0 11px 11px; }
+.paper-doll-slot { min-height:57px; padding:7px; border:1px solid var(--line); background:rgba(5,9,19,.5); }
+.paper-doll-slot.is-filled { border-color:rgba(102,230,169,.55); background:rgba(102,230,169,.05); }
+.paper-doll-slot small { display:block; color:var(--muted); font:800 8px ui-monospace,monospace; letter-spacing:.08em; text-transform:uppercase; }
+.paper-doll-slot strong { display:block; overflow:hidden; margin-top:4px; color:var(--text); font:800 10px ui-monospace,monospace; text-overflow:ellipsis; white-space:nowrap; }
+.paper-doll-slot span { display:block; overflow:hidden; margin-top:2px; color:var(--muted); font-size:9px; text-overflow:ellipsis; white-space:nowrap; }
+.solo-debrief-panel { padding:12px 14px; border:1px solid rgba(255,200,87,.55); border-top:2px solid var(--gold); background:linear-gradient(120deg,rgba(255,200,87,.09),rgba(11,17,31,.92)); box-shadow:var(--shadow-md); }
+.debrief-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.debrief-heading .title { margin:2px 0 0; font-size:15px; }
+.solo-debrief-summary { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:7px; margin-top:10px; }
+.debrief-stat { min-height:54px; padding:8px; border:1px solid rgba(74,103,160,.48); background:rgba(5,9,19,.56); }
+.debrief-stat small { display:block; color:var(--muted); font:800 9px ui-monospace,monospace; text-transform:uppercase; }
+.debrief-stat strong { display:block; margin-top:5px; color:var(--text); font:800 14px ui-monospace,monospace; }
+.debrief-stat.is-good strong { color:var(--green); }
+.debrief-stat.is-danger strong { color:var(--red); }
+.solo-debrief-actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:10px; }
+.solo-debrief-actions .btn { min-height:36px; font-size:10px; }
+
+@media(max-width:1100px) {
+  .frontier-desk-grid { grid-template-columns:minmax(0,1fr) minmax(265px,300px); }
+  .solo-combat-skills { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .cache-workbench { grid-template-columns:1fr; }
+  .solo-cache-list { max-height:none; }
+}
+@media(max-width:820px) {
+  .frontier-shell-heading { padding:11px; }
+  .frontier-desk-grid { grid-template-columns:1fr; }
+  .frontier-console { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .frontier-console-block { min-width:0; border-right:1px solid var(--line); }
+  .frontier-console-block:last-child { grid-column:1/-1; border-right:0; }
+  .frontier-secondary-grid { grid-template-columns:1fr; }
+  .frontier-cache-panel { grid-column:auto; }
+  .solo-debrief-summary { grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+@media(max-width:560px) {
+  .frontier-shell-heading { display:grid; gap:8px; }
+  .frontier-shell-actions { justify-content:space-between; }
+  .frontier-shell-heading .title { font-size:16px; }
+  .solo-battle-panel { padding:8px; }
+  .battle-panel-heading { align-items:flex-start; flex-direction:column; }
+  .battle-panel-status { text-align:left; }
+  .solo-battle-canvas { min-height:208px; }
+  .frontier-console { display:block; }
+  .frontier-console-block { border-right:0; }
+  .frontier-order-actions { grid-template-columns:1.2fr 1fr 1fr; }
+  .solo-combat-skills { grid-template-columns:1fr; }
+  .cache-toolbar { grid-template-columns:1fr 1fr; }
+  .cache-workbench { padding-inline:8px; }
+  .solo-cache-list { grid-template-columns:1fr; }
+  .solo-paper-doll { grid-template-columns:repeat(2,minmax(0,1fr)); padding-inline:8px; }
+  .solo-debrief-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .solo-debrief-actions { display:grid; grid-template-columns:1fr 1fr; }
+  .solo-debrief-actions .btn:last-child { grid-column:1/-1; }
+}
+
 /* Data-driven Combat Skill Tree graph */
 .talent-panel { width:min(1420px,calc(100vw - 24px)); max-height:94vh; }
 .talent-branches { display:block; min-height:0; }

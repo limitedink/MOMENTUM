@@ -11,8 +11,10 @@ export * from './legacy-combat-compatibility';
 export const MomentumCombatProgression = Object.freeze({
   skillIds: COMBAT_SKILL_IDS,
   definitions: COMBAT_SKILL_DEFINITIONS,
-  progression: Object.freeze(progression),
-  migration: Object.freeze(migration),
+  // Module namespace objects carry non-configurable export descriptors in
+  // browsers; copy them before freezing the public framework surface.
+  progression: Object.freeze({ ...progression }),
+  migration: Object.freeze({ ...migration }),
   /** @deprecated Remove with the legacy arena/runtime migration in Goal 4. */
   compatibility: legacyCombatCompatibility
 });
