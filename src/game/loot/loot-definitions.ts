@@ -11,6 +11,11 @@ export const RARITY_DEFINITIONS: readonly RarityDefinition[] = [
   { id: 'chase', name: 'Chase Unique', color: '#080b12', glow: 'pulse', affixCount: 5, statMultiplier: 1.8 }
 ];
 
+export const ITEM_LEVEL_STAT_SCALING = Object.freeze({
+  perLevel: 0.015,
+  scalableStats: Object.freeze(['damage', 'accuracy', 'maxHit', 'range', 'projectileDamage', 'hp', 'armour', 'ward', 'evasion'] as const)
+});
+
 export const COMBAT_AFFIX_DEFINITIONS: readonly AffixDefinition[] = [
   { id: 'keen-edge', name: 'Keen Edge', stat: 'damage', min: 1, max: 4, unit: 'flat' },
   { id: 'quick-hand', name: 'Quick Hand', stat: 'attackInterval', min: -0.08, max: -0.02, unit: 'seconds' },
@@ -101,22 +106,22 @@ export const COMBAT_LOOT_DEFINITIONS: readonly ItemDefinition[] = [
   weaponBase('void-grimoire', 'Void Grimoire', 'magic', 'heavy', { damage: 30, attackInterval: 0.78, accuracy: 9, maxHit: 15, range: 104, projectileDamage: 10 }, 'null-script', 'Null Script', 'Every fifth spell strips one temporary enemy enhancement.'),
 
   // One light, medium, and heavy base for every armour and cloak position.
-  armourBase('scout-helm', 'Scout Helm', 'helm', 'light', { hp: 12, armour: 4, dashCooldown: -0.08 }, 'quick-visor', 'Quick Visor', 'Dashing after a hit grants a brief accuracy bonus.'),
+  armourBase('scout-helm', 'Scout Helm', 'helm', 'light', { hp: 12, armour: 4, evasion: 2, dashCooldown: -0.08 }, 'quick-visor', 'Quick Visor', 'Dashing after a hit grants a brief accuracy bonus.'),
   armourBase('warden-helm', 'Warden Helm', 'helm', 'medium', { hp: 20, armour: 6, accuracy: 2 }, 'watchful-crown', 'Watchful Crown', 'Telegraphed attacks are easier to read.'),
   armourBase('citadel-helm', 'Citadel Helm', 'helm', 'heavy', { hp: 30, armour: 9, maxHit: 2 }, 'iron-brow', 'Iron Brow', 'The first stagger received each run is reduced.'),
-  armourBase('trail-jacket', 'Trail Jacket', 'chest', 'light', { hp: 18, armour: 8, dashCooldown: -0.1 }, 'trailblazer', 'Trailblazer', 'Moving through a shockwave restores a little momentum.'),
+  armourBase('trail-jacket', 'Trail Jacket', 'chest', 'light', { hp: 18, armour: 8, evasion: 3, dashCooldown: -0.1 }, 'trailblazer', 'Trailblazer', 'Moving through a shockwave restores a little momentum.'),
   armourBase('frontier-mail', 'Frontier Mail', 'chest', 'medium', { hp: 28, armour: 12, accuracy: 1 }, 'steady-heart', 'Steady Heart', 'Taking damage does not interrupt the next attack wind-up.'),
   armourBase('apex-aegis', 'Apex Aegis', 'chest', 'heavy', { hp: 34, armour: 16, dashCooldown: 0.1 }, 'last-stand', 'Last Stand', 'Once per arena run, lethal damage leaves the player at 1 HP.', 'A plated mantle cut from the Apex frontier.'),
-  armourBase('pathfinder-gloves', 'Pathfinder Gloves', 'gloves', 'light', { armour: 3, accuracy: 3, dashCooldown: -0.05 }, 'sure-grip', 'Sure Grip', 'A dash never drops the current aim.'),
+  armourBase('pathfinder-gloves', 'Pathfinder Gloves', 'gloves', 'light', { armour: 3, accuracy: 3, evasion: 2, dashCooldown: -0.05 }, 'sure-grip', 'Sure Grip', 'A dash never drops the current aim.'),
   armourBase('forgebound-gloves', 'Forgebound Gloves', 'gloves', 'medium', { armour: 5, damage: 3, hp: 8 }, 'tempered-grip', 'Tempered Grip', 'The next attack after taking damage gains force.'),
   armourBase('bastion-gauntlets', 'Bastion Gauntlets', 'gloves', 'heavy', { armour: 7, damage: 5, hp: 15 }, 'crushing-guard', 'Crushing Guard', 'Blocking a shockwave empowers the next hit.'),
-  armourBase('scout-pants', 'Scout Pants', 'pants', 'light', { hp: 14, armour: 5, dashCooldown: -0.12 }, 'free-stride', 'Free Stride', 'The first dash in a run has reduced cooldown.'),
+  armourBase('scout-pants', 'Scout Pants', 'pants', 'light', { hp: 14, armour: 5, evasion: 3, dashCooldown: -0.12 }, 'free-stride', 'Free Stride', 'The first dash in a run has reduced cooldown.'),
   armourBase('warden-greaves', 'Warden Greaves', 'pants', 'medium', { hp: 24, armour: 8, range: 8 }, 'rooted-step', 'Rooted Step', 'Being hit while grounded grants a short ward.'),
   armourBase('citadel-cuisses', 'Citadel Cuisses', 'pants', 'heavy', { hp: 38, armour: 11, maxHit: 2 }, 'unyielding', 'Unyielding', 'The player cannot be staggered twice in quick succession.'),
-  armourBase('trail-boots', 'Trail Boots', 'boots', 'light', { armour: 3, dashCooldown: -0.15, range: 5 }, 'windwalker', 'Windwalker', 'A successful dash briefly improves range.'),
+  armourBase('trail-boots', 'Trail Boots', 'boots', 'light', { armour: 3, evasion: 4, dashCooldown: -0.15, range: 5 }, 'windwalker', 'Windwalker', 'A successful dash briefly improves range.'),
   armourBase('march-boots', 'March Boots', 'boots', 'medium', { armour: 5, hp: 16, dashCooldown: -0.07 }, 'marching-song', 'Marching Song', 'The next attack after a dash has improved accuracy.'),
   armourBase('iron-tread', 'Iron Tread', 'boots', 'heavy', { armour: 7, hp: 27, maxHit: 3 }, 'grounded', 'Grounded', 'Shockwaves deal slightly less damage while grounded.'),
-  armourBase('drift-cloak', 'Drift Cloak', 'cloak', 'light', { hp: 10, armour: 4, ward: 4, dashCooldown: -0.1, range: 10 }, 'afterimage', 'Afterimage', 'A dash leaves an afterimage that draws projectiles.'),
+  armourBase('drift-cloak', 'Drift Cloak', 'cloak', 'light', { hp: 10, armour: 4, ward: 4, evasion: 2, dashCooldown: -0.1, range: 10 }, 'afterimage', 'Afterimage', 'A dash leaves an afterimage that draws projectiles.'),
   armourBase('traveler-cloak', 'Traveler Cloak', 'cloak', 'medium', { hp: 20, armour: 6, ward: 6, accuracy: 2, range: 6 }, 'long-road', 'Long Road', 'The first attack in each encounter gains range.'),
   armourBase('nightwall-cloak', 'Nightwall Cloak', 'cloak', 'heavy', { hp: 32, armour: 9, ward: 10, dashCooldown: 0.08 }, 'nightwall', 'Nightwall', 'A cloak woven from the frontier night absorbs a hit.', 'A heavy cloak that turns aside hostile magic.'),
 

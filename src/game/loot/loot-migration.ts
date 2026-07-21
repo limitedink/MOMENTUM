@@ -82,6 +82,7 @@ function rawLootItems(save: JsonRecord): unknown[] {
   if (Array.isArray(cache)) values.push(...cache);
   else if (isRecord(cache) && Array.isArray(cache.items)) values.push(...cache.items);
   if (Array.isArray(save.inventory)) values.push(...save.inventory);
+  if (Array.isArray(save.lootInventory)) values.push(...save.lootInventory);
   if (Array.isArray(save.loot)) values.push(...save.loot);
   if (Array.isArray(save.ownedLoot)) values.push(...save.ownedLoot);
   return values;

@@ -6,6 +6,7 @@ import {
 } from '../src/game/combat-progression';
 import {
   SOLO_FRONTIER_STAGES,
+  SOLO_FRONTIER_BALANCE,
   STANCE_MODIFIERS,
   calculateArmourMitigation,
   calculateHitChance,
@@ -95,16 +96,20 @@ describe('Solo Frontier stage definitions', () => {
     for (const definition of SOLO_FRONTIER_STAGES) {
       const stage = definition.stage;
       const boss = stage === 10 || stage === 20 || stage === 30;
-      const baseHitPoints = Math.round(35 * 1.12 ** (stage - 1));
-      const baseDamage = Math.round(4 * 1.10 ** (stage - 1));
-      const baseArmour = Math.round(2 + 1.5 * stage);
-      expect(definition.victoriesToClear).toBe(boss ? 1 : 10);
+      const tuning = SOLO_FRONTIER_BALANCE.enemy;
+      const baseHitPoints = Math.round(tuning.baseHitPoints * tuning.hitPointGrowth ** (stage - 1));
+      const earlyDamageExponent = Math.min(stage - 1, tuning.earlyDamageStages);
+      const lateDamageExponent = Math.max(0, stage - 1 - tuning.earlyDamageStages);
+      const baseDamage = Math.round(tuning.baseDamage * tuning.earlyDamageGrowth ** earlyDamageExponent * tuning.lateDamageGrowth ** lateDamageExponent);
+      const baseArmour = Math.round(tuning.baseArmour + tuning.armourPerStage * stage);
+      const expectedVictories = boss ? 1 : stage < 5 ? 25 : stage < 8 ? 30 : stage < 10 ? 600 : stage < 20 ? 3_300 : 8_000;
+      expect(definition.victoriesToClear).toBe(expectedVictories);
       expect(definition.encounterTimeoutSeconds).toBe(60);
-      expect(definition.enemy.hitPoints).toBe(boss ? Math.round(baseHitPoints * 4) : baseHitPoints);
-      expect(definition.enemy.damage).toBe(boss ? Math.round(baseDamage * 1.35) : baseDamage);
-      expect(definition.enemy.armour).toBe(boss ? Math.round(baseArmour * 1.2) : baseArmour);
-      expect(definition.enemy.evasion).toBe(3 + 0.4 * stage);
-      expect(definition.enemy.attackInterval).toBe(Math.max(0.9, 2.2 - 0.02 * stage));
+      expect(definition.enemy.hitPoints).toBe(boss ? Math.round(baseHitPoints * tuning.bossHitPointMultiplier) : baseHitPoints);
+      expect(definition.enemy.damage).toBe(boss ? Math.round(baseDamage * tuning.bossDamageMultiplier) : baseDamage);
+      expect(definition.enemy.armour).toBe(boss ? Math.round(baseArmour * tuning.bossArmourMultiplier) : baseArmour);
+      expect(definition.enemy.evasion).toBe(tuning.baseEvasion + tuning.evasionPerStage * stage);
+      expect(definition.enemy.attackInterval).toBe(Math.max(tuning.minimumAttackInterval, tuning.baseAttackInterval - tuning.attackIntervalPerStage * stage));
     }
   });
 

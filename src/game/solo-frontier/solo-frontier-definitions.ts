@@ -3,6 +3,33 @@ import type { LootSlot } from '../loot';
 
 export const SOLO_FRONTIER_STAGE_COUNT = 30;
 export const SOLO_COMBAT_TIMEOUT_SECONDS = 60;
+export const SOLO_FRONTIER_ENCOUNTER_RECOVERY_SECONDS = 5;
+
+/** Named knobs shared by the deterministic balance harness and production runtime. */
+export const SOLO_FRONTIER_BALANCE = Object.freeze({
+  enemy: Object.freeze({
+    baseHitPoints: 35,
+    hitPointGrowth: 1.13,
+    baseDamage: 27,
+    earlyDamageGrowth: 1.11,
+    lateDamageGrowth: 1.02,
+    earlyDamageStages: 9,
+    baseArmour: 2,
+    armourPerStage: 1.5,
+    baseEvasion: 3,
+    evasionPerStage: 0.4,
+    baseAccuracy: 5,
+    accuracyPerStage: 0.5,
+    baseAttackInterval: 2.2,
+    attackIntervalPerStage: 0.02,
+    minimumAttackInterval: 0.9,
+    bossHitPointMultiplier: 3.25,
+    bossDamageMultiplier: 1,
+    bossArmourMultiplier: 1.2
+  }),
+  victories: Object.freeze({ onboarding: 25, early: 30, gateApproach: 600, middle: 3_300, late: 8_000, boss: 1 }),
+  weaponStyleDamage: Object.freeze({ melee: 1, firearm: 0.57, ranged: 1, magic: 0.85 })
+});
 
 export const STANCE_MODIFIERS: Readonly<Record<SoloCombatStance, Readonly<{
   damage: number;
@@ -33,13 +60,25 @@ const ADVERTISED_TARGET_SLOT_CYCLE: readonly (readonly LootSlot[])[] = Object.fr
 ]);
 
 function regularEnemyStats(stage: number) {
+  const tuning = SOLO_FRONTIER_BALANCE.enemy;
+  const earlyDamageExponent = Math.min(stage - 1, tuning.earlyDamageStages);
+  const lateDamageExponent = Math.max(0, stage - 1 - tuning.earlyDamageStages);
   return {
-    hitPoints: Math.round(35 * 1.12 ** (stage - 1)),
-    damage: Math.round(4 * 1.10 ** (stage - 1)),
-    armour: Math.round(2 + 1.5 * stage),
-    evasion: 3 + 0.4 * stage,
-    attackInterval: Math.max(0.9, 2.2 - 0.02 * stage)
+    hitPoints: Math.round(tuning.baseHitPoints * tuning.hitPointGrowth ** (stage - 1)),
+    damage: Math.round(tuning.baseDamage * tuning.earlyDamageGrowth ** earlyDamageExponent * tuning.lateDamageGrowth ** lateDamageExponent),
+    armour: Math.round(tuning.baseArmour + tuning.armourPerStage * stage),
+    evasion: tuning.baseEvasion + tuning.evasionPerStage * stage,
+    attackInterval: Math.max(tuning.minimumAttackInterval, tuning.baseAttackInterval - tuning.attackIntervalPerStage * stage)
   };
+}
+
+function victoriesToClear(stage: number, boss: boolean): number {
+  if (boss) return SOLO_FRONTIER_BALANCE.victories.boss;
+  if (stage < 5) return SOLO_FRONTIER_BALANCE.victories.onboarding;
+  if (stage < 8) return SOLO_FRONTIER_BALANCE.victories.early;
+  if (stage < 10) return SOLO_FRONTIER_BALANCE.victories.gateApproach;
+  if (stage < 20) return SOLO_FRONTIER_BALANCE.victories.middle;
+  return SOLO_FRONTIER_BALANCE.victories.late;
 }
 
 export function createSoloFrontierEnemy(stage: number): SoloEnemyDefinition {
@@ -47,18 +86,19 @@ export function createSoloFrontierEnemy(stage: number): SoloEnemyDefinition {
     throw new RangeError(`Solo Frontier stage must be an integer from 1 to ${SOLO_FRONTIER_STAGE_COUNT}.`);
   }
   const regular = regularEnemyStats(stage);
+  const tuning = SOLO_FRONTIER_BALANCE.enemy;
   const bossName = BOSS_NAMES.get(stage);
   const boss = bossName !== undefined;
   return Object.freeze({
     id: boss ? `solo-frontier:${bossName.toLowerCase()}` : `solo-frontier:stage-${stage}`,
     name: bossName ?? `Frontier Challenger ${stage}`,
     kind: boss ? 'boss' : 'regular',
-    hitPoints: boss ? Math.round(regular.hitPoints * 4) : regular.hitPoints,
-    damage: boss ? Math.round(regular.damage * 1.35) : regular.damage,
-    armour: boss ? Math.round(regular.armour * 1.2) : regular.armour,
+    hitPoints: boss ? Math.round(regular.hitPoints * tuning.bossHitPointMultiplier) : regular.hitPoints,
+    damage: boss ? Math.round(regular.damage * tuning.bossDamageMultiplier) : regular.damage,
+    armour: boss ? Math.round(regular.armour * tuning.bossArmourMultiplier) : regular.armour,
     ward: 0,
     evasion: regular.evasion,
-    accuracy: 5 + 0.5 * stage,
+    accuracy: tuning.baseAccuracy + tuning.accuracyPerStage * stage,
     attackInterval: regular.attackInterval,
     damageType: 'physical'
   });
@@ -71,7 +111,7 @@ export const SOLO_FRONTIER_STAGES: readonly SoloFrontierStageDefinition[] = Obje
     const advertisedTargetSlots = ADVERTISED_TARGET_SLOT_CYCLE[(stage - 1) % ADVERTISED_TARGET_SLOT_CYCLE.length];
     return Object.freeze({
       stage,
-      victoriesToClear: boss ? 1 : 10,
+      victoriesToClear: victoriesToClear(stage, boss),
       encounterTimeoutSeconds: SOLO_COMBAT_TIMEOUT_SECONDS,
       enemy: createSoloFrontierEnemy(stage),
       advertisedTargetSlots,

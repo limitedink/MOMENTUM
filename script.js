@@ -1440,9 +1440,10 @@ function gearRateMult(skillId) {
 function playerMaxHp() { return 100 + (ITEMS[equipment.armor]?.hp || 0); }
 function equippedGun() { return ITEMS[equipment.gun] || ITEMS.pulseSidearm; }
 
-function soloFrontierCombatInput(stage, seed) {
+function soloFrontierCombatInput(stage, seed, runtimeState = null) {
   const slots = ['melee', 'gun', 'ranged', 'magic'];
-  const cache = soloFrontierRuntime?.getState()?.lootCache || soloFrontierState.lootCache;
+  const frontierSnapshot = runtimeState || soloFrontierRuntime?.getState() || soloFrontierState;
+  const cache = frontierSnapshot.lootCache;
   const activeSlot = cache?.equipment?.activeWeaponSlot || slots.find(slot => cache?.equipment?.[slot]) || 'gun';
   const cachedInstance = cache?.items?.find(instance => instance.instanceId === cache?.equipment?.[activeSlot]);
   const inspection = cachedInstance ? LOOT_FRAMEWORK?.inspectItem(cachedInstance) : null;
@@ -1461,9 +1462,10 @@ function soloFrontierCombatInput(stage, seed) {
   const equippedStats = Object.fromEntries(Object.entries(equippedSnapshot.stats || {}).map(([key, value]) => [key, Math.max(0, Number(value || 0) - Number(activeCachedStats[key] || 0))]));
   const isForcedDefeat = soloDeskForceDefeat;
   return {
-    combatSkills: COMBAT_PROGRESSION_FRAMEWORK.compatibility.progressionLevelMap(combatProgression),
+    combatSkills: COMBAT_PROGRESSION_FRAMEWORK.compatibility.progressionLevelMap(frontierSnapshot.combatProgression || combatProgression),
     equippedStats: {
       hitPoints: isForcedDefeat ? -99 : playerMaxHp() - 100 + Number(equippedStats.hp || 0),
+      damage: Number(equippedStats.damage || 0),
       accuracy: Number(equippedStats.accuracy || 0) + Number(itemStats.accuracy || legacyItem.accuracy || 0),
       evasion: Number(equippedStats.evasion || 0),
       ward: Number(equippedStats.ward || 0),
@@ -1953,10 +1955,8 @@ function loadGame() {
 
   try {
     let save = JSON.parse(raw);
-    if (save.version === 17) save = COMBAT_PROGRESSION_FRAMEWORK.migration.migrateV17SaveToV18(save);
-    if (save.version === 18) save = COMBAT_PROGRESSION_FRAMEWORK.migration.migrateV18SaveToV19(save);
-    if (save.version === 19) save = SOLO_FRONTIER_FRAMEWORK.migrateV19SaveToV20(save);
-    if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, SAVE_VERSION].includes(save.version)) return false;
+    if (!Number.isInteger(save.version) || save.version < 1 || save.version > SAVE_VERSION) return false;
+    save = SOLO_FRONTIER_FRAMEWORK.migrateMomentumSaveToV20(save);
 
     save.skills.forEach(savedSkill => {
       const skill = skills.find(s => s.id === savedSkill.id) || (savedSkill.id === 'Music' ? ensureSkillState('Music') : null);

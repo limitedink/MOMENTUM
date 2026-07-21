@@ -1,6 +1,7 @@
 import {
   ARENA_LOOT_TABLES,
   COMBAT_LOOT_DEFINITIONS,
+  ITEM_LEVEL_STAT_SCALING,
   PARTY_BOSS_LOOT_TABLE,
   RARITY_DEFINITIONS,
   SKILL_TOOL_DEFINITIONS,
@@ -203,12 +204,16 @@ export function rollAffixes(
 
 export function calculateItemStats(definition: ItemDefinition, instance: ItemInstance): Partial<Record<string, number>> {
   const rarity = rarityById(instance.rarity);
+  const itemLevelMultiplier = 1 + ITEM_LEVEL_STAT_SCALING.perLevel * Math.max(0, Math.min(30, instance.itemLevel) - 1);
+  const scalesWithItemLevel = new Set<string>(ITEM_LEVEL_STAT_SCALING.scalableStats);
   const stats: Partial<Record<string, number>> = {};
   Object.entries(definition.baseStats).forEach(([stat, value]) => {
-    stats[stat] = Number(((value || 0) * rarity.statMultiplier).toFixed(2));
+    const levelMultiplier = scalesWithItemLevel.has(stat) ? itemLevelMultiplier : 1;
+    stats[stat] = Number(((value || 0) * rarity.statMultiplier * levelMultiplier).toFixed(2));
   });
   instance.affixes.forEach(affix => {
-    stats[affix.stat] = Number(((stats[affix.stat] || 0) + affix.value).toFixed(2));
+    const levelMultiplier = scalesWithItemLevel.has(affix.stat) ? itemLevelMultiplier : 1;
+    stats[affix.stat] = Number(((stats[affix.stat] || 0) + affix.value * levelMultiplier).toFixed(2));
   });
   return stats;
 }

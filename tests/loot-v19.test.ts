@@ -78,7 +78,7 @@ describe('v19 ARPG paper doll and loot rules', () => {
     }
 
     const snapshot = calculateEquippedStats(loadout, [melee, gun, chest, ring1, ring2, trinket1, trinket2]);
-    expect(snapshot.stats.damage).toBe(16 + 2);
+    expect(snapshot.stats.damage).toBeCloseTo(16 * 1.135 + 2 * 1.135, 6);
     expect(snapshot.signatures.map(signature => signature.signatureId)).not.toContain('overwatch');
     expect(snapshot.signatures).toHaveLength(6);
     expect(loadout.ring1).toBe('ring-1');
@@ -87,7 +87,7 @@ describe('v19 ARPG paper doll and loot rules', () => {
     expect(loadout.trinket2).toBe('trinket-2');
 
     const gunActive = calculateEquippedStats({ ...loadout, activeWeaponSlot: 'gun' }, [melee, gun, chest, ring1, ring2, trinket1, trinket2]);
-    expect(gunActive.stats.damage).toBe(12 + 2);
+    expect(gunActive.stats.damage).toBeCloseTo(12 * 1.135 + 2 * 1.135, 6);
     expect(gunActive.signatures.map(signature => signature.signatureId)).toContain('overwatch');
     expect(gunActive.signatures.map(signature => signature.signatureId)).not.toContain('shockbreaker');
   });

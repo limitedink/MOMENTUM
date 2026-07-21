@@ -27,6 +27,8 @@ export interface EquippedArmourPieceSnapshot {
 /** Already-aggregated equipped bonuses. Weapon values remain on ActiveWeaponSnapshot. */
 export interface EquippedStatSnapshot {
   hitPoints: number;
+  /** Flat non-weapon damage from armour, accessories, and affixes. */
+  damage?: number;
   accuracy: number;
   evasion: number;
   ward: number;
@@ -61,7 +63,7 @@ export interface SoloEnemyDefinition {
 
 export interface SoloFrontierStageDefinition {
   stage: number;
-  victoriesToClear: 1 | 10;
+  victoriesToClear: number;
   encounterTimeoutSeconds: 60;
   enemy: SoloEnemyDefinition;
   /** The stage's advertised item targets. Loot rolls give this bucket 60%. */

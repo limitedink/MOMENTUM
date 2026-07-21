@@ -3,6 +3,8 @@ import {
   applyCombatEncounterProgression,
   combatSkillLevels,
   createInitialCombatProgression,
+  migrateV17SaveToV18,
+  migrateV18SaveToV19,
   normalizeCombatProgression,
   xpToNextCombatLevel,
   type CombatProgressionState,
@@ -21,7 +23,7 @@ import {
   type LootFilters,
   type RarityId
 } from '../loot';
-import { SOLO_FRONTIER_STAGE_COUNT, soloFrontierStage } from './solo-frontier-definitions';
+import { SOLO_FRONTIER_ENCOUNTER_RECOVERY_SECONDS, SOLO_FRONTIER_STAGE_COUNT, soloFrontierStage } from './solo-frontier-definitions';
 import { simulateSoloCombat } from './solo-combat-engine';
 import type { SoloCombatInput, SoloCombatResult } from './solo-frontier-types';
 
@@ -30,10 +32,18 @@ export const MOMENTUM_SAVE_VERSION = SOLO_FRONTIER_SAVE_VERSION;
 export const SOLO_FRONTIER_OFFLINE_CAP_SECONDS = 8 * 60 * 60;
 export const SOLO_FRONTIER_EXTENDED_OFFLINE_CAP_SECONDS = 12 * 60 * 60;
 export const SOLO_FRONTIER_BATCH_ENCOUNTERS = 24;
+export const SOLO_FRONTIER_BATCH_YIELD_MS = 0;
 export const SOLO_FRONTIER_POINT_STAGES = Object.freeze([5, 10, 15, 20, 25, 30]);
 export const SOLO_FRONTIER_BOSS_STAGES = Object.freeze([10, 20, 30]);
 export const ARENA_TIER_UNLOCK_STAGES = Object.freeze([10, 20, 30]);
 export const SOLO_FRONTIER_BOSS_KEY_REWARDS: Readonly<Record<number, number>> = Object.freeze({ 10: 3, 20: 5, 30: 8 });
+export const SOLO_FRONTIER_LOOT_CHANCE = Object.freeze({
+  onboardingRegular: 0.012,
+  onboardingThroughStage: 7,
+  regular: 0.0045,
+  repeatBoss: 0.15,
+  firstBoss: 1
+});
 
 export function arenaTierUnlockForSoloStage(highestClearedStage: number): number {
   const stage = Math.max(0, Math.floor(Number(highestClearedStage) || 0));
@@ -140,7 +150,7 @@ export interface SoloFrontierSeedResult {
 
 export interface SoloFrontierSimulationOptions {
   /** A fixed input is convenient for tests; a factory is used by the app. */
-  combatInput?: SoloCombatInput | ((stage: number, seed: string) => SoloCombatInput);
+  combatInput?: SoloCombatInput | ((stage: number, seed: string, state: Readonly<SoloFrontierRuntimeState>) => SoloCombatInput);
   /** Tests can supply a controlled enemy. App callers use the stage enemy. */
   useConfiguredEnemy?: boolean;
   seed?: string;
@@ -393,9 +403,9 @@ function defaultCombatInput(stage: number, seed: string): SoloCombatInput {
   } as unknown as SoloCombatInput;
 }
 
-function inputForEncounter(options: SoloFrontierSimulationOptions, stage: number, seed: string): SoloCombatInput {
+function inputForEncounter(options: SoloFrontierSimulationOptions, stage: number, seed: string, state: SoloFrontierRuntimeState): SoloCombatInput {
   const configured = typeof options.combatInput === 'function'
-    ? options.combatInput(stage, seed)
+    ? options.combatInput(stage, seed, state)
     : options.combatInput || defaultCombatInput(stage, seed);
   return {
     ...configured,
@@ -486,7 +496,11 @@ function addLootToDebrief(
   atMs: number
 ): { state: SoloFrontierRuntimeState; debrief: SoloFrontierDebrief } {
   const boss = SOLO_FRONTIER_BOSS_STAGES.includes(stage);
-  const itemChance = boss ? (firstClear ? 1 : 0.15) : 0.01;
+  const itemChance = boss
+    ? (firstClear ? SOLO_FRONTIER_LOOT_CHANCE.firstBoss : SOLO_FRONTIER_LOOT_CHANCE.repeatBoss)
+    : stage <= SOLO_FRONTIER_LOOT_CHANCE.onboardingThroughStage
+      ? SOLO_FRONTIER_LOOT_CHANCE.onboardingRegular
+      : SOLO_FRONTIER_LOOT_CHANCE.regular;
   // Kept local to the encounter seed so online and offline consume exactly
   // the same reward sequence regardless of wall-clock timing.
   const resolution = rollLoot({
@@ -740,10 +754,10 @@ export function advanceSoloFrontier(
     const encounterSeed = `${state.seed}:encounter:${state.encounterSequence}:stage:${stage}:victory:${state.currentStageVictories}`;
     let combat = resultCache.get(encounterSeed);
     if (!combat) {
-      combat = simulateSoloCombat(inputForEncounter(options, stage, encounterSeed));
+      combat = simulateSoloCombat(inputForEncounter(options, stage, encounterSeed, state));
       resultCache.set(encounterSeed, combat);
     }
-    const encounterDurationMs = Math.max(1, Math.round(combat.metrics.durationSeconds * 1_000));
+    const encounterDurationMs = Math.max(1, Math.round((combat.metrics.durationSeconds + SOLO_FRONTIER_ENCOUNTER_RECOVERY_SECONDS) * 1_000));
     const availableMs = state.encounterElapsedMs + remainingMs;
     if (availableMs < encounterDurationMs) {
       state = { ...state, encounterElapsedMs: availableMs };
@@ -813,7 +827,9 @@ export async function catchUpSoloFrontier(
     events = [...events, ...last.events];
     batches += 1;
     if (!last.elapsedMs && !last.events.length) break;
-    if (remainingMs > 0) await Promise.resolve();
+    if (remainingMs > 0) {
+      await new Promise<void>(resolve => setTimeout(resolve, SOLO_FRONTIER_BATCH_YIELD_MS));
+    }
   }
   return {
     state,
@@ -947,6 +963,11 @@ export function migrateV19SaveToV20(value: unknown): MomentumSaveV20 {
     ...preserved,
     version: SOLO_FRONTIER_SAVE_VERSION,
     skills,
+    ownedBaseUps: Array.isArray(source.ownedBaseUps) ? source.ownedBaseUps : [],
+    ownedSkillUps: Array.isArray(source.ownedSkillUps) ? source.ownedSkillUps : [],
+    ownedGear: Array.isArray(source.ownedGear) ? source.ownedGear : [],
+    ownedItems: Array.isArray(source.ownedItems) ? source.ownedItems : [],
+    globalBuff: isRecord(source.globalBuff) ? source.globalBuff : {},
     unlockedNormalSlots: Math.min(Math.max(1, Math.floor(finiteNonNegative(source.unlockedNormalSlots, skills.length))), skills.length),
     lootCache: lootCache.items,
     lootFilters: lootCache.filters,
@@ -955,6 +976,16 @@ export function migrateV19SaveToV20(value: unknown): MomentumSaveV20 {
     grandfatheredLootOverflow: lootCache.grandfatheredOverflow,
     soloFrontier: initial
   };
+}
+
+/** Runs every supported historical save through the complete, idempotent chain. */
+export function migrateMomentumSaveToV20(value: unknown): MomentumSaveV20 {
+  const source = isRecord(value) ? value : {};
+  const version = integerInRange(source.version, 1, SOLO_FRONTIER_SAVE_VERSION, 1);
+  if (version === SOLO_FRONTIER_SAVE_VERSION) return migrateV19SaveToV20(source);
+  const v18 = version <= 17 ? migrateV17SaveToV18(source) : source;
+  const v19 = version <= 18 ? migrateV18SaveToV19(v18) : v18;
+  return migrateV19SaveToV20(v19);
 }
 
 export const migrateV19ToV20 = migrateV19SaveToV20;

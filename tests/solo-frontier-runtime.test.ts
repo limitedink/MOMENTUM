@@ -13,6 +13,7 @@ import {
 } from '../src/game/loot';
 import {
   SOLO_FRONTIER_BOSS_KEY_REWARDS,
+  SOLO_FRONTIER_ENCOUNTER_RECOVERY_SECONDS,
   arenaTierUnlockForSoloStage,
   advanceSoloFrontier,
   catchUpSoloFrontier,
@@ -24,6 +25,8 @@ import {
   type SoloFrontierRuntimeState
 } from '../src/game/solo-frontier';
 import type { SoloCombatInput } from '../src/game/solo-frontier';
+
+const STRONG_ENCOUNTER_MS = SOLO_FRONTIER_ENCOUNTER_RECOVERY_SECONDS * 1_000;
 
 function combatInput(overrides: Partial<SoloCombatInput> = {}): SoloCombatInput {
   const combatSkills = Object.fromEntries(COMBAT_SKILL_IDS.map(skillId => [skillId, 100])) as SoloCombatInput['combatSkills'];
@@ -83,11 +86,11 @@ describe('Solo Frontier v20 orders and deterministic progression', () => {
   });
   it('pushes from highest cleared and advances after a regular stage clear', () => {
     const initial = setSoloFrontierOrder(seededState(0, []), 'push');
-    const result = advanceSoloFrontier(initial, 10, strongOptions());
+    const result = advanceSoloFrontier(initial, STRONG_ENCOUNTER_MS * 25, strongOptions());
     expect(result.state.highestClearedStage).toBe(1);
     expect(result.state.currentStage).toBe(2);
     expect(result.state.order).toBe('push');
-    expect(result.events.filter(event => event.stage === 1)).toHaveLength(10);
+    expect(result.events.filter(event => event.stage === 1)).toHaveLength(25);
   });
 
   it('records a wall and farms the configured cleared fallback after defeat', () => {
@@ -131,7 +134,7 @@ describe('Solo Frontier v20 orders and deterministic progression', () => {
     expect(farmResult.state.highestClearedStage).toBe(5);
 
     const stage30 = setSoloFrontierOrder(seededState(29), 'push');
-    const result = advanceSoloFrontier(stage30, 10, strongOptions());
+    const result = advanceSoloFrontier(stage30, STRONG_ENCOUNTER_MS, strongOptions());
     expect(result.state.highestClearedStage).toBe(30);
     expect(result.state.order).toBe('farm');
     expect(result.state.farmStage).toBe(30);
@@ -140,12 +143,12 @@ describe('Solo Frontier v20 orders and deterministic progression', () => {
 
   it('awards the existing boss key quantities and only first-clears receive guaranteed rare loot', () => {
     const state = setSoloFrontierOrder(seededState(9, Array.from({ length: 9 }, (_, index) => index + 1)), 'push');
-    const first = advanceSoloFrontier(state, 1, strongOptions());
+    const first = advanceSoloFrontier(state, STRONG_ENCOUNTER_MS, strongOptions());
     expect(first.state.keys).toBe(SOLO_FRONTIER_BOSS_KEY_REWARDS[10]);
     expect(first.debrief.rarityCounts.rare + first.debrief.rarityCounts.epic + first.debrief.rarityCounts.legendary + first.debrief.rarityCounts.mythic + first.debrief.rarityCounts.ascendant + first.debrief.rarityCounts.chase).toBe(1);
     expect(first.state.lootCache.items).toHaveLength(1);
 
-    const repeat = advanceSoloFrontier(setSoloFrontierOrder(first.state, 'farm', 10), 1, strongOptions());
+    const repeat = advanceSoloFrontier(setSoloFrontierOrder(first.state, 'farm', 10), STRONG_ENCOUNTER_MS, strongOptions());
     expect(repeat.state.keys).toBe(SOLO_FRONTIER_BOSS_KEY_REWARDS[10] * 2);
     expect(repeat.state.lootCache.items.length).toBeGreaterThanOrEqual(1);
   });
@@ -161,7 +164,7 @@ describe('Solo Frontier v20 orders and deterministic progression', () => {
       firstClearStages: Array.from({ length: 9 }, (_, index) => index + 1),
       lootCache: fullCache
     }), 'push');
-    const result = advanceSoloFrontier(state, 2, strongOptions());
+    const result = advanceSoloFrontier(state, STRONG_ENCOUNTER_MS, strongOptions());
     expect(result.debrief.filterSalvage).toBeGreaterThan(0);
     expect(result.debrief.fullCacheSalvage).toBe(0);
 
@@ -170,7 +173,7 @@ describe('Solo Frontier v20 orders and deterministic progression', () => {
       highestClearedStage: 9,
       firstClearStages: Array.from({ length: 9 }, (_, index) => index + 1),
       lootCache: cacheOnly
-    }), 'push'), 2, strongOptions());
+    }), 'push'), STRONG_ENCOUNTER_MS, strongOptions());
     expect(cacheResult.debrief.fullCacheSalvage).toBeGreaterThan(0);
   });
 });
@@ -188,17 +191,18 @@ describe('Solo Frontier v20 progression, catch-up, and migration contracts', () 
 
   it('keeps first-clear point grants idempotent through repeat farming', () => {
     const initial = setSoloFrontierOrder(seededState(4, [1, 2, 3, 4]), 'push');
-    const first = advanceSoloFrontier(initial, 20, strongOptions());
+    const first = advanceSoloFrontier(initial, STRONG_ENCOUNTER_MS * 31, strongOptions());
     expect(first.state.combatDiscipline.earnedPoints).toBe(1);
-    const repeat = advanceSoloFrontier(setSoloFrontierOrder(first.state, 'farm', 5), 20, strongOptions());
+    const repeat = advanceSoloFrontier(setSoloFrontierOrder(first.state, 'farm', 5), STRONG_ENCOUNTER_MS * 31, strongOptions());
     expect(repeat.state.combatDiscipline.earnedPoints).toBe(1);
     expect(repeat.state.combatDiscipline.grantedStages).toEqual([5]);
   });
 
   it('keeps online and yielded offline catch-up byte-equivalent', async () => {
     const initial = setSoloFrontierOrder(createInitialSoloFrontierState({ lastUpdatedAt: 1_000 }), 'push');
-    const online = advanceSoloFrontier(initial, 100, strongOptions()).state;
-    const offline = await catchUpSoloFrontier(initial, 0.1, { ...strongOptions(), batchEncounters: 2 });
+    const elapsedMs = STRONG_ENCOUNTER_MS * 4;
+    const online = advanceSoloFrontier(initial, elapsedMs, strongOptions()).state;
+    const offline = await catchUpSoloFrontier(initial, elapsedMs / 1_000, { ...strongOptions(), batchEncounters: 2 });
     expect(offline.batches).toBeGreaterThan(1);
     expect(offline.state).toEqual(online);
   });
@@ -206,10 +210,10 @@ describe('Solo Frontier v20 progression, catch-up, and migration contracts', () 
   it('runs solo combat concurrently with an active non-combat track', () => {
     const initial = setSoloFrontierOrder(createInitialSoloFrontierState({
       nonCombatSkills: {
-        Mining: { id: 'Mining', active: true, actionsPerSecond: 1_000, xpPerAction: 20, level: 1, xp: 0, nextXp: 100, progress: 0, quantity: 0 }
+        Mining: { id: 'Mining', active: true, actionsPerSecond: 0.2, xpPerAction: 20, level: 1, xp: 0, nextXp: 100, progress: 0, quantity: 0 }
       }
     }), 'push');
-    const result = advanceSoloFrontier(initial, 10, strongOptions());
+    const result = advanceSoloFrontier(initial, STRONG_ENCOUNTER_MS * 10, strongOptions());
     expect(result.state.totalVictories).toBe(10);
     expect(result.state.nonCombatSkills.Mining.quantity).toBe(10);
     expect(result.state.nonCombatSkills.Mining.level).toBe(2);
@@ -218,11 +222,11 @@ describe('Solo Frontier v20 progression, catch-up, and migration contracts', () 
 
   it('continues identically after save/reload normalization and aggregates the debrief', () => {
     const initial = setSoloFrontierOrder(createInitialSoloFrontierState({ lastUpdatedAt: 1_000 }), 'push');
-    const first = advanceSoloFrontier(initial, 4, strongOptions());
+    const first = advanceSoloFrontier(initial, STRONG_ENCOUNTER_MS * 1.5, strongOptions());
     const reloaded = JSON.parse(JSON.stringify(first.state)) as SoloFrontierRuntimeState;
-    const continued = advanceSoloFrontier(reloaded, 16, { ...strongOptions(), resetDebrief: false });
-    const directFirst = advanceSoloFrontier(initial, 4, strongOptions());
-    const direct = advanceSoloFrontier(directFirst.state, 16, { ...strongOptions(), resetDebrief: false });
+    const continued = advanceSoloFrontier(reloaded, STRONG_ENCOUNTER_MS * 8.5, { ...strongOptions(), resetDebrief: false });
+    const directFirst = advanceSoloFrontier(initial, STRONG_ENCOUNTER_MS * 1.5, strongOptions());
+    const direct = advanceSoloFrontier(directFirst.state, STRONG_ENCOUNTER_MS * 8.5, { ...strongOptions(), resetDebrief: false });
     expect(continued.state).toEqual(direct.state);
     expect(continued.debrief.victories).toBeGreaterThan(0);
     expect(continued.debrief.skillXp['Offensive Magic']).toBeGreaterThan(0);

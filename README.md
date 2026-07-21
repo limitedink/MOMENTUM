@@ -46,6 +46,7 @@ Momentum takes inspiration from the long-term skill progression of **Old School 
 
 ### Active gameplay
 
+- Solo Frontier's persistent Push/Farm/Pause loop, 30-stage route, deterministic combat, targeted loot, wall diagnosis, return debrief, and offline catch-up
 - Real-time arena combat with movement, dashing, attacks, equipment, and loadout choices
 - Three progressive boss tiers with distinct stats, attacks, requirements, and rewards
 - Combat Discipline talent branches with mutually exclusive capstones
@@ -81,6 +82,7 @@ Momentum takes inspiration from the long-term skill progression of **Old School 
 | --- | --- |
 | Public browser prototype | Playable |
 | Core idle and active loops | Implemented |
+| Solo Frontier balance and regression audit | Passing; deterministic evidence recorded |
 | Local party expedition | Implemented prototype |
 | Versioned saves and offline progress | Implemented |
 | Tauri desktop shell | Implemented foundation |
@@ -220,10 +222,13 @@ For a direct backend target, configure `VITE_MOMENTUM_BACKEND_URL` and the backe
 Run the client checks:
 
 ```bash
+npm run balance:solo
 npm run typecheck
 npm test
 npm run build
 ```
+
+The balance command writes its deterministic report to `artifacts/solo-frontier/balance-report.json`. See [Solo Frontier design and audit notes](docs/solo-frontier.md) for the loop, skill meanings, v20 migration chain, browser evidence, debug controls, measured acceptance results, and explicitly deferred work.
 
 Run the backend checks:
 

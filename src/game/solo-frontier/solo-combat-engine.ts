@@ -1,5 +1,5 @@
 import type { CombatSkillId } from '../combat-progression';
-import { SOLO_COMBAT_TIMEOUT_SECONDS, STANCE_MODIFIERS, STARTER_ABILITY_TUNING } from './solo-frontier-definitions';
+import { SOLO_COMBAT_TIMEOUT_SECONDS, SOLO_FRONTIER_BALANCE, STANCE_MODIFIERS, STARTER_ABILITY_TUNING } from './solo-frontier-definitions';
 import {
   AURA_IDS,
   DEFENSIVE_ABILITY_IDS,
@@ -89,6 +89,13 @@ function weaponMultiplier(input: SoloCombatInput): number {
   return 1 + 0.008 * skill(input, 'Offensive Magic');
 }
 
+function weaponStyleDamageMultiplier(style: WeaponStyle): number {
+  if (style === 'gun') return SOLO_FRONTIER_BALANCE.weaponStyleDamage.firearm;
+  if (style === 'ranged') return SOLO_FRONTIER_BALANCE.weaponStyleDamage.ranged;
+  if (style === 'magic') return SOLO_FRONTIER_BALANCE.weaponStyleDamage.magic;
+  return SOLO_FRONTIER_BALANCE.weaponStyleDamage.melee;
+}
+
 function weaponAccuracySkill(input: SoloCombatInput): number {
   const style = input.activeWeapon.style;
   if (MELEE_PROFICIENCY[style]) return skill(input, 'Melee Accuracy');
@@ -116,7 +123,10 @@ export function deriveSoloPlayerStats(input: SoloCombatInput): DerivedSoloPlayer
   const evasion = finiteNonNegative(input.equippedStats.evasion) + skill(input, 'Evasion');
   const armour = proficientArmour(input) * stance.armour;
   const ward = finiteNonNegative(input.equippedStats.ward) * stance.ward;
-  const damage = finiteNonNegative(input.activeWeapon.damage) * weaponMultiplier(input) * stance.damage;
+  const damage = (finiteNonNegative(input.activeWeapon.damage) + finiteNonNegative(input.equippedStats.damage))
+    * weaponMultiplier(input)
+    * weaponStyleDamageMultiplier(input.activeWeapon.style)
+    * stance.damage;
   const attackInterval = Math.max(
     0.05,
     finiteNonNegative(input.activeWeapon.attackInterval) * (1 - reflexReduction) * stance.attackInterval
