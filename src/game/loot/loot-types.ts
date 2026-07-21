@@ -11,7 +11,62 @@ export const RARITY_IDS = [
 
 export type RarityId = (typeof RARITY_IDS)[number];
 
-export type LootSlot = 'melee' | 'ranged' | 'gun' | 'magic' | 'armor';
+export const EQUIPMENT_SLOT_IDS = [
+  'melee',
+  'gun',
+  'ranged',
+  'magic',
+  'helm',
+  'chest',
+  'gloves',
+  'pants',
+  'boots',
+  'belt',
+  'cloak',
+  'amulet',
+  'ring1',
+  'ring2',
+  'trinket1',
+  'trinket2',
+  'food'
+] as const;
+
+export const PAPER_DOLL_SLOT_IDS = EQUIPMENT_SLOT_IDS;
+export const EQUIPMENT_POSITIONS = EQUIPMENT_SLOT_IDS;
+export const PAPER_DOLL_SLOTS = EQUIPMENT_SLOT_IDS;
+export const EQUIPMENT_SLOTS = EQUIPMENT_SLOT_IDS;
+export const COMBAT_EQUIPMENT_SLOT_IDS = [
+  'melee', 'gun', 'ranged', 'magic', 'helm', 'chest', 'gloves', 'pants', 'boots', 'belt', 'cloak', 'amulet',
+  'ring1', 'ring2', 'trinket1', 'trinket2'
+] as const;
+export const NON_COMBAT_TOOL_SLOTS = ['tool'] as const;
+export type NonCombatToolSlotId = (typeof NON_COMBAT_TOOL_SLOTS)[number];
+
+export type EquipmentSlotId = (typeof EQUIPMENT_SLOT_IDS)[number];
+export type EquipmentPosition = EquipmentSlotId;
+export type PaperDollSlot = EquipmentSlotId;
+export type WeaponSlotId = 'melee' | 'gun' | 'ranged' | 'magic';
+export type ArmourSlotId = 'helm' | 'chest' | 'gloves' | 'pants' | 'boots' | 'cloak';
+export type AccessorySlotId = 'belt' | 'amulet' | 'ring' | 'trinket';
+export type ArmourWeight = 'light' | 'medium' | 'heavy';
+export type ItemKind = 'weapon' | 'armour' | 'accessory' | 'food';
+
+/**
+ * `armor`, `ring`, and `trinket` are retained as input aliases for old saves
+ * and callers. New definitions use the canonical paper-doll positions.
+ */
+export type LootSlot = EquipmentSlotId | AccessorySlotId | 'armor';
+
+export const WEAPON_SLOT_IDS: readonly WeaponSlotId[] = ['melee', 'gun', 'ranged', 'magic'];
+export const ACTIVE_WEAPON_SLOT_IDS = WEAPON_SLOT_IDS;
+export const ARMOUR_SLOT_IDS: readonly ArmourSlotId[] = ['helm', 'chest', 'gloves', 'pants', 'boots', 'cloak'];
+export const ACCESSORY_SLOT_IDS: readonly AccessorySlotId[] = ['belt', 'amulet', 'ring', 'trinket'];
+
+export type EquipmentSlotMap = { [slot in EquipmentSlotId]: string | null };
+
+export interface EquipmentLoadout extends EquipmentSlotMap {
+  activeWeaponSlot: WeaponSlotId | null;
+}
 
 export type CombatStat =
   | 'damage'
@@ -49,6 +104,8 @@ export interface AffixRoll {
   stat: CombatStat;
   value: number;
   tier: number;
+  /** The normalized roll percentile shown by item inspection. */
+  percentile: number;
   unit: '%' | 'flat' | 'seconds';
 }
 
@@ -58,6 +115,9 @@ export interface ItemDefinition {
   slot: LootSlot;
   description: string;
   baseStats: Partial<Record<CombatStat, number>>;
+  kind?: ItemKind;
+  /** Weight applies to armour and cloaks, or to melee weapons where set. */
+  weight?: ArmourWeight;
   signatureId: string;
   signatureName: string;
   signatureDescription: string;
@@ -74,6 +134,68 @@ export interface ItemInstance {
   signatureId: string;
   sourceId: string;
   acquiredAt: number;
+  /** Number of completed one-affix reforges. */
+  rerolls?: number;
+}
+
+export interface LootFilters {
+  /** `common` (or null) means every normal drop passes by default. */
+  globalMinimumRarity: RarityId | null;
+  perSlotMinimumRarity: Partial<Record<EquipmentSlotId | AccessorySlotId, RarityId | null>>;
+}
+
+export interface LootCacheState {
+  items: readonly ItemInstance[];
+  equipment: EquipmentLoadout;
+  favoriteIds: readonly string[];
+  filters: LootFilters;
+  capacity: 35;
+  /** True when a migrated save still has more than the new capacity. */
+  grandfatheredOverflow: boolean;
+}
+
+export interface LootCacheMutation {
+  accepted: boolean;
+  reason: string;
+  item: ItemInstance | null;
+  salvage: number;
+  salvaged: boolean;
+  cache: LootCacheState;
+}
+
+export interface ReforgeCost {
+  salvage: number;
+  bars: number;
+  craftedComponents: number;
+}
+
+export interface ReforgeResources {
+  salvage?: number;
+  bars?: number;
+  craftedComponents?: number;
+  Salvage?: number;
+  Bars?: number;
+  'Crafted Components'?: number;
+}
+
+export interface ReforgeResult {
+  accepted: boolean;
+  reason: string;
+  item: ItemInstance | null;
+  cost: ReforgeCost;
+  resources: ReforgeResources;
+}
+
+export interface EquippedStatsSnapshot {
+  stats: Partial<Record<CombatStat, number>>;
+  equippedItemIds: readonly string[];
+  activeWeaponSlot: WeaponSlotId | null;
+  signatures: readonly {
+    instanceId: string;
+    signatureId: string;
+    name: string;
+    description: string;
+  }[];
 }
 
 export interface LootTable {
@@ -94,6 +216,7 @@ export interface LootSourceContext {
   sourceTier: number;
   playerLevel: number;
   runId: string;
+  itemLevel?: number;
   now?: number;
 }
 

@@ -127,3 +127,9 @@ export function migrateV17SaveToV18(value: unknown): MomentumSaveV18 {
     }
   };
 }
+
+// v19 extends the v18 save with the ARPG loot and paper-doll layer. Re-export
+// it here so callers that already consume the versioned combat migration do
+// not need a second save-migration import path.
+export { LOOT_SAVE_VERSION, MOMENTUM_SAVE_VERSION, migrateV18SaveToV19, migrateV18ToV19, migrateLootSaveToV19, migrateV18Save } from '../loot/loot-migration';
+export type { MomentumSaveV19 } from '../loot/loot-migration';
