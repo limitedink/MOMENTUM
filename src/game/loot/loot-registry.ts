@@ -3,7 +3,8 @@ import {
   COMBAT_LOOT_DEFINITIONS,
   PARTY_BOSS_LOOT_TABLE,
   RARITY_DEFINITIONS,
-  SKILL_TOOL_DEFINITIONS
+  SKILL_TOOL_DEFINITIONS,
+  SOLO_FRONTIER_LOOT_TABLE
 } from './loot-definitions';
 import { ACCESSORY_SLOT_IDS, ARMOUR_SLOT_IDS, EQUIPMENT_SLOT_IDS } from './loot-types';
 import type {
@@ -138,13 +139,41 @@ function itemFitsSlot(definition: ItemDefinition, requestedSlot: string): boolea
 function tableFor(tables: readonly LootTable[], context: LootSourceContext): LootTable {
   return tables.find(table => table.sourceType === context.sourceType && table.sourceId === context.sourceId)
     || tables.find(table => table.sourceType === context.sourceType)
-    || (context.sourceType === 'partyBoss' ? PARTY_BOSS_LOOT_TABLE : ARENA_LOOT_TABLES[0]);
+    || (context.sourceType === 'partyBoss'
+      ? PARTY_BOSS_LOOT_TABLE
+      : context.sourceType === 'soloFrontier'
+        ? SOLO_FRONTIER_LOOT_TABLE
+        : ARENA_LOOT_TABLES[0]);
 }
 
-function rollRarity(table: LootTable, random: () => number): RarityDefinition {
-  const ids = RARITY_DEFINITIONS.map(rarity => rarity.id);
+function rollRarity(table: LootTable, random: () => number, minimumRarity?: string): RarityDefinition {
+  const minimumIndex = minimumRarity ? rarityIndex(minimumRarity) : 0;
+  const ids = RARITY_DEFINITIONS.slice(minimumIndex).map(rarity => rarity.id);
   const weights = ids.map(id => table.rarityWeights[id] || 0);
   return rarityById(pickWeighted(ids, weights, random));
+}
+
+function pickLootDefinition(
+  definitionIds: readonly string[],
+  definitions: readonly ItemDefinition[],
+  targetSlots: readonly LootSlot[] | undefined,
+  random: () => number
+): ItemDefinition {
+  const candidates = definitionIds
+    .map(id => definitions.find(item => item.id === id))
+    .filter((item): item is ItemDefinition => Boolean(item));
+  if (!candidates.length) return definitions[0];
+  if (!targetSlots?.length) return candidates[Math.floor(randomUnit(random) * candidates.length)];
+
+  const targetSet = new Set(targetSlots);
+  const targeted = candidates.filter(item => targetSet.has(item.slot));
+  const untargeted = candidates.filter(item => !targetSet.has(item.slot));
+  if (!targeted.length || !untargeted.length) return candidates[Math.floor(randomUnit(random) * candidates.length)];
+  // Advertised slots get 60% of the source's slot-selection weight. This is
+  // intentionally a two-bucket roll so the result is independent of how many
+  // bases happen to exist in either bucket.
+  const bucket = randomUnit(random) < 0.60 ? targeted : untargeted;
+  return bucket[Math.floor(randomUnit(random) * bucket.length)];
 }
 
 export function rollAffixes(
@@ -193,13 +222,13 @@ export function rollLoot(
   const table = tableFor(tables, context);
   const salvage = Math.round(table.salvageMin + (table.salvageMax - table.salvageMin) * randomUnit(random));
   const collectionTrackId = table.sourceId;
-  if (randomUnit(random) > table.itemChance || table.itemDefinitionIds.length === 0 || definitions.length === 0) {
+  const itemChance = clamp(finiteNumber(context.itemChance, table.itemChance), 0, 1);
+  if (randomUnit(random) > itemChance || table.itemDefinitionIds.length === 0 || definitions.length === 0) {
     return { tableId: table.id, item: null, salvage, collectionTrackId, collectionProgress: table.collectionProgress, rarity: null };
   }
 
-  const rarity = rollRarity(table, random);
-  const definitionId = table.itemDefinitionIds[Math.floor(randomUnit(random) * table.itemDefinitionIds.length)];
-  const definition = definitions.find(item => item.id === definitionId) || definitions[0];
+  const rarity = rollRarity(table, random, context.minimumRarity);
+  const definition = pickLootDefinition(table.itemDefinitionIds, definitions, context.targetSlots, random);
   const itemLevel = clamp(Math.floor(finiteNumber(context.itemLevel, context.sourceTier * 10 + Math.floor(context.playerLevel / 5))), 1, 30);
   const now = context.now || Date.now();
   const instance: ItemInstance = {
@@ -513,7 +542,14 @@ export function insertLoot(
   });
   const definitions = options.definitions || COMBAT_LOOT_DEFINITIONS;
   if (!passesLootFilters(incoming, cache.filters, definitions)) {
-    return { accepted: false, reason: 'Drop rejected by loot filters.', item: null, salvage: 0, salvaged: false, cache };
+    return {
+      accepted: false,
+      reason: 'Drop rejected by loot filters; the item was salvaged.',
+      item: null,
+      salvage: salvageValue(incoming, definitions),
+      salvaged: true,
+      cache
+    };
   }
   if (cache.items.some(item => item.instanceId === incoming.instanceId)) {
     return { accepted: false, reason: 'This loot instance is already in the cache.', item: null, salvage: 0, salvaged: false, cache };
@@ -672,7 +708,7 @@ export function getItemDefinition(id: string, definitions: readonly ItemDefiniti
 export function getSkillToolDefinition(id: string): SkillToolDefinition | undefined { return SKILL_TOOL_DEFINITIONS.find(tool => tool.id === id); }
 export function listSkillTools(skillId: string): SkillToolDefinition[] { return SKILL_TOOL_DEFINITIONS.filter(tool => tool.skillId === skillId); }
 
-export const lootTables = Object.freeze([...ARENA_LOOT_TABLES, PARTY_BOSS_LOOT_TABLE]);
+export const lootTables = Object.freeze([...ARENA_LOOT_TABLES, PARTY_BOSS_LOOT_TABLE, SOLO_FRONTIER_LOOT_TABLE]);
 export const lootDefinitions = Object.freeze([...COMBAT_LOOT_DEFINITIONS]);
 export const rarityDefinitions = Object.freeze([...RARITY_DEFINITIONS]);
 export const skillToolDefinitions = Object.freeze([...SKILL_TOOL_DEFINITIONS]);

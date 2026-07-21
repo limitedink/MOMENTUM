@@ -3,6 +3,7 @@ import './game/combat-progression';
 import './game/skills';
 import './game/loot';
 import './game/world';
+import './game/solo-frontier';
 import './game/expeditions';
 import './party/party-transport';
 import './party/party-store';

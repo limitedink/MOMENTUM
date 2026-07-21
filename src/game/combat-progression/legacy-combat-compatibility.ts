@@ -3,16 +3,17 @@ import { COMBAT_SKILL_IDS, type CombatProgressionState } from './combat-types';
 import { combatSkillLevels, createInitialCombatProgression, xpToNextCombatLevel } from './combat-progression';
 import { convertLegacyCombatProgression } from './combat-migration';
 
-/** @deprecated Remove with the legacy arena/runtime migration in Goal 4. */
+/** @deprecated Retained only as a read-only migration/audit shape. */
 export const LEGACY_COMBAT_SKILL_DEFINITION: SkillDefinition = Object.freeze({
   id: 'Combat',
   name: 'Combat',
   family: 'combat',
-  mode: 'idle',
+  mode: 'active',
   baseActionsPerSecond: 0.5,
   xpPerAction: 20,
   activeActivityId: null,
-  idleOutputs: { 'Boss Keys': 0.1 }
+  // Generic Combat is no longer trainable and never generates idle rewards.
+  idleOutputs: {}
 });
 
 /** @deprecated Generic Combat exists only to keep the pre-Goal-4 runtime playable. */

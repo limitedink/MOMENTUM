@@ -27,19 +27,25 @@ const SKILL_TREE_RULES = SKILL_FRAMEWORK?.skillTree;
 const LOOT_FRAMEWORK = window.MomentumLootFramework;
 const WORLD_FRAMEWORK = window.MomentumWorldFramework;
 const WORLD_REGION = WORLD_FRAMEWORK?.frontier;
+const SOLO_FRONTIER_FRAMEWORK = window.MomentumSoloFrontier;
 
 const MAX_SKILL_LEVEL = 100;   // set to 99, 100, 120, 500, 1000... your call
 const skills = [
   { id:'Mining',   basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
   { id:'Smithing', basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
   { id:'Crafting', basePerSec: 0.35, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
-  COMBAT_PROGRESSION_FRAMEWORK.compatibility.createRuntimeState(),
   { id:'Fishing',  basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
   { id:'Cooking',  basePerSec: 1 / 2.5, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
   { id:'Woodcutting', basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
 ];
 let combatProgression = COMBAT_PROGRESSION_FRAMEWORK.progression.createInitialCombatProgression();
 let legacyCombatAudit = null;
+
+// Generic Combat is no longer a trainable skill. Arena-facing gates retain a
+// compatibility aggregate derived from the 17 split combat skills instead.
+function combatLevelForUI() {
+  return Math.max(1, COMBAT_PROGRESSION_FRAMEWORK.compatibility.genericLevel(combatProgression));
+}
 
 const UI_ICONS = {
   skill: {
@@ -127,7 +133,6 @@ let warmup = { t: 0, targetA: 0, currentA: 0 };
 
 let BULLET_DAMAGE = 10;
 let baseMult = 1.0;     // multiplies all perSec
-let keyRateMult = 1.0;  // multiplies boss keys
 
 
 
@@ -573,14 +578,6 @@ const SKILL_MILESTONES = {
     { level:12, label:'Piano instrument' },
     { level:20, label:'Harp instrument' }
   ],
-  Combat: [
-    { level:5, label:'Initiate Arena + Talent Point' },
-    { level:10, label:'Vanguard Arena + Talent Point' },
-    { level:15, label:'Apex Arena + Talent Point' },
-    { level:20, label:'Combat Discipline Talent Point' },
-    { level:25, label:'Combat Discipline Talent Point' },
-    { level:30, label:'Final Combat Discipline Talent Point' }
-  ],
   Fishing: [
     { level:5, label:'Basic Bait preparation' },
     { level:10, label:'Prime Bait mastery' },
@@ -611,6 +608,9 @@ let worldRuntime = null;
 let worldState = null;
 let worldRenderSignature = '';
 let worldActiveActivity = null;
+let soloFrontierState = SOLO_FRONTIER_FRAMEWORK.createInitialSoloFrontierState();
+let soloFrontierRuntime = null;
+let soloFrontierLastDebrief = null;
 
 const FRONTIER_DIRECTIVES = [
   { id:'echoProtocol', tierId:1, name:'Echo Protocol', description:'Every shockwave is followed by a delayed echo.' },
@@ -682,8 +682,8 @@ function frontierKeyStatus(cost) {
 }
 
 function earnedCombatTalentPoints() {
-  const combatLevel = skills.find(skill => skill.id === 'Combat').lvl;
-  return COMBAT_TALENT_LEVELS.filter(level => combatLevel >= level).length;
+  const legacyEntitlement = COMBAT_TALENT_LEVELS.filter(level => combatLevelForUI() >= level).length;
+  return Math.max(legacyEntitlement, soloFrontierState?.combatDiscipline?.earnedPoints || 0);
 }
 
 function availableCombatTalentPoints() {
@@ -694,7 +694,7 @@ function evaluateRequirements(requirements = []) {
   const missing = [];
   for (const requirement of requirements) {
     if (requirement.type === 'skillLevel') {
-      const level = skills.find(skill => skill.id === requirement.skill)?.lvl || 0;
+      const level = requirement.skill === 'Combat' ? combatLevelForUI() : skills.find(skill => skill.id === requirement.skill)?.lvl || 0;
       if (level < requirement.value) missing.push(`${requirement.skill} ${requirement.value}`);
     }
     if (requirement.type === 'resource') {
@@ -735,7 +735,7 @@ function evaluateWorldRequirements(requirements = [], state = worldState) {
   const missing = [];
   for (const requirement of requirements) {
     if (requirement.type === 'skillLevel') {
-      const level = skills.find(skill => skill.id === requirement.skillId)?.lvl || 0;
+      const level = requirement.skillId === 'Combat' ? combatLevelForUI() : skills.find(skill => skill.id === requirement.skillId)?.lvl || 0;
       if (level < requirement.level) missing.push(`${requirement.skillId} ${requirement.level}`);
     }
     if (requirement.type === 'resource') {
@@ -848,7 +848,7 @@ function worldApplyReward(reward = {}) {
       sourceType: reward.lootSource.sourceType,
       sourceId: reward.lootSource.sourceId,
       sourceTier: reward.lootSource.sourceTier,
-      playerLevel: skills.find(skill => skill.id === 'Combat')?.lvl || 1,
+      playerLevel: combatLevelForUI(),
       runId: worldState?.runId || `frontier-loot-${Date.now()}`
     }, Math.random);
     const item = awardLootResolution(loot);
@@ -942,7 +942,7 @@ function renderWorld(force = false) {
     worldState.pendingReward?.id || null,
     worldState.completedEncounterIds,
     worldState.mastery,
-    ...skills.filter(skill => ['Woodcutting', 'Smithing', 'Crafting', 'Combat'].includes(skill.id)).map(skill => `${skill.id}:${skill.lvl}:${Math.floor(skill.qty)}`),
+    ...skills.filter(skill => ['Woodcutting', 'Smithing', 'Crafting'].includes(skill.id)).map(skill => `${skill.id}:${skill.lvl}:${Math.floor(skill.qty)}`),
     Math.floor(keys),
     rareGems,
     uncommonFish,
@@ -1043,7 +1043,7 @@ function addXpSilently(skill, amount) {
 window.MomentumGameRewards = Object.freeze({
   claimPartyReward(reward) {
     if (!reward || typeof reward !== 'object') return false;
-    const activityToSkill = { forest_patrol:'Combat', pine_chopping:'Woodcutting', pine_cutting:'Woodcutting', camp_cooking:'Cooking' };
+    const activityToSkill = { pine_chopping:'Woodcutting', pine_cutting:'Woodcutting', camp_cooking:'Cooking' };
     const addPartyXp = (activityId, amount) => {
       const xp = Math.max(0, Number(amount) || 0);
       if (!xp) return;
@@ -1104,7 +1104,6 @@ function tryLevelUp(s) {
     s.lvl += 1;
     s.next = xpToNext(s.lvl);
     const milestone = milestoneAtLevel(s.id, s.lvl);
-    if (s.id === 'Combat' && milestone) renderArenaTierOptions();
     const levelMessage = milestone ? `${s.id} ${s.lvl}: ${milestone.label} unlocked` : `${s.id} reached level ${s.lvl}`;
     showToast(levelMessage, milestone ? 3200 : 2000);
     logActivity(levelMessage, 'level');
@@ -1137,8 +1136,6 @@ showLevelNotice(`${s.id} level ${s.lvl}`, {
 const BASE_UPS = [
   { id:'workshop', name:'Workshop Efficiency I', desc:'+10% all idle rates', cost:{ ore:150 }, apply(){ baseMult *= 1.10; } },
   { id:'workshop2', name:'Workshop Efficiency II', desc:'+15% all idle rates', requirements:[{type:'skillLevel',skill:'Smithing',value:20}], cost:{ ore:300, bars:100 }, apply(){ baseMult *= 1.15; } },
-  { id:'keysmith', name:'Keysmith I', desc:'+25% Boss Key generation', cost:{ bars:80 }, apply(){ keyRateMult *= 1.25; } },
-  { id:'keysmith2', name:'Keysmith II', desc:'+25% additional Boss Key generation', requirements:[{type:'skillLevel',skill:'Combat',value:20}], cost:{ bars:180 }, apply(){ keyRateMult *= 1.25; } },
   { id:'honingArray', name:'Honing Array', desc:'Increase Honing from 1.8x to 2.0x', cost:{ ore:220, bars:80 }, apply(){ honingMult = Math.max(honingMult, 2); } },
   { id:'recyclerGrid', name:'Recycler Grid', desc:'Recycle 4 Scrap into Ore instead of 5', cost:{ ore:200, bars:60 }, apply(){} },
   { id:'offlineCache', name:'Expanded Offline Cache', desc:'Increase the offline progress cap from 8h to 12h', cost:{ ore:250, bars:100 }, apply(){} }
@@ -1155,9 +1152,6 @@ const SKILL_UPS = {
   ],
   Crafting: [
     { id:'assemblyJig', name:'Assembly Jig', desc:'Crafting actions run 10% faster.', cost:{ bars:90 }, apply(){ const s=skills.find(x=>x.id==='Crafting'); s.basePerSec = clampPerSec(s.basePerSec * 1.10); } },
-  ],
-  Combat: [
-    { id:'ammo1', name:'Hardened Rounds', desc:'+3 bullet damage', cost:{ bars:120 }, apply(){ BULLET_DAMAGE += 3; } },
   ],
   Cooking: [
     { id:'heatControl1', name:'Heat Control I', desc:'+10 percentage points cooking success', cost:{ ore:100 }, apply(){} },
@@ -1325,6 +1319,34 @@ function gearRateMult(skillId) {
 function playerMaxHp() { return 100 + (ITEMS[equipment.armor]?.hp || 0); }
 function equippedGun() { return ITEMS[equipment.gun] || ITEMS.pulseSidearm; }
 
+function soloFrontierCombatInput(stage, seed) {
+  const slots = ['melee', 'gun', 'ranged', 'magic'];
+  const activeSlot = slots.find(slot => equipment[slot] && ITEMS[equipment[slot]]) || 'gun';
+  const item = ITEMS[equipment[activeSlot]] || ITEMS.pulseSidearm;
+  const style = activeSlot === 'melee' ? 'medium-melee' : activeSlot;
+  const technique = style === 'magic' ? 'Arc Bolt' : style === 'gun' ? 'Burst Fire' : style === 'ranged' ? 'Piercing Shot' : 'Power Strike';
+  return {
+    combatSkills: COMBAT_PROGRESSION_FRAMEWORK.compatibility.progressionLevelMap(combatProgression),
+    equippedStats: { hitPoints: playerMaxHp() - 100, accuracy: item.accuracy || 0, evasion: 0, ward: 0, armourPieces: [] },
+    activeWeapon: {
+      id: item.id,
+      name: item.name,
+      style,
+      damage: weaponDamage(item),
+      accuracy: item.accuracy || 0,
+      attackInterval: item.attackInterval || 1,
+      damageType: style === 'magic' ? 'magical' : 'physical'
+    },
+    stance: 'Balanced',
+    technique,
+    defensiveAbility: 'none',
+    aura: 'none',
+    enemy: SOLO_FRONTIER_FRAMEWORK.stage(stage).enemy,
+    stage,
+    seed
+  };
+}
+
 const ARENA_STYLES = [
   { id:'melee', name:'Melee', slot:'melee', implemented:true, playstyle:'Close the distance, aim with the pointer, and commit to directional swings.' },
   { id:'ranged', name:'Ranged', slot:'ranged', implemented:false, playstyle:'Keep distance and pressure targets with deliberate physical shots.' },
@@ -1337,7 +1359,7 @@ let selectedArenaStyle = null;
    SAVE / LOAD
 ===================================== */
 const SAVE_KEY = 'momentum-save';
-const SAVE_VERSION = 18;
+const SAVE_VERSION = 20;
 const AUTO_SAVE_MS = 10_000;
 let resetInProgress = false;
 
@@ -1345,7 +1367,7 @@ function createSaveData() {
   return {
     version: SAVE_VERSION,
     savedAt: Date.now(),
-    skills: skills.filter(skill => skill.id !== 'Combat').map(({ id, basePerSec, active, qty, lvl, xp, progress, selectedToolId }) => ({
+    skills: skills.map(({ id, basePerSec, active, qty, lvl, xp, progress, selectedToolId }) => ({
       id, basePerSec, active, qty, lvl, xp, progress, selectedToolId
     })),
     unlockedNormalSlots,
@@ -1356,12 +1378,6 @@ function createSaveData() {
     gold,
     combatProgression: COMBAT_PROGRESSION_FRAMEWORK.progression.normalizeCombatProgression(combatProgression),
     legacyCombat: legacyCombatAudit,
-    combatCompatibility: {
-      skill: (() => {
-        const { id, basePerSec, active, qty, lvl, xp, progress, selectedToolId } = skills.find(skill => skill.id === 'Combat');
-        return { id, basePerSec, active, qty, lvl, xp, progress, selectedToolId };
-      })()
-    },
     scrap,
     basicBait,
     uncommonFish,
@@ -1369,7 +1385,6 @@ function createSaveData() {
     partyRewards:{ huntingXp, trappedGame },
     globalBuff: { ...globalBuff },
     baseMult,
-    keyRateMult,
     bulletDamage: BULLET_DAMAGE,
     ownedBaseUps: [...ownedBaseUps],
     ownedSkillUps: [...ownedSkillUps],
@@ -1401,7 +1416,8 @@ function createSaveData() {
     arenaTierUnlocked,
     selectedArenaTier,
     arenaWins: [...arenaWins],
-    world: worldRuntime?.getState() || null
+    world: worldRuntime?.getState() || null,
+    soloFrontier: soloFrontierRuntime?.getState() || soloFrontierState
   };
 }
 
@@ -1424,6 +1440,8 @@ function loadGame() {
   try {
     let save = JSON.parse(raw);
     if (save.version === 17) save = COMBAT_PROGRESSION_FRAMEWORK.migration.migrateV17SaveToV18(save);
+    if (save.version === 18) save = COMBAT_PROGRESSION_FRAMEWORK.migration.migrateV18SaveToV19(save);
+    if (save.version === 19) save = SOLO_FRONTIER_FRAMEWORK.migrateV19SaveToV20(save);
     if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, SAVE_VERSION].includes(save.version)) return false;
 
     save.skills.forEach(savedSkill => {
@@ -1453,7 +1471,6 @@ function loadGame() {
     trappedGame = save.version >= 13 ? Math.max(0, Number(save.partyRewards?.trappedGame) || 0) : 0;
     globalBuff = { ...save.globalBuff };
     baseMult = save.baseMult;
-    keyRateMult = save.keyRateMult;
     BULLET_DAMAGE = save.bulletDamage;
 
     ownedBaseUps.clear();
@@ -1515,12 +1532,14 @@ function loadGame() {
     arenaTierUnlocked = save.version >= 4 ? save.arenaTierUnlocked : 1;
     selectedArenaTier = save.version >= 4 ? Math.min(save.selectedArenaTier, arenaTierUnlocked) : 1;
     arenaWins = save.version >= 4 ? [...save.arenaWins] : [0, 0, 0];
-    const compatibilitySource = save.version >= 18 ? save.combatCompatibility?.skill || save.legacyCombat?.combatSkill : null;
-    if (compatibilitySource) Object.assign(skills.find(skill => skill.id === 'Combat'), COMBAT_PROGRESSION_FRAMEWORK.compatibility.createRuntimeState(compatibilitySource));
     legacyCombatAudit = save.version >= 18 ? save.legacyCombat || null : null;
     combatProgression = save.version >= 18
       ? COMBAT_PROGRESSION_FRAMEWORK.progression.normalizeCombatProgression(save.combatProgression)
-      : COMBAT_PROGRESSION_FRAMEWORK.migration.convertLegacyCombatProgression(skills.find(skill => skill.id === 'Combat'), null);
+      : COMBAT_PROGRESSION_FRAMEWORK.migration.convertLegacyCombatProgression(save.skills?.find(skill => skill?.id === 'Combat'), null);
+    soloFrontierState = save.version >= 20
+      ? SOLO_FRONTIER_FRAMEWORK.normalizeSoloFrontierState(save.soloFrontier)
+      : SOLO_FRONTIER_FRAMEWORK.createInitialSoloFrontierState();
+    soloFrontierRuntime = SOLO_FRONTIER_FRAMEWORK.createSoloFrontierRuntime(soloFrontierState);
     ensureWorldRuntime(save.version >= 15 ? save.world || null : null, save.version);
 
     updateSaveStatus(save.savedAt);
@@ -1724,11 +1743,6 @@ const SKILL_CFG = {
       s.qty += logs;
     }
   },
-  Combat:   { xpPerAction: 20, onAction(){
-    const keysPerAction = 0.10 * keyRateMult;
-    keys += keysPerAction;
-    // no s.qty for Combat right now
-  } },
   Crafting: {
     xpPerAction: 20,
     waitingLabel:'waiting for Bars and Pine Logs',
@@ -1845,7 +1859,7 @@ function productiveSkills() {
 }
 
 let pendingOfflineSummary = null;
-function applyOfflineProgress(savedAt) {
+async function applyOfflineProgress(savedAt) {
   const elapsed = Math.min(offlineMaxSeconds(), Math.max(0, (Date.now() - Number(savedAt || Date.now())) / 1000));
   if (elapsed < OFFLINE_MIN_SECONDS) return;
 
@@ -1891,6 +1905,17 @@ function applyOfflineProgress(savedAt) {
     globalBuff.secs = Math.max(0, globalBuff.secs - dt);
     fishingBuffSecs = Math.max(0, fishingBuffSecs - dt);
     remaining -= dt;
+    await Promise.resolve();
+  }
+
+  let soloDebrief = null;
+  if (soloFrontierRuntime?.getState().order !== 'paused') {
+    const result = await soloFrontierRuntime.catchUp(elapsed, {
+      offlineCapSeconds: offlineMaxSeconds(),
+      batchEncounters: 24
+    });
+    syncSoloFrontierProjection();
+    soloDebrief = result.debrief;
   }
 
   pendingOfflineSummary = {
@@ -1904,8 +1929,10 @@ function applyOfflineProgress(savedAt) {
     logs: skills.find(skill => skill.id === 'Woodcutting').qty - before.logs,
     burntFish: burntFish - before.burntFish,
     keys: keys - before.keys,
-    scrap: scrap - before.scrap
+    scrap: scrap - before.scrap,
+    soloDebrief
   };
+  saveGame();
 }
 
 function showOfflineSummary() {
@@ -1915,9 +1942,11 @@ function showOfflineSummary() {
   const minutes = Math.floor((summary.seconds % 3600) / 60);
   const rows = [
     ['Ore', summary.ore], ['Bars', summary.bars], ['Raw Fish', summary.fish], ['Cooked Fish', summary.cookedFish], ['Crafted Components', summary.craftedComponents], ['Burnt Fish', summary.burntFish], ['Logs', summary.logs],
-    ['Boss Keys', summary.keys], ['Scrap', summary.scrap]
-  ].filter(([, amount]) => amount > 0.001);
-  offlineSummary.innerHTML = `<p>Away for ${hours ? `${hours}h ` : ''}${minutes}m${summary.capped ? ` (${offlineMaxSeconds() / 3600}h cap reached)` : ''}.</p>${rows.length ? rows.map(([name, amount]) => `<div><span>${name}</span><strong>+${amount.toFixed(1)}</strong></div>`).join('') : '<p>No active skills produced resources.</p>'}`;
+    ['Boss Keys', summary.keys], ['Scrap', summary.scrap],
+    summary.soloDebrief && ['Solo victories', summary.soloDebrief.victories],
+    summary.soloDebrief && ['Solo deaths', summary.soloDebrief.deaths]
+  ].filter(row => row && row[1] > 0.001);
+  offlineSummary.innerHTML = `<p>Away for ${hours ? `${hours}h ` : ''}${minutes}m${summary.capped ? ` (${offlineMaxSeconds() / 3600}h cap reached)` : ''}.</p>${rows.length ? rows.map(([name, amount]) => `<div><span>${name}</span><strong>+${Number(amount).toFixed(1)}</strong></div>`).join('') : '<p>No active skills produced resources.</p>'}${summary.soloDebrief ? `<p class="small">Solo debrief saved · ${summary.soloDebrief.keptDropCount} kept drops · ${summary.soloDebrief.filterSalvage + summary.soloDebrief.fullCacheSalvage} Salvage.</p>` : ''}`;
   offlineModal.style.display = 'flex';
   logActivity(`Offline progress: ${hours ? `${hours}h ` : ''}${minutes}m processed`, 'offline');
 }
@@ -1940,7 +1969,7 @@ function canSelectTalent(talent) {
 function renderTalents() {
   const state = SKILL_TREE_RULES.createState(COMBAT_SKILL_TREE, [...ownedCombatTalents], combatSkillTreeView);
   const earned = earnedCombatTalentPoints();
-  const combatLevel = skills.find(skill => skill.id === 'Combat').lvl;
+  const combatLevel = combatLevelForUI();
   talentPointSummary.innerHTML = `<span>Combat ${combatLevel}</span><strong>${availableCombatTalentPoints()} available</strong><span>${ownedCombatTalents.size}/${earned} spent</span><span>Build: ${combatBuildLabel()}</span><span>Next point: ${COMBAT_TALENT_LEVELS.find(level => level > combatLevel) || 'all earned'}</span>`;
   const branchById = new Map(COMBAT_SKILL_TREE.branches.map(branch => [branch.id, branch]));
   const selectedNode = COMBAT_TALENTS.find(node => node.id === combatSkillTreeView.focusNodeId) || COMBAT_TALENTS.find(node => node.id === COMBAT_SKILL_TREE.rootNodeIds[0]);
@@ -2709,11 +2738,41 @@ function queueSkillXpDrop(skill, amount) {
 const loadedSave = loadGame();
 window.MomentumCombatProfile = Object.freeze({
   getSnapshot() {
-    return { playerId:'local-player', combatSkills:COMBAT_PROGRESSION_FRAMEWORK.compatibility.progressionLevelMap(combatProgression), gold, legacyCombatLevel:skills.find(skill => skill.id === 'Combat')?.lvl || 1 };
+    return { playerId:'local-player', combatSkills:COMBAT_PROGRESSION_FRAMEWORK.compatibility.progressionLevelMap(combatProgression), gold, legacyCombatLevel:combatLevelForUI() };
   }
 });
+function syncSoloFrontierProjection() {
+  if (!soloFrontierRuntime) return;
+  soloFrontierState = soloFrontierRuntime.getState();
+  combatProgression = soloFrontierState.combatProgression;
+  keys = soloFrontierState.keys;
+  lootInventory = [...soloFrontierState.lootCache.items];
+  collectionProgress = { ...soloFrontierState.collectionProgress };
+  if (soloFrontierState.debrief && soloFrontierState.debrief !== soloFrontierLastDebrief) {
+    salvageMaterials += soloFrontierState.debrief.filterSalvage + soloFrontierState.debrief.fullCacheSalvage;
+    soloFrontierLastDebrief = soloFrontierState.debrief;
+  }
+  rehydrateLootInventory();
+}
+soloFrontierRuntime = SOLO_FRONTIER_FRAMEWORK.createSoloFrontierRuntime(soloFrontierState, {
+  combatInput: soloFrontierCombatInput,
+  useConfiguredEnemy: false,
+  seed: soloFrontierState.seed
+});
+soloFrontierLastDebrief = soloFrontierState.debrief;
+syncSoloFrontierProjection();
+window.MomentumSoloFrontierRuntime = Object.freeze({
+  getState() { return soloFrontierRuntime.getState(); },
+  pause() { const next = soloFrontierRuntime.setOrder('paused'); syncSoloFrontierProjection(); saveGame(); return next; },
+  push() { const next = soloFrontierRuntime.setOrder('push'); syncSoloFrontierProjection(); saveGame(); return next; },
+  farm(stage) { const next = soloFrontierRuntime.setOrder('farm', stage); syncSoloFrontierProjection(); saveGame(); return next; },
+  setFallback(stage) { const next = soloFrontierRuntime.setFallbackStage(stage); syncSoloFrontierProjection(); saveGame(); return next; },
+  setFarmStage(stage) { const next = soloFrontierRuntime.setFarmStage(stage); syncSoloFrontierProjection(); saveGame(); return next; },
+  advance(elapsedMs) { const result = soloFrontierRuntime.advance(elapsedMs); syncSoloFrontierProjection(); saveGame(); return result; },
+  catchUp(seconds, options) { return soloFrontierRuntime.catchUp(seconds, options).then(result => { syncSoloFrontierProjection(); saveGame(); return result; }) }
+});
 if (!worldRuntime) ensureWorldRuntime();
-if (loadedSave) applyOfflineProgress(JSON.parse(localStorage.getItem(SAVE_KEY)).savedAt);
+if (loadedSave) void applyOfflineProgress(JSON.parse(localStorage.getItem(SAVE_KEY)).savedAt).then(showOfflineSummary);
 renderSkills();
 renderArenaTierOptions();
 renderActivityLedger();
@@ -2726,7 +2785,6 @@ honeSelect.value = hone || '';
 startWarmup();
 if (loadedSave) {
   showToast('Save loaded');
-  showOfflineSummary();
 }
 
 setInterval(() => saveGame(), AUTO_SAVE_MS);
@@ -2796,7 +2854,7 @@ function updateObjective() {
   const mining = skills.find(skill => skill.id === 'Mining');
   const smithing = skills.find(skill => skill.id === 'Smithing');
   const crafting = skills.find(skill => skill.id === 'Crafting');
-  const combat = skills.find(skill => skill.id === 'Combat');
+  const combat = { lvl: combatLevelForUI() };
   const hasAccountProgress = skills.some(skill => skill.lvl > 1 || skill.qty > 0);
   let title = 'Push the frontier';
   let detail = 'Refine weapons, improve your times, and prepare for higher arena tiers.';
@@ -2828,7 +2886,7 @@ function updateObjective() {
     action = 'open-adventure'; actionLabel = 'Claim Reward';
   } else if (combat.lvl < 5 || Math.floor(keys) < ARENA_TIERS[0].keyCost) {
     title = 'Prepare for the Initiate'; objectiveProgress = Math.min(100,((combat.lvl/5)+(Math.floor(keys)/ARENA_TIERS[0].keyCost))/2*100); detail = `Combat ${combat.lvl}/5 · Boss Keys ${Math.floor(keys)}/${ARENA_TIERS[0].keyCost}.`;
-    action = 'review-skills'; actionLabel = 'Train Combat';
+    action = 'open-field'; actionLabel = 'Open the Field';
   } else if (arenaWins[0] === 0) {
     title = 'Defeat the Initiate'; objectiveProgress = 75; detail = 'Choose Gun or equip an Iron Blade, then prepare an Arena run.';
     action = 'open-field'; actionLabel = 'Enter the Field';
@@ -2885,6 +2943,13 @@ function tick(now) {
     if (globalBuff.secs<0) globalBuff.secs = 0;
   }
   if (fishingBuffSecs > 0) fishingBuffSecs = Math.max(0, fishingBuffSecs - dt);
+
+  // Solo combat is an independent order, so it advances in the same frame as
+  // the normal skill tracks instead of occupying a normal skill slot.
+  if (soloFrontierRuntime?.getState().order !== 'paused') {
+    soloFrontierRuntime.advance(dt * 1_000);
+    syncSoloFrontierProjection();
+  }
 
  
 // tick based production
@@ -2970,7 +3035,6 @@ skills.filter(s => s._els?.card?.isConnected).forEach(s=>{
 
   const ore = skills.find(s=>s.id==='Mining')?.qty ?? 0;
   const bars = skills.find(s=>s.id==='Smithing')?.qty ?? 0;
-  const combatXP = skills.find(s=>s.id==='Combat')?.xp ?? 0;
   const totalsSignature = JSON.stringify([ore.toFixed(1),bars.toFixed(1),skills.find(s=>s.id==='Crafting').qty.toFixed(1),scrap.toFixed(1),skills.find(s=>s.id==='Fishing').qty.toFixed(1),skills.find(s=>s.id==='Cooking').qty.toFixed(1),basicBait,uncommonFish,woodInventory.pine.toFixed(0),woodInventory.oak.toFixed(0),woodInventory.yew.toFixed(0),woodInventory.ancient.toFixed(0),Math.floor(keys),rareGems,Math.floor(gold),Math.ceil(fishingBuffSecs),burntFish.toFixed(1),Math.floor(huntingXp),trappedGame]);
   if (totalsSignature !== totalsRenderSignature) {
     totalsRenderSignature = totalsSignature;
@@ -3178,7 +3242,7 @@ function grantBossReward(tier, grantBuff = true) {
     sourceType:'arenaBoss',
     sourceId:`arena:${tier.id}`,
     sourceTier:tier.id,
-    playerLevel:skills.find(skill => skill.id === 'Combat')?.lvl || 1,
+    playerLevel:combatLevelForUI(),
     runId:`${tier.id}-${arenaWins[tier.id - 1]}-${Date.now()}`
   }, Math.random);
   const item = awardLootResolution(loot);

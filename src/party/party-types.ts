@@ -407,6 +407,7 @@ declare global {
     MomentumSkillFramework: typeof import('../game/skills').MomentumSkillFramework;
     MomentumLootFramework: typeof import('../game/loot').momentumLootFramework;
     MomentumWorldFramework: typeof import('../game/world').MomentumWorldFramework;
+    MomentumSoloFrontier: typeof import('../game/solo-frontier').MomentumSoloFrontier;
     MomentumExpeditions: typeof import('../game/expeditions').MomentumExpeditions;
     MomentumPartyTransport: PartyTransportApi;
     LocalMomentumPartyTransport: (options?: { commandDelay?: number; connectDelay?: number; authenticatedPlayerId?: string; storage?: Storage }) => MomentumPartyTransport & {

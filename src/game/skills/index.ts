@@ -1,6 +1,6 @@
 import { createSkillRegistry, resolveActiveSkillBonus, resolveSkillAction, applySkillActionResult } from './skill-registry';
 import { CORE_SKILL_DEFINITIONS, CRAFTING_ASSEMBLY_ACTIVITY, CRAFTING_RECIPES, FUTURE_SKILL_CATALOG } from './definitions';
-import { COMBAT_SKILL_DEFINITIONS, LEGACY_COMBAT_SKILL_DEFINITION, legacyCombatCompatibility } from '../combat-progression';
+import { COMBAT_SKILL_DEFINITIONS, legacyCombatCompatibility } from '../combat-progression';
 import {
   COMBAT_SKILL_TREE,
   allocateSkillTreeNode,
@@ -13,7 +13,9 @@ import {
   skillTreeNodeState
 } from './skill-trees';
 
-export const momentumSkillRegistry = createSkillRegistry([LEGACY_COMBAT_SKILL_DEFINITION, ...CORE_SKILL_DEFINITIONS, ...FUTURE_SKILL_CATALOG]);
+// Generic Combat is a migration/audit compatibility shape only; it is not a
+// trainable skill, normal slot, honing target, or idle reward source.
+export const momentumSkillRegistry = createSkillRegistry([...CORE_SKILL_DEFINITIONS, ...FUTURE_SKILL_CATALOG]);
 
 export const MomentumSkillFramework = Object.freeze({
   createSkillRegistry,

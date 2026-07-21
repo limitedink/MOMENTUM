@@ -200,7 +200,7 @@ export interface EquippedStatsSnapshot {
 
 export interface LootTable {
   id: string;
-  sourceType: 'arenaBoss' | 'partyBoss';
+  sourceType: 'arenaBoss' | 'partyBoss' | 'soloFrontier';
   sourceId: string;
   itemChance: number;
   salvageMin: number;
@@ -218,6 +218,12 @@ export interface LootSourceContext {
   runId: string;
   itemLevel?: number;
   now?: number;
+  /** Override the table chance for deterministic source-specific rules. */
+  itemChance?: number;
+  /** Force the rolled rarity to this tier or better. */
+  minimumRarity?: RarityId;
+  /** Stage-advertised item slots receive 60% of the slot-selection weight. */
+  targetSlots?: readonly LootSlot[];
 }
 
 export interface LootResolution {

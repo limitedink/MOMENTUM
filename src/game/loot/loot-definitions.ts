@@ -175,3 +175,10 @@ export const PARTY_BOSS_LOOT_TABLE: LootTable = {
   id: 'party:forest', sourceType: 'partyBoss', sourceId: 'party:forest', itemChance: 0.5, salvageMin: 10, salvageMax: 18, collectionProgress: 2,
   rarityWeights: standardRarityWeights, itemDefinitionIds: withUniqueItemIds('initiates-edge', 'vanguard-repeater', 'apex-aegis', 'black-star-crescent', ...COMBAT_LOOT_ITEM_IDS)
 };
+
+/** Solo Frontier uses the same item bases, but its runtime supplies the
+ * encounter-specific chance, rarity floor, and advertised slot weighting. */
+export const SOLO_FRONTIER_LOOT_TABLE: LootTable = {
+  id: 'solo-frontier', sourceType: 'soloFrontier', sourceId: 'solo-frontier', itemChance: 0.01, salvageMin: 2, salvageMax: 8, collectionProgress: 1,
+  rarityWeights: standardRarityWeights, itemDefinitionIds: withUniqueItemIds(...COMBAT_LOOT_ITEM_IDS)
+};

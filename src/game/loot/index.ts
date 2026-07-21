@@ -1,5 +1,5 @@
 import { calculateEquippedStats, calculateItemStats, createEquipmentLoadout, createLootCache, getItemDefinition, getRarity, getSkillToolDefinition, inspectItem, insertLoot, listSkillTools, lootDefinitions, lootTables, rarityDefinitions, rollLoot, salvageItem, skillToolDefinitions, updateCollectionProgress, validateEquipItem } from './loot-registry';
-import { ARENA_LOOT_TABLES, COMBAT_LOOT_DEFINITIONS, PARTY_BOSS_LOOT_TABLE, RARITY_DEFINITIONS, SKILL_TOOL_DEFINITIONS } from './loot-definitions';
+import { ARENA_LOOT_TABLES, COMBAT_LOOT_DEFINITIONS, PARTY_BOSS_LOOT_TABLE, RARITY_DEFINITIONS, SKILL_TOOL_DEFINITIONS, SOLO_FRONTIER_LOOT_TABLE } from './loot-definitions';
 import { migrateV18SaveToV19 } from './loot-migration';
 
 export const momentumLootFramework = Object.freeze({
@@ -24,6 +24,7 @@ export const momentumLootFramework = Object.freeze({
   skillToolDefinitions,
   arenaTables: ARENA_LOOT_TABLES,
   partyBossTable: PARTY_BOSS_LOOT_TABLE,
+  soloFrontierTable: SOLO_FRONTIER_LOOT_TABLE,
   rarities: RARITY_DEFINITIONS,
   skillTools: SKILL_TOOL_DEFINITIONS
 });

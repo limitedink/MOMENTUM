@@ -10,6 +10,7 @@ import {
   createSkillRegistry,
   resolveActiveSkillBonus
 } from '../src/game/skills/skill-registry';
+import { momentumSkillRegistry } from '../src/game/skills';
 import type { ResourceMap, SkillState } from '../src/game/skills/skill-types';
 
 const crafting = CORE_SKILL_DEFINITIONS.find(skill => skill.id === 'Crafting')!;
@@ -77,5 +78,10 @@ describe('skill framework', () => {
       'forgeGauntlet',
       'platedVest'
     ]);
+  });
+
+  it('does not register generic Combat as a trainable idle skill', () => {
+    expect(momentumSkillRegistry.get('Combat')).toBeUndefined();
+    expect(momentumSkillRegistry.get('Defense')).toBeUndefined();
   });
 });

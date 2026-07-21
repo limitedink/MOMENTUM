@@ -1,4 +1,5 @@
 import type { SoloCombatStance, SoloEnemyDefinition, SoloFrontierStageDefinition } from './solo-frontier-types';
+import type { LootSlot } from '../loot';
 
 export const SOLO_FRONTIER_STAGE_COUNT = 30;
 export const SOLO_COMBAT_TIMEOUT_SECONDS = 60;
@@ -25,6 +26,11 @@ export const STARTER_ABILITY_TUNING = Object.freeze({
 });
 
 const BOSS_NAMES = new Map<number, string>([[10, 'Initiate'], [20, 'Vanguard'], [30, 'Apex']]);
+
+const ADVERTISED_TARGET_SLOT_CYCLE: readonly (readonly LootSlot[])[] = Object.freeze([
+  ['melee', 'helm'], ['gun', 'chest'], ['ranged', 'gloves'], ['magic', 'pants'],
+  ['boots', 'cloak'], ['belt', 'amulet'], ['ring', 'trinket']
+]);
 
 function regularEnemyStats(stage: number) {
   return {
@@ -62,11 +68,14 @@ export const SOLO_FRONTIER_STAGES: readonly SoloFrontierStageDefinition[] = Obje
   Array.from({ length: SOLO_FRONTIER_STAGE_COUNT }, (_, index): SoloFrontierStageDefinition => {
     const stage = index + 1;
     const boss = BOSS_NAMES.has(stage);
+    const advertisedTargetSlots = ADVERTISED_TARGET_SLOT_CYCLE[(stage - 1) % ADVERTISED_TARGET_SLOT_CYCLE.length];
     return Object.freeze({
       stage,
       victoriesToClear: boss ? 1 : 10,
       encounterTimeoutSeconds: SOLO_COMBAT_TIMEOUT_SECONDS,
-      enemy: createSoloFrontierEnemy(stage)
+      enemy: createSoloFrontierEnemy(stage),
+      advertisedTargetSlots,
+      targetSlots: advertisedTargetSlots
     });
   })
 );

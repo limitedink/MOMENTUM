@@ -1,4 +1,5 @@
 import type { CombatSkillLevelMap, CombatSkillUseEvent } from '../combat-progression';
+import type { LootSlot } from '../loot';
 
 export const SOLO_COMBAT_STANCES = ['Aggressive', 'Balanced', 'Guarded'] as const;
 export type SoloCombatStance = (typeof SOLO_COMBAT_STANCES)[number];
@@ -63,6 +64,10 @@ export interface SoloFrontierStageDefinition {
   victoriesToClear: 1 | 10;
   encounterTimeoutSeconds: 60;
   enemy: SoloEnemyDefinition;
+  /** The stage's advertised item targets. Loot rolls give this bucket 60%. */
+  advertisedTargetSlots: readonly LootSlot[];
+  /** Short alias used by runtime/UI consumers that call them target slots. */
+  targetSlots: readonly LootSlot[];
 }
 
 export interface SoloCombatInput {
