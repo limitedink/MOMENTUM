@@ -1,5 +1,6 @@
 import {
   advanceSoloFrontier,
+  arenaTierUnlockForSoloStage,
   catchUpSoloFrontier,
   createInitialSoloFrontierState,
   createSoloFrontierRuntime,
@@ -11,7 +12,7 @@ import {
   setSoloFrontierOrder
 } from './solo-frontier-runtime';
 import { soloFrontierStage } from './solo-frontier-definitions';
-import { simulateSoloCombat } from './solo-combat-engine';
+import { deriveSoloPlayerStats, simulateSoloCombat } from './solo-combat-engine';
 
 export * from './solo-frontier-types';
 export * from './solo-frontier-definitions';
@@ -29,6 +30,8 @@ export const MomentumSoloFrontier = Object.freeze({
   setSoloFrontierFallback,
   setSoloFrontierFarmStage,
   setSoloFrontierOrder,
+  deriveSoloPlayerStats,
+  arenaTierUnlockForSoloStage,
   simulateSoloCombat,
   stage: soloFrontierStage
 });

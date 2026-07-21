@@ -13,6 +13,7 @@ import {
 } from '../src/game/loot';
 import {
   SOLO_FRONTIER_BOSS_KEY_REWARDS,
+  arenaTierUnlockForSoloStage,
   advanceSoloFrontier,
   catchUpSoloFrontier,
   createInitialSoloFrontierState,
@@ -74,6 +75,12 @@ function cachedItem(instanceId: string): ItemInstance {
 }
 
 describe('Solo Frontier v20 orders and deterministic progression', () => {
+  it('unlocks Arena tiers only from Solo Frontier boss stages while retaining legacy wins as migration seeds', () => {
+    expect([0, 9, 10, 19, 20, 29, 30].map(arenaTierUnlockForSoloStage)).toEqual([0, 0, 1, 1, 2, 2, 3]);
+    expect(seedSoloFrontierProgress({ arenaWins: [1, 0, 0] }).highestClearedStage).toBe(10);
+    expect(seedSoloFrontierProgress({ arenaWins: [0, 1, 0] }).highestClearedStage).toBe(20);
+    expect(seedSoloFrontierProgress({ arenaWins: [0, 0, 1] }).highestClearedStage).toBe(30);
+  });
   it('pushes from highest cleared and advances after a regular stage clear', () => {
     const initial = setSoloFrontierOrder(seededState(0, []), 'push');
     const result = advanceSoloFrontier(initial, 10, strongOptions());

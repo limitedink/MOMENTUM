@@ -16,6 +16,7 @@ import {
 } from './expedition-types';
 import { EXPEDITION_SLOT_EFFICIENCY } from './expedition-slot-policy';
 import { legacyCombatLevelMap } from '../combat-progression';
+import { COMBAT_EXPEDITION_DEFINITION } from './expedition-definitions';
 
 const clamp = (value: number, min = 0, max = 100): number => Math.max(min, Math.min(max, value));
 const round = (value: number, digits = 2): number => {
@@ -98,6 +99,31 @@ function roleFor(definition: ExpeditionDefinition, roleId: string): ExpeditionRo
   return definition.roles.find(role => role.id === roleId) ?? null;
 }
 
+const DPS_STYLE_WEIGHTS: Readonly<Record<string, Readonly<Record<string, number>>>> = Object.freeze({
+  melee: Object.freeze({
+    Strength: 0.30, 'Melee Accuracy': 0.30,
+    'Light Melee Weapon Proficiency': 0.14, 'Medium Melee Weapon Proficiency': 0.14, 'Heavy Melee Weapon Proficiency': 0.12
+  }),
+  gun: Object.freeze({ Marksmanship: 1 }),
+  ranged: Object.freeze({ Ranged: 1 }),
+  magic: Object.freeze({ 'Offensive Magic': 1 }),
+  support: Object.freeze({ 'Support Magic': 1 })
+});
+
+function roleSkillWeights(role: ExpeditionRoleDefinition, profile: PlayerProfileSnapshot): Readonly<Record<string, number>> {
+  if (role.id !== 'dps') return role.skillWeights;
+  const styleWeights = role.skillWeightsByWeaponStyle?.[profile.loadout.weaponStyle || 'melee']
+    || DPS_STYLE_WEIGHTS[profile.loadout.weaponStyle || 'melee'];
+  return styleWeights
+    ? Object.fromEntries(Object.keys(role.skillWeights).map(skillId => [skillId, styleWeights[skillId] ?? 0]))
+    : role.skillWeights;
+}
+
+export function combatRoleSkillWeights(roleId: string, profile: PlayerProfileSnapshot): Readonly<Record<string, number>> {
+  const role = COMBAT_EXPEDITION_DEFINITION.roles.find(candidate => candidate.id === roleId);
+  return role ? roleSkillWeights(role, profile) : {};
+}
+
 export function scoreRoleFit(
   definition: ExpeditionDefinition,
   roleId: string,
@@ -109,7 +135,7 @@ export function scoreRoleFit(
   if (!role) {
     return { roleId, playerId: profile.playerId, score: 0, skillScore: 0, derivedScore: 0, gearScore: 0, requirementScore: 0, requirementsMet: false, missingRequirements: ['Unknown role'], targetId, targetRequirementMet: false, slotEfficiency: 1 };
   }
-  const weights = Object.entries(role.skillWeights);
+  const weights = Object.entries(roleSkillWeights(role, profile));
   const totalSkillWeight = weights.reduce((sum, [, weight]) => sum + Math.max(0, weight), 0) || 1;
   const skillScore = weights.reduce((sum, [skillId, weight]) => sum + clamp(skillValue(profile, skillId, derived) * 5) * weight, 0) / totalSkillWeight;
   const derivedWeights = role.derivedWeights ?? {};

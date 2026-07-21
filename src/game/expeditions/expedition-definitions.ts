@@ -35,25 +35,48 @@ const cookingRoles: readonly ExpeditionRoleDefinition[] = [
 const combatRoles: readonly ExpeditionRoleDefinition[] = [
   {
     id: 'dps', name: 'DPS', description: 'Converts combat mastery into reliable pressure on the target.',
-    skillWeights: { Strength: 0.18, 'Melee Accuracy': 0.16, 'Medium Melee Weapon Proficiency': 0.14, Marksmanship: 0.18, Ranged: 0.14, 'Offensive Magic': 0.2 },
+    skillWeights: {
+      Strength: 0.3, 'Melee Accuracy': 0.3, 'Light Melee Weapon Proficiency': 0.14, 'Medium Melee Weapon Proficiency': 0.14, 'Heavy Melee Weapon Proficiency': 0.12,
+      Marksmanship: 0, Ranged: 0, 'Offensive Magic': 0, 'Support Magic': 0, Reflexes: 0, Healing: 0, Vitality: 0,
+      'Light Armour Proficiency': 0, 'Medium Armour Proficiency': 0, 'Heavy Armour Proficiency': 0, Evasion: 0, Warding: 0
+    },
+    skillWeightsByWeaponStyle: {
+      melee: { Strength: 0.3, 'Melee Accuracy': 0.3, 'Light Melee Weapon Proficiency': 0.14, 'Medium Melee Weapon Proficiency': 0.14, 'Heavy Melee Weapon Proficiency': 0.12 },
+      gun: { Marksmanship: 1 },
+      ranged: { Ranged: 1 },
+      magic: { 'Offensive Magic': 1 },
+      support: { 'Support Magic': 1 }
+    },
     derivedWeights: { combatRating: 1, gearScore: 0.35, affixScore: 0.25, talentScore: 0.25, loadoutScore: 0.2 },
     farmingWeight: 1.2, completionWeight: 1.25, dangerReduction: 0.08, targetIds: ['mire-stalker', 'ember-hart', 'cave-warden']
   },
   {
     id: 'tank', name: 'Tank', description: 'Absorbs danger and buys the party time to execute its plan.',
-    skillWeights: { Strength: 0.15, Vitality: 0.2, 'Heavy Armour Proficiency': 0.35, 'Medium Armour Proficiency': 0.15, Reflexes: 0.15 },
+    skillWeights: {
+      Strength: 0, 'Melee Accuracy': 0, 'Light Melee Weapon Proficiency': 0, 'Medium Melee Weapon Proficiency': 0, 'Heavy Melee Weapon Proficiency': 0,
+      Marksmanship: 0, Ranged: 0, 'Offensive Magic': 0, 'Support Magic': 0, Reflexes: 0.16, Healing: 0, Vitality: 0.24,
+      'Light Armour Proficiency': 0, 'Medium Armour Proficiency': 0.18, 'Heavy Armour Proficiency': 0.28, Evasion: 0, Warding: 0.14
+    },
     derivedWeights: { defenseRating: 1, defenseGearScore: 0.55, gearScore: 0.25, loadoutScore: 0.2 },
     preferredGearTags: ['heavy', 'guard'], farmingWeight: 0.85, completionWeight: 1.1, dangerReduction: 1, targetIds: ['ember-hart', 'cave-warden']
   },
   {
     id: 'healer', name: 'Healer', description: 'Restores the party through attrition and stabilises failed phases.',
-    skillWeights: { Healing: 0.55, 'Support Magic': 0.25, Warding: 0.1, Reflexes: 0.1 },
+    skillWeights: {
+      Strength: 0, 'Melee Accuracy': 0, 'Light Melee Weapon Proficiency': 0, 'Medium Melee Weapon Proficiency': 0, 'Heavy Melee Weapon Proficiency': 0,
+      Marksmanship: 0, Ranged: 0, 'Offensive Magic': 0, 'Support Magic': 0.3, Reflexes: 0.05, Healing: 0.6, Vitality: 0,
+      'Light Armour Proficiency': 0, 'Medium Armour Proficiency': 0, 'Heavy Armour Proficiency': 0, Evasion: 0, Warding: 0.05
+    },
     derivedWeights: { combatRating: 0.25, defenseRating: 0.3, talentScore: 0.35, loadoutScore: 0.25 },
     preferredGearTags: ['healing', 'support'], farmingWeight: 0.8, completionWeight: 1, dangerReduction: 0.75, targetIds: ['mire-stalker', 'ember-hart', 'cave-warden']
   },
   {
     id: 'support', name: 'Support', description: 'Improves the whole formation through control, utility, and timing.',
-    skillWeights: { Reflexes: 0.3, Evasion: 0.2, Healing: 0.2, 'Support Magic': 0.2, 'Melee Accuracy': 0.1 },
+    skillWeights: {
+      Strength: 0, 'Melee Accuracy': 0, 'Light Melee Weapon Proficiency': 0, 'Medium Melee Weapon Proficiency': 0, 'Heavy Melee Weapon Proficiency': 0,
+      Marksmanship: 0, Ranged: 0, 'Offensive Magic': 0, 'Support Magic': 0.5, Reflexes: 0.25, Healing: 0,
+      Vitality: 0, 'Light Armour Proficiency': 0, 'Medium Armour Proficiency': 0, 'Heavy Armour Proficiency': 0, Evasion: 0, Warding: 0.25
+    },
     derivedWeights: { combatRating: 0.25, defenseRating: 0.25, affixScore: 0.4, talentScore: 0.4, loadoutScore: 0.35 },
     preferredGearTags: ['support', 'utility'], farmingWeight: 0.9, completionWeight: 1, dangerReduction: 0.65, targetIds: ['mire-stalker', 'ember-hart', 'cave-warden']
   }

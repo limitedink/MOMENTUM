@@ -211,6 +211,26 @@ describe('weapon styles, starter abilities, and stances', () => {
     expect(result.skillEvents.length).toBeGreaterThan(0);
   });
 
+  it('routes Arena-ready weapon paths through their own use-based skills', () => {
+    const expected = {
+      'light-melee': 'Strength',
+      'medium-melee': 'Strength',
+      'heavy-melee': 'Strength',
+      gun: 'Marksmanship',
+      ranged: 'Ranged',
+      magic: 'Offensive Magic'
+    } as const;
+    for (const style of Object.keys(expected) as WeaponStyle[]) {
+      const result = simulateSoloCombat(combatInput({
+        activeWeapon: weapon(style, { damage: 50, attackInterval: 1 }),
+        technique: TECHNIQUE_BY_STYLE[style],
+        enemy: enemy({ hitPoints: 500 }),
+        seed: `arena-style-xp:${style}`
+      }));
+      expect(combatUseBySkill(result.skillEvents)[expected[style]]).toBeGreaterThan(0);
+    }
+  });
+
   it('scales Mend, Arcane Barrier, and Battle Focus with their matching skills', () => {
     const scaledSkills = skillSnapshot(0, { Healing: 50, Warding: 50, 'Support Magic': 40, Vitality: 20 });
     const hardEnemy = enemy({ hitPoints: 10_000, damage: 55, accuracy: 1_000, attackInterval: 1 });

@@ -62,6 +62,61 @@
     if (run?.onEvent) run.onEvent(type, payload);
   }
 
+  function combatSkill(skillId) {
+    return Math.max(0, Number(run?.combatBuild?.combatSkills?.[skillId]) || 0);
+  }
+
+  function emitCombatSkillUse(skillId, amount) {
+    if (!run || !amount || amount <= 0) return;
+    const event = { type:'combat-skill-used', skillId, amount:Math.max(0.001, Number(amount) || 0) };
+    run.skillEvents.push(event);
+    emit('combat-skill-used', event);
+  }
+
+  function emitWeaponSkillUse(hit, styleId = run.weapon.styleId) {
+    if (styleId === 'melee') {
+      emitCombatSkillUse('Melee Accuracy', 1);
+      const proficiency = run.weapon.style === 'light-melee' ? 'Light Melee Weapon Proficiency'
+        : run.weapon.style === 'heavy-melee' ? 'Heavy Melee Weapon Proficiency' : 'Medium Melee Weapon Proficiency';
+      emitCombatSkillUse(proficiency, 1);
+      if (hit) emitCombatSkillUse('Strength', 1);
+    } else if (styleId === 'gun') emitCombatSkillUse('Marksmanship', 1);
+    else if (styleId === 'ranged') emitCombatSkillUse('Ranged', 1);
+    else if (styleId === 'magic') emitCombatSkillUse('Offensive Magic', 1);
+    emitCombatSkillUse('Reflexes', 0.25);
+  }
+
+  function tryDefensiveAbility(force = false) {
+    if (!run || !run.defensiveAbility || performance.now() < run.defensiveReadyAt) return false;
+    if (run.defensiveAbility === 'Mend') {
+      if (!force && run.you.hp / run.you.maxHp > 0.75) return false;
+      const healing = Math.round(24 * (1 + 0.006 * combatSkill('Healing')));
+      const applied = Math.min(run.you.maxHp - run.you.hp, healing);
+      if (applied <= 0) return false;
+      run.you.hp = Math.min(run.you.maxHp, run.you.hp + applied);
+      run.defensiveReadyAt = performance.now() + 10_000;
+      emit('ability', { ability:'Mend', automatic:true });
+      emitCombatSkillUse('Healing', applied);
+      return true;
+    }
+    if (run.defensiveAbility === 'Arcane Barrier' && run.barrier <= 0) {
+      const granted = Math.round(24 * (1 + 0.006 * combatSkill('Warding')));
+      run.barrier = granted;
+      run.defensiveReadyAt = performance.now() + 12_000;
+      emit('ability', { ability:'Arcane Barrier', automatic:true, granted });
+      emitCombatSkillUse('Warding', 1);
+      return true;
+    }
+    return false;
+  }
+
+  function incomingDamage(amount, damageType = 'physical') {
+    const mitigation = damageType === 'magical'
+      ? Number(run.combatStats?.magicalMitigation || 0)
+      : Number(run.combatStats?.armourMitigation || 0);
+    return Math.max(0, amount * (1 - Math.max(0, Math.min(0.9, mitigation))));
+  }
+
   function hasDirective(id) {
     return run?.directiveId === id;
   }
@@ -115,9 +170,22 @@
       emit('talent', { talentId:'aegis' });
       return false;
     }
-    run.you.hp -= amount;
-    run.stats.damageTaken += amount;
-    emit('playerHit', { amount });
+    const damage = incomingDamage(amount);
+    if (run.barrier > 0) {
+      const absorbed = Math.min(run.barrier, damage);
+      run.barrier -= absorbed;
+      if (absorbed > 0) emitCombatSkillUse('Warding', absorbed);
+      emit('barrier', { absorbed, remaining:run.barrier });
+      if (damage <= absorbed) { tryDefensiveAbility(); return false; }
+      run.you.hp -= damage - absorbed;
+      run.stats.damageTaken += damage - absorbed;
+      emit('playerHit', { amount:damage - absorbed, prevented:absorbed });
+    } else {
+      run.you.hp -= damage;
+      run.stats.damageTaken += damage;
+      emit('playerHit', { amount:damage, prevented:Math.max(0, amount - damage) });
+    }
+    emitCombatSkillUse('Vitality', Math.max(0.1, damage));
     run.you.hitFlash = 0.12;
     run.you.recoveryTimer = hasTalent('fortifiedRecovery') ? 6 : 0;
     if (hasTalent('counterforce')) run.counterforceArmed = true;
@@ -141,6 +209,7 @@
     if (run.you.hp > 0 && hasTalent('fieldRation') && run.you.hp / run.you.maxHp < 0.35) {
       consumeFood(true);
     }
+    tryDefensiveAbility();
     return true;
   }
 
@@ -159,7 +228,8 @@
       run.stats.openingAttackTriggered = true;
       emit('talent', { talentId:'openingAttack' });
     }
-    if ((run.weapon.critChance || 0) > 0 && Math.random() < run.weapon.critChance / 100) multiplier *= 1.5;
+    const criticalChance = Number(run.combatStats?.criticalChance || 0) || (Number(run.weapon.critChance || 0) / 100);
+    if (criticalChance > 0 && Math.random() < criticalChance) multiplier *= Number(run.combatStats?.criticalMultiplier || 1.5);
     if (hasTalent('pressure')) multiplier *= 1 + run.pressure * PRESSURE_PER_STACK;
     let cadenceHit = false;
     if (hasTalent('cadence')) {
@@ -178,7 +248,7 @@
       }
     }
 
-    let damage = baseDamage * multiplier;
+    let damage = baseDamage * multiplier * (run.auraDamageMultiplier || 1);
     if (hasTalent('executioner') && !run.executionerUsed && bossHpBefore / run.boss.maxHp < 0.25) {
       damage += run.boss.maxHp * 0.15;
       run.executionerUsed = true;
@@ -238,29 +308,38 @@
       spawnImpact(you.x + Math.cos(aimAngle) * weapon.range, you.y + Math.sin(aimAngle) * weapon.range, '#50d9ff', 5 + deflected * 2);
     }
 
-    if (hit) damageBoss(weapon.damage, { styleId: 'melee', x: boss.x, y: boss.y, dashStrike });
+    emitWeaponSkillUse(hit, 'melee');
+    if (hit) damageBoss(run.combatStats?.damage || weapon.damage, { styleId: 'melee', x: boss.x, y: boss.y, dashStrike });
     else resetPressure();
   }
 
-  function gunAttack(dx, dy) {
+  function projectileAttack(dx, dy) {
     const { you, weapon } = run;
     if (you.attackCooldown > 0) return;
     you.attackCooldown = weapon.attackInterval;
-    emit('attack', { styleId:'gun' });
+    const styleId = weapon.styleId;
+    emit('attack', { styleId });
+    emitWeaponSkillUse(false, styleId);
     const length = Math.hypot(dx, dy) || 1;
-    const speed = weapon.projectileSpeed || 400;
+    const speed = weapon.projectileSpeed || (styleId === 'magic' ? 300 : styleId === 'ranged' ? 360 : 400);
     run.shots.push({
       x: you.x,
       y: you.y,
       r: 2,
       vx: dx / length * speed,
       vy: dy / length * speed,
-      damage: weapon.damage,
+      damage: run.combatStats?.damage || weapon.damage,
+      damageType: weapon.damageType || (styleId === 'magic' ? 'magical' : 'physical'),
+      styleId,
       lifetime: weapon.lifetime || 3,
       t: 0,
       hit: false,
       dashStrike: attackModifier()
     });
+  }
+
+  function gunAttack(dx, dy) {
+    projectileAttack(dx, dy);
   }
 
   function useDash() {
@@ -270,6 +349,7 @@
     if (hasTalent('ghostStep')) you.ghostTimer = you.dash + 0.35;
     you.dashCooldown = Math.max(0, DASH_COOLDOWN + (run.weapon.dashCooldown || 0));
     run.stats.dashesUsed += 1;
+    emitCombatSkillUse('Reflexes', 0.5);
     run.phaseRushTriggered = false;
     if (hasTalent('slipstream')) run.you.slipstream = 1;
     emit('dash');
@@ -428,7 +508,7 @@
       shot.t += dt;
       if (!shot.hit && circleHit(shot, run.boss)) {
         shot.hit = true;
-        damageBoss(shot.damage, { styleId: 'gun', x: shot.x, y: shot.y, dashStrike: shot.dashStrike });
+        damageBoss(shot.damage, { styleId: shot.styleId || 'gun', x: shot.x, y: shot.y, dashStrike: shot.dashStrike });
         shot.t = 99;
       }
     }
@@ -463,6 +543,9 @@
       if (circleHit(shot, run.you) && run.you.dash <= 0) {
         damagePlayer(shot.damage, shot.x, shot.y);
         shot.t = 99;
+      } else if (circleHit(shot, run.you)) {
+        emitCombatSkillUse('Evasion', 1);
+        emitCombatSkillUse('Reflexes', 0.5);
       }
     }
     run.enemyShots = run.enemyShots.filter(shot => shot.x > -20 && shot.x < run.canvas.width + 20 && shot.y > -20 && shot.y < run.canvas.height + 20 && shot.t < 5);
@@ -531,9 +614,7 @@
 
     if (run.weapon.styleId === 'melee') {
       meleeAttack(Math.atan2(dir.dy, dir.dx));
-    } else {
-      gunAttack(dir.dx, dir.dy);
-    }
+    } else projectileAttack(dir.dx, dir.dy);
   }
 
   function updateMovement(dt) {
@@ -687,6 +768,9 @@
       weaponId: run.weapon.itemId,
       weaponName: run.weapon.name,
       styleId: run.weapon.styleId,
+      xpStage: run.tier.id * 10,
+      skillEvents: run.skillEvents.map(event => ({ ...event })),
+      enemyHealthRemovedPercent: Math.max(0, Math.min(100, (run.boss.maxHp - run.boss.hp) / run.boss.maxHp * 100)),
       duration: Math.max(0, (performance.now() - run.startedAt) / 1000),
       ...run.stats,
       directiveId:run.directiveId,
@@ -763,7 +847,7 @@
     const dx = mouseX - run.you.x;
     const dy = mouseY - run.you.y;
     if (run.weapon.styleId === 'melee') meleeAttack(Math.atan2(dy, dx));
-    if (run.weapon.styleId === 'gun') gunAttack(dx, dy);
+    if (run.weapon.styleId !== 'melee') projectileAttack(dx, dy);
   }
 
   function onKeyDown(event) {
@@ -785,7 +869,7 @@
     if (SHOOT_CODES.has(code)) {
       const dir = arrowToDirection(code);
       if (dir && run.weapon.styleId === 'melee') meleeAttack(Math.atan2(dir.dy, dir.dx));
-      if (dir && run.weapon.styleId === 'gun') gunAttack(dir.dx, dir.dy);
+      if (dir && run.weapon.styleId !== 'melee') projectileAttack(dir.dx, dir.dy);
     }
   }
 
@@ -826,7 +910,11 @@
 	function start(config) {
     stop();
     const canvas = config.canvas;
-    const maxHp = config.maxHp;
+    const combatBuild = config.combatBuild || null;
+    const sharedStats = combatBuild && window.MomentumSoloFrontier?.deriveSoloPlayerStats
+      ? window.MomentumSoloFrontier.deriveSoloPlayerStats(combatBuild)
+      : null;
+    const maxHp = sharedStats?.maxHitPoints || config.maxHp;
     const now = performance.now();
     run = {
       canvas,
@@ -835,6 +923,14 @@
       mode: config.mode || 'standard',
       directiveId: config.directiveId || null,
       reduceMotion: Boolean(config.reduceMotion),
+      combatBuild,
+      combatStats: sharedStats,
+      defensiveAbility: config.defensiveAbility || combatBuild?.defensiveAbility || 'none',
+      aura: config.aura || combatBuild?.aura || 'none',
+      auraDamageMultiplier: 1,
+      barrier: 0,
+      defensiveReadyAt: 0,
+      skillEvents: [],
       onEvent: config.onEvent,
       weapon: Object.freeze({ ...config.weapon }),
       talents: new Set(config.talents || []),
@@ -888,6 +984,13 @@
         fortifiedRecoveryTriggered: false
       }
     };
+
+    if (run.aura === 'Battle Focus') {
+      run.auraDamageMultiplier = 1 + 0.10 * (1 + 0.005 * combatSkill('Support Magic'));
+      emit('aura', { aura:run.aura, damageBonus:run.auraDamageMultiplier - 1, automatic:true });
+      emitCombatSkillUse('Support Magic', 1);
+    }
+    tryDefensiveAbility(true);
 
     run.elements.modal.style.display = 'flex';
     canvas.focus({ preventScroll: true });

@@ -351,6 +351,7 @@ export function calculateEquippedStats(
 ): EquippedStatsSnapshot {
   const stats: Partial<Record<string, number>> = {};
   const signatures: EquippedStatsSnapshot['signatures'][number][] = [];
+  const armourPieces: EquippedStatsSnapshot['armourPieces'][number][] = [];
   const included = new Set<string>();
   const allEquippedIds = equippedItemIds(loadout);
   const activeWeaponSlot = isWeaponSlot(loadout.activeWeaponSlot) ? loadout.activeWeaponSlot : null;
@@ -367,6 +368,13 @@ export function calculateEquippedStats(
     Object.entries(inspection.stats).forEach(([stat, value]) => {
       stats[stat] = Number(((stats[stat] || 0) + (value || 0)).toFixed(2));
     });
+    if (kind === 'armour') {
+      armourPieces.push({
+        id: instanceId,
+        armourClass: inspection.definition.weight || 'medium',
+        armour: Number((inspection.stats.armour || 0).toFixed(2))
+      });
+    }
     signatures.push({
       instanceId,
       signatureId: inspection.definition.signatureId,
@@ -378,6 +386,7 @@ export function calculateEquippedStats(
     stats: stats as EquippedStatsSnapshot['stats'],
     equippedItemIds: allEquippedIds,
     activeWeaponSlot,
+    armourPieces,
     signatures
   };
 }

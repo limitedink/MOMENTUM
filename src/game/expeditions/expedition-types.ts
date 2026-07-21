@@ -37,7 +37,8 @@ export interface PlayerProfileSnapshot {
   equippedGearIds: readonly string[];
   talents: readonly string[];
   loadout: {
-    weaponStyle?: 'melee' | 'ranged' | 'magic' | 'support';
+    weaponStyle?: 'melee' | 'gun' | 'ranged' | 'magic' | 'support';
+    weaponWeight?: 'light' | 'medium' | 'heavy';
     armourWeight?: 'light' | 'medium' | 'heavy';
     gearIds?: readonly string[];
   };
@@ -80,6 +81,8 @@ export interface ExpeditionRoleDefinition {
   shortName?: string;
   description: string;
   skillWeights: Readonly<Record<string, number>>;
+  /** Optional style-aware override used by combat DPS without changing the expedition protocol. */
+  skillWeightsByWeaponStyle?: Readonly<Record<string, Readonly<Record<string, number>>>>;
   derivedWeights?: Readonly<Partial<Record<'combatRating' | 'defenseRating' | 'skillScore' | 'gearScore' | 'defenseGearScore' | 'affixScore' | 'talentScore' | 'loadoutScore', number>>>;
   preferredGearTags?: readonly string[];
   requiredGearTags?: readonly string[];

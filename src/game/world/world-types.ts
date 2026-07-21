@@ -4,6 +4,7 @@ export type WorldEncounterKind = 'gathering' | 'preparation' | 'choice' | 'comba
 
 export type WorldRequirement =
   | { type: 'skillLevel'; skillId: string; level: number }
+  | { type: 'soloStage'; stage: number }
   | { type: 'resource'; resourceId: string; amount: number }
   | { type: 'equipment'; slot: string }
   | { type: 'arenaTier'; tierId: number }

@@ -138,11 +138,11 @@ let baseMult = 1.0;     // multiplies all perSec
 
 
 const ARENA_TIERS = [
-  { id:1, name:'Initiate', requiredCombatLevel:5, requirements:[{type:'skillLevel',skill:'Combat',value:5},{type:'resource',resource:'Boss Keys',value:3}], keyCost:3, bossHp:30, bossSpeed:40, contactDps:15, waveDamage:28, waveCooldown:4.0, projectileCount:0, projectileCooldown:0, projectileSpeed:0, projectileDamage:0, projectileSpread:0, attackLabel:'Shockwave', oreGain:600, gemChance:0.25 },
-  { id:2, name:'Vanguard', requiredCombatLevel:10, requirements:[{type:'skillLevel',skill:'Combat',value:10},{type:'arenaTier',value:2},{type:'resource',resource:'Boss Keys',value:5}], keyCost:5, bossHp:70, bossSpeed:55, contactDps:20, waveDamage:36, waveCooldown:3.4, projectileCount:1, projectileCooldown:2.8, projectileSpeed:180, projectileDamage:16, projectileSpread:0, attackLabel:'Aimed shot', oreGain:1000, gemChance:0.50 },
-  { id:3, name:'Apex', requiredCombatLevel:15, requirements:[{type:'skillLevel',skill:'Combat',value:15},{type:'arenaTier',value:3},{type:'resource',resource:'Boss Keys',value:8}], keyCost:8, bossHp:120, bossSpeed:70, contactDps:25, waveDamage:44, waveCooldown:2.8, projectileCount:3, projectileCooldown:2.2, projectileSpeed:220, projectileDamage:18, projectileSpread:0.18, attackLabel:'Spread volley', oreGain:1600, gemChance:1.00 }
+  { id:1, name:'Initiate', requiredSoloStage:10, requirements:[{type:'soloStage',stage:10},{type:'resource',resource:'Boss Keys',value:3}], keyCost:3, bossHp:30, bossSpeed:40, contactDps:15, waveDamage:28, waveCooldown:4.0, projectileCount:0, projectileCooldown:0, projectileSpeed:0, projectileDamage:0, projectileSpread:0, attackLabel:'Shockwave', oreGain:600, gemChance:0.25 },
+  { id:2, name:'Vanguard', requiredSoloStage:20, requirements:[{type:'soloStage',stage:20},{type:'resource',resource:'Boss Keys',value:5}], keyCost:5, bossHp:70, bossSpeed:55, contactDps:20, waveDamage:36, waveCooldown:3.4, projectileCount:1, projectileCooldown:2.8, projectileSpeed:180, projectileDamage:16, projectileSpread:0, attackLabel:'Aimed shot', oreGain:1000, gemChance:0.50 },
+  { id:3, name:'Apex', requiredSoloStage:30, requirements:[{type:'soloStage',stage:30},{type:'resource',resource:'Boss Keys',value:8}], keyCost:8, bossHp:120, bossSpeed:70, contactDps:25, waveDamage:44, waveCooldown:2.8, projectileCount:3, projectileCooldown:2.2, projectileSpeed:220, projectileDamage:18, projectileSpread:0.18, attackLabel:'Spread volley', oreGain:1600, gemChance:1.00 }
 ];
-let arenaTierUnlocked = 1;
+let arenaTierUnlocked = 0;
 let selectedArenaTier = 1;
 let arenaWins = [0, 0, 0];
 
@@ -735,7 +735,20 @@ function renderOperations(force = false) {
 }
 
 function masteryStars() { return completedDirectives.size; }
-function frontierUnlocked() { return arenaWins[2] > 0; }
+function frontierUnlocked() { return (Number(soloFrontierState?.highestClearedStage) || 0) >= 30 || arenaWins[2] > 0; }
+
+function soloStageForArenaTier(tierId) {
+  return ARENA_TIERS[tierId - 1]?.requiredSoloStage || tierId * 10;
+}
+
+function reconcileArenaTierUnlocks(legacyUnlock = 0) {
+  const highestStage = Number(soloFrontierState?.highestClearedStage) || 0;
+  const stageUnlock = SOLO_FRONTIER_FRAMEWORK?.arenaTierUnlockForSoloStage?.(highestStage)
+    ?? (highestStage >= 30 ? 3 : highestStage >= 20 ? 2 : highestStage >= 10 ? 1 : 0);
+  const legacyWinUnlock = arenaWins.reduce((highest, wins, index) => Number(wins) > 0 ? Math.max(highest, index + 1) : highest, 0);
+  arenaTierUnlocked = Math.max(stageUnlock, legacyWinUnlock, Math.min(3, Math.max(0, Number(legacyUnlock) || 0)));
+  selectedArenaTier = Math.min(Math.max(1, selectedArenaTier), Math.max(1, arenaTierUnlocked));
+}
 
 function frontierEntryCost(tierId) { return ARENA_TIERS[tierId - 1]?.keyCost || 0; }
 
@@ -756,6 +769,10 @@ function availableCombatTalentPoints() {
 function evaluateRequirements(requirements = []) {
   const missing = [];
   for (const requirement of requirements) {
+    if (requirement.type === 'soloStage') {
+      const highestStage = Number(soloFrontierState?.highestClearedStage) || 0;
+      if (highestStage < requirement.stage && !arenaWins[ Math.max(0, Math.floor(requirement.stage / 10) - 1) ]) missing.push(`Solo Stage ${String(requirement.stage).padStart(2, '0')}`);
+    }
     if (requirement.type === 'skillLevel') {
       const level = requirement.skill === 'Combat' ? combatLevelForUI() : skills.find(skill => skill.id === requirement.skill)?.lvl || 0;
       if (level < requirement.value) missing.push(`${requirement.skill} ${requirement.value}`);
@@ -797,8 +814,14 @@ function worldResourceAmount(resourceId) {
 function evaluateWorldRequirements(requirements = [], state = worldState) {
   const missing = [];
   for (const requirement of requirements) {
+    if (requirement.type === 'soloStage') {
+      const highestStage = Number(soloFrontierState?.highestClearedStage) || 0;
+      const legacyTier = Math.max(0, Math.ceil(Number(requirement.stage || 0) / 10) - 1);
+      const legacyClear = legacyTier > 0 && (arenaWins[legacyTier - 1] || 0) > 0;
+      if (highestStage < requirement.stage && !legacyClear) missing.push(`Solo Stage ${String(requirement.stage).padStart(2, '0')}`);
+    }
     if (requirement.type === 'skillLevel') {
-      const level = requirement.skillId === 'Combat' ? combatLevelForUI() : skills.find(skill => skill.id === requirement.skillId)?.lvl || 0;
+      const level = skills.find(skill => skill.id === requirement.skillId)?.lvl || 0;
       if (level < requirement.level) missing.push(`${requirement.skillId} ${requirement.level}`);
     }
     if (requirement.type === 'resource') {
@@ -811,9 +834,7 @@ function evaluateWorldRequirements(requirements = [], state = worldState) {
         : Boolean(equipment[requirement.slot] && ownedItems.has(equipment[requirement.slot]));
       if (!equipped) missing.push(`equip ${requirement.slot}`);
     }
-    if (requirement.type === 'arenaTier' && arenaTierUnlocked < requirement.tierId) {
-      missing.push(`Defeat ${ARENA_TIERS[requirement.tierId - 2]?.name || 'previous Arena tier'}`);
-    }
+    if (requirement.type === 'arenaTier' && arenaTierUnlocked < requirement.tierId) missing.push(`Clear Solo Stage ${soloStageForArenaTier(requirement.tierId)}`);
     if (requirement.type === 'completedNode' && !state?.completedNodeIds?.includes(requirement.nodeId)) {
       missing.push(`complete ${requirement.nodeId}`);
     }
@@ -851,10 +872,11 @@ function worldText(value) {
 
 function worldRequirementText(requirements = []) {
   return requirements.map(requirement => {
+    if (requirement.type === 'soloStage') return `Solo Stage ${String(requirement.stage).padStart(2, '0')}`;
     if (requirement.type === 'skillLevel') return `${requirement.skillId} ${requirement.level}`;
     if (requirement.type === 'resource') return `${requirement.amount} ${requirement.resourceId}`;
     if (requirement.type === 'equipment') return `Combat loadout`;
-    if (requirement.type === 'arenaTier') return `${ARENA_TIERS[requirement.tierId - 1]?.name || `Arena tier ${requirement.tierId}`} unlocked`;
+    if (requirement.type === 'arenaTier') return `Solo Stage ${String(soloStageForArenaTier(requirement.tierId)).padStart(2, '0')} cleared`;
     return `Previous node`;
   }).join(' · ');
 }
@@ -901,11 +923,27 @@ function worldApplyReward(reward = {}) {
     if (resource === 'Scrap') scrap += amount;
   });
   Object.entries(reward.skillXp || {}).forEach(([skillId, amount]) => {
+    if (COMBAT_PROGRESSION_FRAMEWORK?.skillIds?.includes(skillId)
+      && COMBAT_PROGRESSION_FRAMEWORK.progression?.applyCombatSkillXp) {
+      combatProgression = {
+        ...combatProgression,
+        [skillId]: COMBAT_PROGRESSION_FRAMEWORK.progression.applyCombatSkillXp(
+          combatProgression[skillId],
+          amount
+        )
+      };
+      soloDeskRecentXp = { ...soloDeskRecentXp, [skillId]: Number(amount) || 0 };
+      return;
+    }
     const skill = skills.find(candidate => candidate.id === skillId);
     if (!skill) return;
     skill.xp += amount;
     tryLevelUp(skill);
   });
+  if (soloFrontierRuntime) {
+    soloFrontierRuntime.hydrate({ ...soloFrontierRuntime.getState(), combatProgression });
+    syncSoloFrontierProjection();
+  }
   if (reward.lootSource && LOOT_FRAMEWORK) {
     const loot = LOOT_FRAMEWORK.rollLoot({
       sourceType: reward.lootSource.sourceType,
@@ -1237,6 +1275,8 @@ const GEAR = [
 const ITEMS = {
   pulseSidearm:{ id:'pulseSidearm', name:'Pulse Sidearm', slot:'gun', damage:10, attackInterval:.25, accuracy:5, maxHit:4, projectileSpeed:400, lifetime:3, trait:'Disruptor Pulse: every fifth shot clears nearby hostile projectiles.' },
   ironBlade:{ id:'ironBlade', name:'Iron Blade', slot:'melee', damage:14, attackInterval:.55, accuracy:3, maxHit:6, range:64, swingArcDeg:100, trait:'Guard Arc: swings destroy hostile projectiles inside the weapon arc.' },
+  frontierBow:{ id:'frontierBow', name:'Frontier Bow', slot:'ranged', damage:12, attackInterval:.55, accuracy:5, maxHit:5, projectileSpeed:360, lifetime:3, trait:'Basic physical shots for the Ranged path.' },
+  emberFocus:{ id:'emberFocus', name:'Ember Focus', slot:'magic', damage:13, attackInterval:.65, accuracy:5, maxHit:6, projectileSpeed:300, lifetime:3, trait:'Basic magical bolts for the Magic path.' },
   reinforcedPick:{ id:'reinforcedPick', name:'Reinforced Pick', slot:'tool', detail:'+25% Mining rate' },
   forgeGauntlet:{ id:'forgeGauntlet', name:'Forge Gauntlet', slot:'tool', detail:'+25% Smithing rate' },
   platedVest:{ id:'platedVest', name:'Plated Vest', slot:'armor', hp:25 },
@@ -1267,9 +1307,9 @@ function consumeFoodItem(id) {
 
 const LOADOUT_SLOTS = ['melee','ranged','gun','magic','armor','tool','food'];
 const ownedGear = new Set();
-const ownedItems = new Set(['pulseSidearm']);
+const ownedItems = new Set(['pulseSidearm', 'frontierBow', 'emberFocus']);
 let equippedTool = null;
-let equipment = { melee:null, ranged:null, gun:'pulseSidearm', magic:null, armor:null, tool:null, food:null };
+let equipment = { melee:null, ranged:'frontierBow', gun:'pulseSidearm', magic:'emberFocus', armor:null, tool:null, food:null };
 const weaponRefinements = { pulseSidearm:0, ironBlade:0 };
 const MAX_WEAPON_REFINEMENT = 5;
 
@@ -1306,6 +1346,7 @@ function materializeLootItem(instance) {
     detail: `${definition.signatureName}: ${definition.signatureDescription}`,
     rarityId: instance.rarity,
     lootInstanceId: instance.instanceId,
+    weight: definition.weight,
     dynamicLoot: true
   };
   ITEMS[instance.instanceId] = item;
@@ -1330,12 +1371,29 @@ function awardLootResolution(resolution) {
   if (!resolution) return null;
   salvageMaterials += resolution.salvage;
   collectionProgress = LOOT_FRAMEWORK?.updateCollectionProgress(collectionProgress, resolution) || collectionProgress;
-  if (resolution.item) {
-    lootInventory.push(resolution.item);
-    materializeLootItem(resolution.item);
-    latestLootReward = resolution.item;
+  let retainedItem = resolution.item;
+  if (resolution.item && soloFrontierRuntime && LOOT_FRAMEWORK?.insertLoot) {
+    const state = soloFrontierRuntime.getState();
+    const mutation = LOOT_FRAMEWORK.insertLoot(state.lootCache, resolution.item);
+    const nextCollectionProgress = LOOT_FRAMEWORK.updateCollectionProgress(state.collectionProgress, resolution);
+    if (mutation.accepted) {
+      soloFrontierRuntime.hydrate({
+        ...state,
+        lootCache: mutation.cache,
+        collectionProgress: nextCollectionProgress
+      });
+    } else {
+      soloFrontierRuntime.hydrate({ ...state, collectionProgress: nextCollectionProgress });
+      retainedItem = null;
+      salvageMaterials += mutation.salvage;
+    }
   }
-  return resolution.item;
+  if (retainedItem) {
+    lootInventory.push(retainedItem);
+    materializeLootItem(retainedItem);
+    latestLootReward = retainedItem;
+  }
+  return retainedItem;
 }
 
 function lootLabel(instance) {
@@ -1395,17 +1453,23 @@ function soloFrontierCombatInput(stage, seed) {
     ? definition?.weight === 'light' ? 'light-melee' : definition?.weight === 'heavy' ? 'heavy-melee' : 'medium-melee'
     : activeSlot;
   const technique = soloDeskTechnique || (style === 'magic' ? 'Arc Bolt' : style === 'gun' ? 'Burst Fire' : style === 'ranged' ? 'Piercing Shot' : 'Power Strike');
-  const equippedSnapshot = LOOT_FRAMEWORK?.calculateEquippedStats?.(cache?.equipment, cache?.items || []) || { stats:{} };
-  const equippedStats = equippedSnapshot.stats || {};
+  const equippedSnapshot = LOOT_FRAMEWORK?.calculateEquippedStats?.(cache?.equipment, cache?.items || []) || { stats:{}, armourPieces:[] };
+  const activeCached = equippedSnapshot.activeWeaponSlot && cache?.equipment?.[equippedSnapshot.activeWeaponSlot]
+    ? cache.items?.find(instance => instance.instanceId === cache.equipment[equippedSnapshot.activeWeaponSlot])
+    : null;
+  const activeCachedStats = activeCached ? LOOT_FRAMEWORK?.inspectItem(activeCached)?.stats || {} : {};
+  const equippedStats = Object.fromEntries(Object.entries(equippedSnapshot.stats || {}).map(([key, value]) => [key, Math.max(0, Number(value || 0) - Number(activeCachedStats[key] || 0))]));
   const isForcedDefeat = soloDeskForceDefeat;
   return {
     combatSkills: COMBAT_PROGRESSION_FRAMEWORK.compatibility.progressionLevelMap(combatProgression),
     equippedStats: {
       hitPoints: isForcedDefeat ? -99 : playerMaxHp() - 100 + Number(equippedStats.hp || 0),
       accuracy: Number(equippedStats.accuracy || 0) + Number(itemStats.accuracy || legacyItem.accuracy || 0),
-      evasion: 0,
-      ward: 0,
-      armourPieces: []
+      evasion: Number(equippedStats.evasion || 0),
+      ward: Number(equippedStats.ward || 0),
+      armourPieces: equippedSnapshot.armourPieces || [],
+      criticalChanceBonus: Number(equippedStats.critChance || 0) / 100,
+      criticalMultiplierBonus: 0
     },
     activeWeapon: {
       id: cachedInstance?.instanceId || legacyItem.id,
@@ -1798,9 +1862,9 @@ function soloDeskDebriefAction(action) {
 
 const ARENA_STYLES = [
   { id:'melee', name:'Melee', slot:'melee', implemented:true, playstyle:'Close the distance, aim with the pointer, and commit to directional swings.' },
-  { id:'ranged', name:'Ranged', slot:'ranged', implemented:false, playstyle:'Keep distance and pressure targets with deliberate physical shots.' },
+  { id:'ranged', name:'Ranged', slot:'ranged', implemented:true, playstyle:'Keep distance and pressure targets with deliberate physical shots.' },
   { id:'gun', name:'Gun', slot:'gun', implemented:true, playstyle:'Stay mobile, aim with the pointer, and left click to fire accurate shots.' },
-  { id:'magic', name:'Magic', slot:'magic', implemented:false, playstyle:'Control space with spell casts and resource-driven burst damage.' }
+  { id:'magic', name:'Magic', slot:'magic', implemented:true, playstyle:'Control space with basic magical bolts while staying mobile.' }
 ];
 let selectedArenaStyle = null;
 
@@ -1931,6 +1995,8 @@ function loadGame() {
     if (save.version >= 3) save.ownedGear.forEach(id => ownedGear.add(id));
     ownedItems.clear();
     ownedItems.add('pulseSidearm');
+    ownedItems.add('frontierBow');
+    ownedItems.add('emberFocus');
     ownedGear.forEach(id => ownedItems.add(id));
     if (save.version >= 6) save.ownedItems.forEach(id => { if (ITEMS[id]) ownedItems.add(id); });
     lootInventory = save.version >= 14 && Array.isArray(save.lootInventory) ? save.lootInventory.filter(instance => LOOT_FRAMEWORK?.inspectItem(instance)) : [];
@@ -1943,6 +2009,8 @@ function loadGame() {
     equipment = save.version >= 6 ? { ...equipment, ...save.equipment } : { melee:null, ranged:null, gun:'pulseSidearm', magic:null, armor:ownedGear.has('platedVest')?'platedVest':null, tool:legacyTool, food:null };
     LOADOUT_SLOTS.forEach(slot => { if (equipment[slot] && !ownedItems.has(equipment[slot]) && equipment[slot] !== 'rawFish') equipment[slot] = null; });
     if (!equipment.gun) equipment.gun = 'pulseSidearm';
+    if (!equipment.ranged) equipment.ranged = 'frontierBow';
+    if (!equipment.magic) equipment.magic = 'emberFocus';
     if (save.version >= 7) {
       Object.keys(weaponRefinements).forEach(id => {
         weaponRefinements[id] = clamp(Number(save.weaponRefinements?.[id]) || 0, 0, MAX_WEAPON_REFINEMENT);
@@ -1988,9 +2056,9 @@ function loadGame() {
     const knownCraftingRecipeIds = new Set((SKILL_FRAMEWORK?.craftingRecipes || []).map(recipe => recipe.id));
     craftingSelectedRecipe = knownCraftingRecipeIds.has(save.crafting?.selectedRecipe) ? save.crafting.selectedRecipe : 'ironBlade';
     if (equipment.food === 'rawFish') equipment.food = null;
-    arenaTierUnlocked = save.version >= 4 ? save.arenaTierUnlocked : 1;
-    selectedArenaTier = save.version >= 4 ? Math.min(save.selectedArenaTier, arenaTierUnlocked) : 1;
-    arenaWins = save.version >= 4 ? [...save.arenaWins] : [0, 0, 0];
+    arenaTierUnlocked = save.version >= 4 ? Math.max(0, Math.min(3, Number(save.arenaTierUnlocked) || 0)) : 1;
+    selectedArenaTier = save.version >= 4 ? Math.max(1, Number(save.selectedArenaTier) || 1) : 1;
+    arenaWins = save.version >= 4 && Array.isArray(save.arenaWins) ? [0, 1, 2].map(index => Math.max(0, Number(save.arenaWins[index]) || 0)) : [0, 0, 0];
     legacyCombatAudit = save.version >= 18 ? save.legacyCombat || null : null;
     combatProgression = save.version >= 18
       ? COMBAT_PROGRESSION_FRAMEWORK.progression.normalizeCombatProgression(save.combatProgression)
@@ -1999,6 +2067,7 @@ function loadGame() {
       ? SOLO_FRONTIER_FRAMEWORK.normalizeSoloFrontierState(save.soloFrontier)
       : SOLO_FRONTIER_FRAMEWORK.createInitialSoloFrontierState();
     soloFrontierRuntime = SOLO_FRONTIER_FRAMEWORK.createSoloFrontierRuntime(soloFrontierState);
+    reconcileArenaTierUnlocks(arenaTierUnlocked);
     ensureWorldRuntime(save.version >= 15 ? save.world || null : null, save.version);
 
     updateSaveStatus(save.savedAt);
@@ -2580,11 +2649,11 @@ function renderFrontier() {
     openArenaPreparation();
   });
 
-  presetList.innerHTML = combatPresets.map((preset, index) => `<div class="preset-card"><div><strong>Preset ${index + 1}</strong><div class="small">${preset ? `${preset.styleId} · ${preset.talents.length} talents · ${ITEMS[preset.foodId]?.name || 'No Food'}` : 'Empty slot'}</div></div><select class="btn" data-preset-style="${index}"><option value="gun">Gun</option><option value="melee" ${equipment.melee ? '' : 'disabled'}>Melee</option></select><button class="btn" data-save-preset="${index}">Save Current</button><button class="btn" data-apply-preset="${index}" ${preset ? '' : 'disabled'}>Apply</button></div>`).join('');
+  presetList.innerHTML = combatPresets.map((preset, index) => `<div class="preset-card"><div><strong>Preset ${index + 1}</strong><div class="small">${preset ? `${preset.styleId} · ${preset.talents.length} talents · ${ITEMS[preset.foodId]?.name || 'No Food'}` : 'Empty slot'}</div></div><select class="btn" data-preset-style="${index}"><option value="gun">Gun</option><option value="melee" ${equipment.melee ? '' : 'disabled'}>Melee</option><option value="ranged" ${equipment.ranged ? '' : 'disabled'}>Ranged</option><option value="magic" ${equipment.magic ? '' : 'disabled'}>Magic</option></select><button class="btn" data-save-preset="${index}">Save Current</button><button class="btn" data-apply-preset="${index}" ${preset ? '' : 'disabled'}>Apply</button></div>`).join('');
   presetList.querySelectorAll('[data-save-preset]').forEach(button => button.onclick = () => {
     const index = Number(button.dataset.savePreset);
     const styleId = presetList.querySelector(`[data-preset-style="${index}"]`).value;
-    const itemId = equipment[styleId === 'melee' ? 'melee' : 'gun'];
+    const itemId = equipment[styleId];
     if (!itemId) { showToast(`No ${styleId} weapon equipped`); return; }
     combatPresets[index] = { styleId, itemId, armorId:equipment.armor, foodId:equipment.food, talents:[...ownedCombatTalents] };
     logActivity(`Saved Combat Preset ${index + 1}`, 'frontier');
@@ -2614,7 +2683,7 @@ function applyCombatPreset(index) {
   if (preset.foodId && foodCount(preset.foodId) < 1) { showToast(`No ${ITEMS[preset.foodId]?.name || 'preset Food'} available`); return; }
   const validTalents = validateLoadedTalents(preset.talents);
   ownedCombatTalents.clear(); validTalents.forEach(id => ownedCombatTalents.add(id));
-  equipment[preset.styleId === 'melee' ? 'melee' : 'gun'] = preset.itemId;
+  equipment[preset.styleId] = preset.itemId;
   equipment.armor = preset.armorId || null;
   equipment.food = preset.foodId || null;
   selectedArenaStyle = preset.styleId;
@@ -2682,7 +2751,7 @@ function renderArenaTierOptions() {
 function updateArenaTierUI() {
   const tier = currentArenaTier();
   const requirementState = evaluateRequirements(tier.requirements);
-  arenaTierDetails.textContent = `${tier.bossHp} Boss HP · Combat ${tier.requiredCombatLevel} · ${tier.attackLabel} · ${tier.oreGain} Ore · ${Math.round(tier.gemChance * 100)}% Gem · Wins ${arenaWins[tier.id - 1]}`;
+  arenaTierDetails.textContent = `${tier.bossHp} Boss HP · Solo Stage ${tier.requiredSoloStage} · ${tier.attackLabel} · ${tier.oreGain} Ore · ${Math.round(tier.gemChance * 100)}% Gem · Wins ${arenaWins[tier.id - 1]}`;
   fightBtn.textContent = requirementState.met ? `Prepare Arena Run (${tier.keyCost} Keys)` : `Requires ${requirementState.missing.join(' · ')}`;
   fightBtn.disabled = !requirementState.met;
 }
@@ -2690,12 +2759,61 @@ function updateArenaTierUI() {
 let preparedArenaTier = null;
 
 function arenaStyleState(style) {
-  const itemId = equipment[style.slot];
-  const weapon = ITEMS[itemId];
+  const cache = soloDeskState()?.lootCache;
+  const cachedInstanceId = cache?.equipment?.[style.slot];
+  const cachedInstance = cache?.items?.find(instance => instance.instanceId === cachedInstanceId);
+  const cachedInspection = cachedInstance ? LOOT_FRAMEWORK?.inspectItem(cachedInstance) : null;
+  const itemId = cachedInspection ? cachedInstance.instanceId : equipment[style.slot];
+  const weapon = cachedInspection ? materializeLootItem(cachedInstance) : ITEMS[itemId];
   if (!weapon) return { style, weapon:null, available:false, status:'Empty slot' };
-  if (!ownedItems.has(itemId) || weapon.unavailable) return { style, weapon, available:false, status:'Unavailable' };
+  if ((!cachedInspection && !ownedItems.has(itemId)) || weapon.unavailable) return { style, weapon, available:false, status:'Unavailable' };
   if (!style.implemented) return { style, weapon, available:false, status:'Combat support coming next' };
   return { style, weapon, available:true, status:'Available' };
+}
+
+function arenaEnemyForTier(tier) {
+  return {
+    id: `arena:tier-${tier.id}`,
+    name: tier.name,
+    kind: 'boss',
+    hitPoints: tier.bossHp,
+    damage: tier.contactDps,
+    armour: 8 + tier.id * 8,
+    ward: 6 + tier.id * 7,
+    evasion: 5 + tier.id * 3,
+    accuracy: 10 + tier.id * 6,
+    attackInterval: Math.max(0.9, tier.waveCooldown / 2),
+    damageType: 'physical'
+  };
+}
+
+function arenaCombatStyle(styleId, weapon) {
+  if (styleId === 'melee') {
+    return weapon.weight === 'light' ? 'light-melee' : weapon.weight === 'heavy' ? 'heavy-melee' : 'medium-melee';
+  }
+  return styleId;
+}
+
+function arenaEquippedStats() {
+  const cache = soloDeskState()?.lootCache;
+  const snapshot = cache && LOOT_FRAMEWORK?.calculateEquippedStats?.(cache.equipment, cache.items || []);
+  const activeInstance = snapshot?.activeWeaponSlot && cache?.equipment?.[snapshot.activeWeaponSlot]
+    ? cache.items?.find(instance => instance.instanceId === cache.equipment[snapshot.activeWeaponSlot])
+    : null;
+  const activeStats = activeInstance ? LOOT_FRAMEWORK?.inspectItem(activeInstance)?.stats || {} : {};
+  const stats = Object.fromEntries(Object.entries(snapshot?.stats || {}).map(([key, value]) => [key, Math.max(0, Number(value || 0) - Number(activeStats[key] || 0))]));
+  const armourPieces = [...(snapshot?.armourPieces || [])];
+  const legacyArmor = ITEMS[equipment.armor];
+  if (legacyArmor) armourPieces.push({ id: equipment.armor, armourClass: 'medium', armour: 6, });
+  return {
+    hitPoints: Math.max(0, playerMaxHp() - 100) + Number(stats.hp || 0),
+    accuracy: Number(stats.accuracy || 0),
+    evasion: Number(stats.evasion || 0),
+    ward: Number(stats.ward || 0),
+    armourPieces,
+    criticalChanceBonus: Number(stats.critChance || 0) / 100,
+    criticalMultiplierBonus: 0
+  };
 }
 
 function captureArenaWeapon(state) {
@@ -2707,7 +2825,10 @@ function captureArenaWeapon(state) {
     styleId: style.id,
     itemId: weapon.id,
     name: weapon.name,
+    style: arenaCombatStyle(style.id, weapon),
     damage,
+    accuracy: weapon.accuracy || 0,
+    damageType: style.id === 'magic' ? 'magical' : 'physical',
     attackInterval: weapon.attackInterval,
     playstyle: style.playstyle,
     projectileSpeed: weapon.projectileSpeed,
@@ -2718,6 +2839,30 @@ function captureArenaWeapon(state) {
     bossDamage: weapon.bossDamage || 0,
     critChance: weapon.critChance || 0
   });
+}
+
+function buildArenaCombatBuild(tier, runLoadout) {
+  const enemy = arenaEnemyForTier(tier);
+  return {
+    combatSkills: COMBAT_PROGRESSION_FRAMEWORK.compatibility.progressionLevelMap(combatProgression),
+    equippedStats: arenaEquippedStats(),
+    activeWeapon: {
+      id: runLoadout.itemId,
+      name: runLoadout.name,
+      style: runLoadout.style,
+      damage: runLoadout.damage,
+      accuracy: runLoadout.accuracy,
+      attackInterval: runLoadout.attackInterval,
+      damageType: runLoadout.damageType
+    },
+    stance: soloDeskStance,
+    technique: runLoadout.style === 'magic' ? 'Arc Bolt' : runLoadout.style === 'gun' ? 'Burst Fire' : runLoadout.style === 'ranged' ? 'Piercing Shot' : 'Power Strike',
+    defensiveAbility: soloDeskDefensiveAbility,
+    aura: soloDeskAura,
+    enemy,
+    stage: tier.id * 10,
+    seed: `arena:${tier.id}:${Date.now()}`
+  };
 }
 
 function renderArenaPreparation() {
@@ -2795,6 +2940,7 @@ function startPreparedArenaRun() {
   if (Math.floor(keys) < cost) { renderArenaPreparation(); return; }
 
   const runLoadout = captureArenaWeapon(state);
+  const combatBuild = buildArenaCombatBuild(tier, runLoadout);
   keys -= cost;
   arenaPrepModal.style.display = 'none';
   preparedArenaTier = null;
@@ -2803,14 +2949,14 @@ function startPreparedArenaRun() {
 
   if (gauntlet) {
     activeGauntlet = {
-      bossIndex:0, loadout:runLoadout, carryState:null, phaseResults:[], bankedRewards:[],
+      bossIndex:0, loadout:runLoadout, carryState:null, phaseResults:[], skillEvents:[], bankedRewards:[],
       startedAt:performance.now(), awaitingNext:false
     };
     selectedDirective = null;
-    openArena(ARENA_TIERS[0], runLoadout, { mode:'gauntlet' });
+    openArena(ARENA_TIERS[0], runLoadout, { mode:'gauntlet', combatBuild:buildArenaCombatBuild(ARENA_TIERS[0], runLoadout) });
   } else {
     const directive = FRONTIER_DIRECTIVES.find(candidate => candidate.id === selectedDirective && candidate.tierId === tier.id);
-    openArena(tier, runLoadout, { mode:directive ? 'directive' : 'standard', directiveId:directive?.id || null, worldEncounterId:worldActiveActivity?.encounterId || null });
+    openArena(tier, runLoadout, { mode:directive ? 'directive' : 'standard', directiveId:directive?.id || null, worldEncounterId:worldActiveActivity?.encounterId || null, combatBuild });
   }
 }
 function renderGear() {
@@ -3195,9 +3341,50 @@ function queueSkillXpDrop(skill, amount) {
 
 
 const loadedSave = loadGame();
+function localCombatProfileGear() {
+  const cache = soloDeskState()?.lootCache;
+  if (!cache || !LOOT_FRAMEWORK) return { gear:[], equippedGearIds:[], loadout:{} };
+  const equippedIds = LOOT_FRAMEWORK.equippedItemIds?.(cache.equipment) || [];
+  const gear = cache.items.filter(instance => equippedIds.includes(instance.instanceId)).map(instance => {
+    const inspection = LOOT_FRAMEWORK.inspectItem(instance);
+    const stats = inspection?.stats || {};
+    const definition = inspection?.definition;
+    return {
+      id: instance.instanceId,
+      name: definition?.name,
+      slot: ['melee', 'gun', 'ranged', 'magic'].includes(definition?.slot) ? 'weapon' : definition?.kind === 'accessory' ? 'accessory' : 'armor',
+      power: Number(instance.itemLevel || 0) + Number(stats.damage || 0) + Number(stats.accuracy || 0),
+      defense: Number(stats.armour || 0) + Number(stats.ward || 0),
+      tags: [definition?.weight, definition?.slot, definition?.kind].filter(Boolean),
+      affixes: instance.affixes.map(affix => ({ id:affix.id, stat:affix.stat, value:affix.value }))
+    };
+  });
+  const activeSlot = cache.equipment.activeWeaponSlot || 'gun';
+  const activeInstance = cache.items.find(instance => instance.instanceId === cache.equipment[activeSlot]);
+  const activeDefinition = activeInstance ? LOOT_FRAMEWORK.inspectItem(activeInstance)?.definition : null;
+  const armourWeights = gear.map(item => item.tags?.find(tag => ['light', 'medium', 'heavy'].includes(tag))).filter(Boolean);
+  return {
+    gear,
+    equippedGearIds: equippedIds,
+    loadout: {
+      weaponStyle: activeSlot,
+      weaponWeight: activeDefinition?.weight,
+      armourWeight: armourWeights.includes('heavy') ? 'heavy' : armourWeights.includes('medium') ? 'medium' : armourWeights.length ? 'light' : undefined,
+      gearIds: equippedIds
+    }
+  };
+}
 window.MomentumCombatProfile = Object.freeze({
   getSnapshot() {
-    return { playerId:'local-player', combatSkills:COMBAT_PROGRESSION_FRAMEWORK.compatibility.progressionLevelMap(combatProgression), gold, legacyCombatLevel:combatLevelForUI() };
+    const profile = localCombatProfileGear();
+    return {
+      playerId:'local-player',
+      combatSkills:COMBAT_PROGRESSION_FRAMEWORK.compatibility.progressionLevelMap(combatProgression),
+      talents:[...ownedCombatTalents],
+      gold,
+      legacyCombatLevel:combatLevelForUI(),
+      ...profile
+    };
   }
 });
 function syncSoloFrontierProjection() {
@@ -3207,6 +3394,7 @@ function syncSoloFrontierProjection() {
   keys = soloFrontierState.keys;
   lootInventory = [...soloFrontierState.lootCache.items];
   collectionProgress = { ...soloFrontierState.collectionProgress };
+  reconcileArenaTierUnlocks(arenaTierUnlocked);
   if (soloFrontierState.debrief && soloFrontierState.debrief !== soloFrontierLastDebrief) {
     salvageMaterials += soloFrontierState.debrief.filterSalvage + soloFrontierState.debrief.fullCacheSalvage;
     soloFrontierLastDebrief = soloFrontierState.debrief;
@@ -3731,6 +3919,9 @@ function openArena(tier, runLoadout, options = {}) {
     canvas:cv, tier, weapon:runLoadout,
     mode:options.mode || 'standard', directiveId:options.directiveId || null,
     maxHp:playerMaxHp(), carryState:options.carryState || null,
+    combatBuild:options.combatBuild || buildArenaCombatBuild(tier, runLoadout),
+    defensiveAbility:soloDeskDefensiveAbility,
+    aura:soloDeskAura,
     food:food && foodCount(food.id) >= 1 ? food : null,
     talents:[...ownedCombatTalents],
     consumeFood:consumeFoodItem,
@@ -3766,18 +3957,39 @@ function grantBossReward(tier, grantBuff = true) {
   if (gotGem) rareGems += 1;
   if (grantBuff) globalBuff.secs = Math.max(globalBuff.secs, 20 * 60);
   arenaWins[tier.id - 1] += 1;
-  if (tier.id === arenaTierUnlocked && arenaTierUnlocked < ARENA_TIERS.length) arenaTierUnlocked += 1;
   const loot = LOOT_FRAMEWORK?.rollLoot({
     sourceType:'arenaBoss',
     sourceId:`arena:${tier.id}`,
     sourceTier:tier.id,
     playerLevel:combatLevelForUI(),
-    runId:`${tier.id}-${arenaWins[tier.id - 1]}-${Date.now()}`
+    runId:`${tier.id}-${arenaWins[tier.id - 1]}-${Date.now()}`,
+    itemChance: Math.min(1, 0.35 + tier.id * 0.10),
+    minimumRarity:'uncommon'
   }, Math.random);
   const item = awardLootResolution(loot);
   if (item) logActivity(`Loot drop: ${lootLabel(item)} · ${item.affixes.length} affixes`, 'loot');
   logActivity(`Combat cache secured · +${loot?.salvage || 0} Salvage`, 'loot');
   return { ore:tier.oreGain, gem:gotGem, loot, item };
+}
+
+function applyArenaSkillProgression(result) {
+  const tier = ARENA_TIERS[(Number(result.tierId) || 1) - 1];
+  if (!tier || !COMBAT_PROGRESSION_FRAMEWORK?.progression) return null;
+  const stage = tier.id * 10;
+  const progression = COMBAT_PROGRESSION_FRAMEWORK.progression.applyCombatEncounterProgression(
+    combatProgression,
+    Array.isArray(result.skillEvents) ? result.skillEvents : [],
+    result.win
+      ? { outcome:'victory', stage }
+      : { outcome:'defeat', stage, enemyHealthRemovedPercent:Number(result.enemyHealthRemovedPercent) || 0 }
+  );
+  combatProgression = progression.progression;
+  soloDeskRecentXp = { ...progression.xpBySkill };
+  if (soloFrontierRuntime) {
+    soloFrontierRuntime.hydrate({ ...soloFrontierRuntime.getState(), combatProgression });
+    syncSoloFrontierProjection();
+  }
+  return progression;
 }
 
 function resultStatsHtml(result, record = null) {
@@ -3788,6 +4000,7 @@ function handleArenaFinish(result) {
   if (activeGauntlet && !activeGauntlet.preparing) return handleGauntletPhase(result);
   const worldContext = worldActiveActivity?.kind === 'arena' ? { ...worldActiveActivity } : null;
   const tier = ARENA_TIERS[result.tierId - 1];
+  const progression = applyArenaSkillProgression(result);
   const record = recordArenaResult(result);
   const rewards = result.win ? grantBossReward(tier) : null;
   const directive = FRONTIER_DIRECTIVES.find(candidate => candidate.id === result.directiveId);
@@ -3800,7 +4013,8 @@ function handleArenaFinish(result) {
   if (worldContext) resolveWorldEncounter(result.win, false);
   selectedDirective = null;
   const adventureText = worldContext ? (result.win ? ' · Adventure cache waiting' : ' · Returned to the outpost') : '';
-  const rewardText = rewards ? `+${rewards.ore} Ore${rewards.gem ? ' · +1 Rare Gem' : ''} · Global 1.5x for 20m${adventureText}` : result.reason === 'gaveUp' ? `Run abandoned · no rewards${adventureText}` : `No rewards${adventureText}`;
+  const xpText = progression ? ` · ${Math.round(progression.budget)} combat XP budget` : '';
+  const rewardText = rewards ? `+${rewards.ore} Ore${rewards.gem ? ' · +1 Rare Gem' : ''} · Global 1.5x for 20m${xpText}${adventureText}` : result.reason === 'gaveUp' ? `Run abandoned · no rewards${adventureText}` : `No rewards${adventureText}`;
   resultMsg.innerHTML = `<div class="result-outcome ${result.win ? 'victory' : 'defeat'}">${directive ? directive.name : tier.name} ${result.win ? 'Complete' : result.reason === 'gaveUp' ? 'Abandoned' : 'Failed'}</div><div class="result-loadout">${result.weaponName} · ${result.styleId}${directive ? ` · ${tier.name} Directive` : ''}</div>${resultStatsHtml(result, record)}<div class="result-rewards">${rewardText}</div>${rewards ? lootResultMarkup(rewards.loot) : ''}${starAwarded ? `<div class="result-unlocks">★ Mastery Star earned · ${masteryStars()}/6</div>` : ''}`;
   resultModal.style.display = 'flex';
   renderArenaTierOptions(); renderFrontier();
@@ -3811,6 +4025,7 @@ function handleArenaFinish(result) {
 function handleGauntletPhase(result) {
   const tier = ARENA_TIERS[activeGauntlet.bossIndex];
   activeGauntlet.phaseResults.push(result);
+  activeGauntlet.skillEvents.push(...(Array.isArray(result.skillEvents) ? result.skillEvents : []));
   if (!result.win) return finishGauntlet(result.reason);
 
   const reward = grantBossReward(tier, false);
@@ -3839,11 +4054,18 @@ function continueGauntlet() {
   resultModal.style.display = 'none';
   activeGauntlet.awaitingNext = false;
   const tier = ARENA_TIERS[activeGauntlet.bossIndex];
-  openArena(tier, activeGauntlet.loadout, { mode:'gauntlet', carryState:activeGauntlet.carryState });
+  openArena(tier, activeGauntlet.loadout, { mode:'gauntlet', carryState:activeGauntlet.carryState, combatBuild:buildArenaCombatBuild(tier, activeGauntlet.loadout) });
 }
 
 function finishGauntlet(reason) {
   const cleared = reason === 'cleared';
+  const progressionTier = activeGauntlet.phaseResults.reduce((highest, phase) => Math.max(highest, Number(phase.tierId) || 1), 1);
+  const progression = applyArenaSkillProgression({
+    tierId: progressionTier,
+    win: cleared,
+    enemyHealthRemovedPercent: cleared ? 100 : Number(activeGauntlet.phaseResults.at(-1)?.enemyHealthRemovedPercent) || 0,
+    skillEvents: activeGauntlet.skillEvents
+  });
   gauntletRecord.attempts += 1;
   const duration = (performance.now() - activeGauntlet.startedAt) / 1000;
   if (cleared) {
@@ -3854,7 +4076,7 @@ function finishGauntlet(reason) {
   }
   const reached = activeGauntlet.bossIndex + 1;
   const rewards = activeGauntlet.bankedRewards;
-  resultMsg.innerHTML = `<div class="result-outcome ${cleared ? 'victory' : 'defeat'}">Gauntlet ${cleared ? 'Cleared' : reason === 'gaveUp' ? 'Abandoned' : 'Failed'}</div><div class="result-loadout">Bosses defeated ${rewards.length}/3 · reached ${ARENA_TIERS[Math.min(reached - 1, 2)].name}</div><div class="result-grid"><span><small>Total time</small><strong>${formatRunTime(duration)}</strong></span><span><small>Best clear</small><strong>${gauntletRecord.bestTime === null ? '—' : formatRunTime(gauntletRecord.bestTime)}</strong></span><span><small>Banked Ore</small><strong>${rewards.reduce((sum, reward) => sum + reward.ore, 0)}</strong></span><span><small>Banked Gems</small><strong>${rewards.filter(reward => reward.gem).length}</strong></span></div><div class="result-rewards">${cleared ? 'Full clear: +1 Rare Gem · Global 1.5x for 40m' : 'Rewards from defeated bosses remain banked.'}</div>`;
+  resultMsg.innerHTML = `<div class="result-outcome ${cleared ? 'victory' : 'defeat'}">Gauntlet ${cleared ? 'Cleared' : reason === 'gaveUp' ? 'Abandoned' : 'Failed'}</div><div class="result-loadout">Bosses defeated ${rewards.length}/3 · reached ${ARENA_TIERS[Math.min(reached - 1, 2)].name}</div><div class="result-grid"><span><small>Total time</small><strong>${formatRunTime(duration)}</strong></span><span><small>Best clear</small><strong>${gauntletRecord.bestTime === null ? '—' : formatRunTime(gauntletRecord.bestTime)}</strong></span><span><small>Banked Ore</small><strong>${rewards.reduce((sum, reward) => sum + reward.ore, 0)}</strong></span><span><small>Banked Gems</small><strong>${rewards.filter(reward => reward.gem).length}</strong></span></div><div class="result-rewards">${cleared ? 'Full clear: +1 Rare Gem · Global 1.5x for 40m' : 'Rewards from defeated bosses remain banked.'}${progression ? ` · ${Math.round(progression.budget)} combat XP budget` : ''}</div>`;
   resultOk.disabled = false; resultOk.textContent = 'Continue'; resultModal.style.display = 'flex';
   logActivity(`Frontier Gauntlet ${cleared ? 'cleared' : 'ended'} at ${ARENA_TIERS[Math.min(reached - 1, 2)].name}`, cleared ? 'victory' : 'arena');
   activeGauntlet = null;

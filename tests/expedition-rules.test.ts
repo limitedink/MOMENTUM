@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   COMBAT_EXPEDITION_DEFINITION,
   COOKING_EXPEDITION_DEFINITION,
+  combatRoleSkillWeights,
   deriveCombatProfile,
   expeditionRules,
   forecastExpedition,
@@ -64,6 +65,32 @@ describe('expedition combat profile rules', () => {
     expect(equipped.combatRating).toBeGreaterThan(bare.combatRating);
     expect(equipped.defenseRating).toBeGreaterThan(bare.defenseRating);
     expect(equipped.tags).toContain('heavy');
+  });
+
+  it('uses the selected offensive style for DPS and keeps the defensive priorities explicit', () => {
+    const ranged = combatRoleSkillWeights('dps', profile({ loadout: { weaponStyle: 'ranged', armourWeight: 'light' } }));
+    const magic = combatRoleSkillWeights('dps', profile({ loadout: { weaponStyle: 'magic', armourWeight: 'light' } }));
+    expect(Object.keys(ranged)).toHaveLength(17);
+    expect(Object.keys(magic)).toHaveLength(17);
+    expect(ranged.Ranged).toBe(1);
+    expect(ranged['Offensive Magic']).toBe(0);
+    expect(ranged.Strength).toBe(0);
+    expect(ranged['Melee Accuracy']).toBe(0);
+    expect(magic['Offensive Magic']).toBe(1);
+    expect(magic.Ranged).toBe(0);
+    expect(magic.Strength).toBe(0);
+
+    const roleWeights = Object.fromEntries(COMBAT_EXPEDITION_DEFINITION.roles.map(role => [role.id, role.skillWeights]));
+    for (const weights of Object.values(roleWeights)) expect(Object.keys(weights)).toHaveLength(17);
+    for (const role of COMBAT_EXPEDITION_DEFINITION.roles) {
+      expect(Object.keys(combatRoleSkillWeights(role.id, profile()))).toHaveLength(17);
+    }
+    expect(roleWeights.tank.Vitality).toBeGreaterThan(roleWeights.tank.Strength);
+    expect(roleWeights.tank['Heavy Armour Proficiency']).toBeGreaterThan(roleWeights.tank['Medium Armour Proficiency']);
+    expect(roleWeights.tank.Warding).toBeGreaterThan(0);
+    expect(roleWeights.healer.Healing).toBeGreaterThan(roleWeights.healer['Support Magic']);
+    expect(roleWeights.support['Support Magic']).toBeGreaterThan(roleWeights.support.Reflexes);
+    expect(roleWeights.support.Warding).toBeGreaterThan(0);
   });
 
 });

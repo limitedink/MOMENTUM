@@ -15,6 +15,16 @@ function runtimeWithRequirements(met = true) {
 }
 
 describe('frontier world runtime', () => {
+  it('uses Solo Frontier stages instead of the removed generic Combat gates', () => {
+    const scout = FRONTIER_REGION.encounters.find(encounter => encounter.id === 'broken-watch-scout')!;
+    const gate = FRONTIER_REGION.encounters.find(encounter => encounter.id === 'vanguard-gate')!;
+    expect(scout.requirements).toContainEqual({ type: 'soloStage', stage: 5 });
+    expect(gate.requirements).toContainEqual({ type: 'soloStage', stage: 20 });
+    expect(FRONTIER_REGION.encounters.flatMap(encounter => encounter.requirements || []).some(requirement => requirement.type === 'skillLevel' && requirement.skillId === 'Combat')).toBe(false);
+    expect(Object.keys(scout.reward.skillXp || {})).not.toContain('Combat');
+    expect(Object.keys(gate.reward.skillXp || {})).not.toContain('Combat');
+  });
+
   it('starts at a safe outpost and blocks a route with missing preparation', () => {
     const runtime = runtimeWithRequirements(false);
     expect(runtime.getState().status).toBe('outpost');

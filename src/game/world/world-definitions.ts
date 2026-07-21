@@ -107,11 +107,11 @@ export const FRONTIER_REGION: RegionDefinition = {
       routeId: 'broken-watch',
       summary: 'Take the exposed route. Your build and food determine how safely you reach the gate.',
       requirements: [
-        { type: 'skillLevel', skillId: 'Combat', level: 5 },
+        { type: 'soloStage', stage: 5 },
         { type: 'equipment', slot: 'combat' }
       ],
       nextNodeId: 'vanguard-gate',
-      reward: { resources: { 'Boss Keys': 2 }, skillXp: { Combat: 100 } }
+      reward: { resources: { 'Boss Keys': 2 }, skillXp: { Ranged: 60, Reflexes: 40 } }
     },
     {
       id: 'vanguard-gate',
@@ -120,14 +120,13 @@ export const FRONTIER_REGION: RegionDefinition = {
       routeId: 'finale',
       summary: 'Spend the keys and reuse the Arena to defeat Vanguard.',
       requirements: [
-        { type: 'skillLevel', skillId: 'Combat', level: 10 },
+        { type: 'soloStage', stage: 20 },
         { type: 'resource', resourceId: 'Boss Keys', amount: 5 },
-        { type: 'arenaTier', tierId: 2 },
         { type: 'completedNode', nodeId: 'frontier-outpost' }
       ],
       nextNodeId: 'frontier-outpost',
       reward: {
-        skillXp: { Combat: 200 },
+        skillXp: { 'Offensive Magic': 100, Vitality: 100 },
         mastery: 1
       },
       arenaTierId: 2,

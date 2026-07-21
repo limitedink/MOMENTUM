@@ -26,6 +26,7 @@ describe('local modern expedition state', () => {
     await transport.setExpeditionAssignment?.('slot-4', 'dps');
     const active = await transport.requestSnapshot();
     expect(active.expedition.modern?.assignments.map(item => item.playerId)).toEqual([playerId, playerId, playerId, playerId]);
+    expect(active.expedition.modern?.forecast).toMatchObject({ successPercent: expect.any(Number), dangerPercent: expect.any(Number), farmingMultiplier: expect.any(Number) });
 
     await transport.abandonExpedition?.();
     const abandoned = await transport.requestSnapshot();

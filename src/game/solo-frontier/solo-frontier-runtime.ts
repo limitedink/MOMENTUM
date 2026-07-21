@@ -32,7 +32,13 @@ export const SOLO_FRONTIER_EXTENDED_OFFLINE_CAP_SECONDS = 12 * 60 * 60;
 export const SOLO_FRONTIER_BATCH_ENCOUNTERS = 24;
 export const SOLO_FRONTIER_POINT_STAGES = Object.freeze([5, 10, 15, 20, 25, 30]);
 export const SOLO_FRONTIER_BOSS_STAGES = Object.freeze([10, 20, 30]);
+export const ARENA_TIER_UNLOCK_STAGES = Object.freeze([10, 20, 30]);
 export const SOLO_FRONTIER_BOSS_KEY_REWARDS: Readonly<Record<number, number>> = Object.freeze({ 10: 3, 20: 5, 30: 8 });
+
+export function arenaTierUnlockForSoloStage(highestClearedStage: number): number {
+  const stage = Math.max(0, Math.floor(Number(highestClearedStage) || 0));
+  return ARENA_TIER_UNLOCK_STAGES.reduce((unlocked, unlockStage, index) => stage >= unlockStage ? index + 1 : unlocked, 0);
+}
 
 export type SoloFrontierOrder = 'paused' | 'push' | 'farm';
 

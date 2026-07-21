@@ -75,6 +75,9 @@ export type CombatStat =
   | 'maxHit'
   | 'range'
   | 'hp'
+  | 'armour'
+  | 'ward'
+  | 'evasion'
   | 'critChance'
   | 'bossDamage'
   | 'dashCooldown'
@@ -190,6 +193,11 @@ export interface EquippedStatsSnapshot {
   stats: Partial<Record<CombatStat, number>>;
   equippedItemIds: readonly string[];
   activeWeaponSlot: WeaponSlotId | null;
+  armourPieces: readonly {
+    id: string;
+    armourClass: ArmourWeight;
+    armour: number;
+  }[];
   signatures: readonly {
     instanceId: string;
     signatureId: string;
