@@ -105,16 +105,24 @@
   }
 
   function localProfile(playerId, displayName) {
-    const framework = expeditionFramework();
     const skillLevels = {};
     try {
       if (typeof skills !== 'undefined') skills.forEach(skill => { skillLevels[skill.id] = Number(skill.lvl) || 0; });
     } catch {}
     const combatLevel = Number(skillLevels.Combat) || 1;
     const profileSnapshot = playerId === currentStoreState().session.authenticatedPlayerId ? window.MomentumCombatProfile?.getSnapshot?.() : null;
-    const profile = framework?.rules?.convertLegacyCombatProfile?.({ playerId, displayName, combatLevel, skills:skillLevels, gold:typeof gold === 'number' ? gold : 0 });
-    if (profile && profileSnapshot) profile.combatSkills = { ...profile.combatSkills, ...profileSnapshot.combatSkills };
-    return profile || { playerId, displayName, combatSkills:{}, skills:skillLevels, gold:0, gear:[], equippedGearIds:[], talents:[], loadout:{} };
+    return {
+      playerId,
+      displayName,
+      combatSkills: profileSnapshot?.combatSkills || window.MomentumCombatProgression?.compatibility?.levelMap?.(combatLevel) || {},
+      skills: skillLevels,
+      gold: typeof gold === 'number' ? gold : 0,
+      gear: [],
+      equippedGearIds: [],
+      talents: [],
+      loadout: {},
+      legacyCombatLevel: combatLevel
+    };
   }
 
   function localAssignments(snapshot, definition) {
@@ -347,7 +355,7 @@
     const resetButton = state?.activity?.status === 'completed' ? `<button class="btn btn-small" data-expedition-reset ${canReset ? '' : 'disabled'}>Reset Expedition</button>` : '';
     const startButton = `<div class="expedition-control-group"><button class="btn btn-small" data-expedition-start="${escapeHtml(definition.id)}" ${canStart ? '' : 'disabled'}>Start Expedition</button>${resetButton}${state?.activity?.status === 'active' && options.isLeader ? `<button class="btn btn-small btn-danger" data-expedition-abandon>Abandon Expedition</button>` : ''}${!canStart && disabledReason ? `<small class="expedition-control-note">${escapeHtml(disabledReason)}</small>` : ''}</div>`;
     const derived = options.derived;
-    const combatReadout = definition.kind === 'combat' && derived ? `<div class="expedition-brief-note">Combat Rating <strong>${Math.round(derived.combatRating)}</strong> · Defense Rating <strong>${Math.round(derived.defenseRating)}</strong> · Gold <strong>${Math.floor(options.profile?.gold || 0)}</strong> · Respec ${Math.round(options.respecCost || 0)} Gold</div>` : '';
+    const combatReadout = definition.kind === 'combat' && derived ? `<div class="expedition-brief-note">Combat Rating <strong>${Math.round(derived.combatRating)}</strong> · Defense Rating <strong>${Math.round(derived.defenseRating)}</strong> · Gold <strong>${Math.floor(options.profile?.gold || 0)}</strong></div>` : '';
     return `<div class="expedition-brief-heading"><div><strong>${escapeHtml(definition.name)}</strong><span>${escapeHtml(definition.description)}</span></div><div class="expedition-brief-actions">${missionButtons}${startButton}</div></div><div class="expedition-brief-meters"><div class="expedition-brief-meter"><small>Projected success</small><strong>${Math.round(forecast?.successPercent || state?.expedition?.forecast?.successPercent || 0)}%</strong></div><div class="expedition-brief-meter is-danger"><small>Danger rate</small><strong>${Math.round(forecast?.dangerPercent || state?.expedition?.forecast?.dangerPercent || 0)}%</strong></div><div class="expedition-brief-meter is-reward"><small>Farming forecast</small><strong>${escapeHtml(resourceForecast)}</strong></div></div>${combatReadout}<div class="expedition-brief-note">${escapeHtml(warnings)}</div>`;
   }
 
@@ -381,7 +389,7 @@
     const host = compact ? elements.dockExpeditionBrief : elements.expeditionBrief;
     const slots = compact ? elements.dockExpeditionAssignments : elements.expeditionAssignments;
     const modern = modernSnapshot(snapshot) || { status:'idle', expeditionId:definition.id, assignments:[], forecast:null, pendingReward:null };
-    if (host) { host.innerHTML = expeditionBriefMarkup(definition, forecast, { compact, derived, profile, respecCost:framework.rules.respecCost(profile), state:{ activity:{ status:modern.status }, modern }, isLeader:true }); bindExpeditionBrief(host, snapshot, definition); }
+    if (host) { host.innerHTML = expeditionBriefMarkup(definition, forecast, { compact, derived, profile, state:{ activity:{ status:modern.status }, modern }, isLeader:true }); bindExpeditionBrief(host, snapshot, definition); }
     renderExpeditionAssignments(slots, definition, assignments, forecast, compact, false);
   }
 

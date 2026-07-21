@@ -35,25 +35,25 @@ const cookingRoles: readonly ExpeditionRoleDefinition[] = [
 const combatRoles: readonly ExpeditionRoleDefinition[] = [
   {
     id: 'dps', name: 'DPS', description: 'Converts combat mastery into reliable pressure on the target.',
-    skillWeights: { Strength: 0.28, 'Melee Accuracy': 0.22, Marksmanship: 0.18, Ranged: 0.16, Magic: 0.16 },
+    skillWeights: { Strength: 0.18, 'Melee Accuracy': 0.16, 'Medium Melee Weapon Proficiency': 0.14, Marksmanship: 0.18, Ranged: 0.14, 'Offensive Magic': 0.2 },
     derivedWeights: { combatRating: 1, gearScore: 0.35, affixScore: 0.25, talentScore: 0.25, loadoutScore: 0.2 },
     farmingWeight: 1.2, completionWeight: 1.25, dangerReduction: 0.08, targetIds: ['mire-stalker', 'ember-hart', 'cave-warden']
   },
   {
     id: 'tank', name: 'Tank', description: 'Absorbs danger and buys the party time to execute its plan.',
-    skillWeights: { Strength: 0.2, 'Heavy Armour Proficiency': 0.45, 'Medium Armour Proficiency': 0.2, Reflexes: 0.15 },
+    skillWeights: { Strength: 0.15, Vitality: 0.2, 'Heavy Armour Proficiency': 0.35, 'Medium Armour Proficiency': 0.15, Reflexes: 0.15 },
     derivedWeights: { defenseRating: 1, defenseGearScore: 0.55, gearScore: 0.25, loadoutScore: 0.2 },
     preferredGearTags: ['heavy', 'guard'], farmingWeight: 0.85, completionWeight: 1.1, dangerReduction: 1, targetIds: ['ember-hart', 'cave-warden']
   },
   {
     id: 'healer', name: 'Healer', description: 'Restores the party through attrition and stabilises failed phases.',
-    skillWeights: { Healing: 0.7, Magic: 0.2, Reflexes: 0.1 },
+    skillWeights: { Healing: 0.55, 'Support Magic': 0.25, Warding: 0.1, Reflexes: 0.1 },
     derivedWeights: { combatRating: 0.25, defenseRating: 0.3, talentScore: 0.35, loadoutScore: 0.25 },
     preferredGearTags: ['healing', 'support'], farmingWeight: 0.8, completionWeight: 1, dangerReduction: 0.75, targetIds: ['mire-stalker', 'ember-hart', 'cave-warden']
   },
   {
     id: 'support', name: 'Support', description: 'Improves the whole formation through control, utility, and timing.',
-    skillWeights: { Reflexes: 0.4, Healing: 0.25, Magic: 0.2, 'Melee Accuracy': 0.15 },
+    skillWeights: { Reflexes: 0.3, Evasion: 0.2, Healing: 0.2, 'Support Magic': 0.2, 'Melee Accuracy': 0.1 },
     derivedWeights: { combatRating: 0.25, defenseRating: 0.25, affixScore: 0.4, talentScore: 0.4, loadoutScore: 0.35 },
     preferredGearTags: ['support', 'utility'], farmingWeight: 0.9, completionWeight: 1, dangerReduction: 0.65, targetIds: ['mire-stalker', 'ember-hart', 'cave-warden']
   }

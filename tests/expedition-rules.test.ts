@@ -2,11 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   COMBAT_EXPEDITION_DEFINITION,
   COOKING_EXPEDITION_DEFINITION,
-  convertLegacyCombatProfile,
   deriveCombatProfile,
+  expeditionRules,
   forecastExpedition,
-  respecCombatSkills,
-  respecCost,
   resolveExpeditionOutcome,
   scoreRoleFit,
   type ExpeditionAssignment,
@@ -19,14 +17,21 @@ function profile(overrides: Partial<PlayerProfileSnapshot> = {}): PlayerProfileS
     combatSkills: {
       Strength: 12,
       'Melee Accuracy': 12,
+      'Light Melee Weapon Proficiency': 9,
+      'Medium Melee Weapon Proficiency': 12,
+      'Heavy Melee Weapon Proficiency': 7,
       Marksmanship: 8,
       Ranged: 8,
-      Magic: 6,
+      'Offensive Magic': 6,
+      'Support Magic': 7,
       Reflexes: 10,
       Healing: 5,
+      Vitality: 12,
       'Light Armour Proficiency': 8,
       'Medium Armour Proficiency': 10,
-      'Heavy Armour Proficiency': 4
+      'Heavy Armour Proficiency': 4,
+      Evasion: 9,
+      Warding: 6
     },
     skills: { Mining: 8, Smithing: 8, Crafting: 10, Fishing: 12, Cooking: 14, Woodcutting: 10, Music: 5 },
     gold: 10_000,
@@ -43,12 +48,9 @@ function assignment(slotId: string, playerId: string, roleId: string, targetId?:
 }
 
 describe('expedition combat profile rules', () => {
-  it('converts legacy Combat progression into a balanced component profile', () => {
-    const converted = convertLegacyCombatProfile({ playerId: 'legacy', combatLevel: 20, gold: 400 });
-    expect(converted.combatSkills.Strength).toBe(20);
-    expect(converted.combatSkills['Medium Armour Proficiency']).toBe(18);
-    expect(Number(converted.combatSkills.Healing)).toBeLessThan(Number(converted.combatSkills.Strength));
-    expect(converted.skills?.Combat).toBe(20);
+  it('does not expose the removed manual component respec API', () => {
+    expect(expeditionRules).not.toHaveProperty('respecCombatSkills');
+    expect(expeditionRules).not.toHaveProperty('respecCost');
   });
 
   it('derives combat and defense ratings from skills, gear, affixes, talents, and loadout', () => {
@@ -64,15 +66,6 @@ describe('expedition combat profile rules', () => {
     expect(equipped.tags).toContain('heavy');
   });
 
-  it('charges Gold for a valid respec and rejects allocations that exceed the converted profile', () => {
-    const current = profile({ legacyCombatLevel: 12 });
-    const cost = respecCost(current);
-    const accepted = respecCombatSkills(current, current.combatSkills);
-    expect(cost).toBe(400);
-    expect(accepted.accepted).toBe(true);
-    expect(accepted.profile.gold).toBe(9_600);
-    expect(respecCombatSkills(current, { Strength: 99 }).reason).toBe('invalid_allocation');
-  });
 });
 
 describe('expedition role and outcome rules', () => {

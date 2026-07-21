@@ -1,17 +1,8 @@
-export const COMPONENT_COMBAT_SKILL_IDS = [
-  'Strength',
-  'Melee Accuracy',
-  'Marksmanship',
-  'Ranged',
-  'Magic',
-  'Reflexes',
-  'Healing',
-  'Light Armour Proficiency',
-  'Medium Armour Proficiency',
-  'Heavy Armour Proficiency'
-] as const;
+import { COMBAT_SKILL_IDS, type CombatSkillId } from '../combat-progression';
 
-export type ComponentCombatSkillId = (typeof COMPONENT_COMBAT_SKILL_IDS)[number];
+/** @deprecated Prefer COMBAT_SKILL_IDS from combat-progression. */
+export const COMPONENT_COMBAT_SKILL_IDS = COMBAT_SKILL_IDS;
+export type ComponentCombatSkillId = CombatSkillId;
 export type CombatSkillMap = Partial<Record<ComponentCombatSkillId, number>>;
 export type ExpeditionKind = 'cooking' | 'combat';
 export type ExpeditionStatus = 'idle' | 'active' | 'completed' | 'failed';

@@ -403,6 +403,7 @@ export interface PartyTransportRuntimeApi {
 
 declare global {
   interface Window {
+    MomentumCombatProgression: typeof import('../game/combat-progression').MomentumCombatProgression;
     MomentumSkillFramework: typeof import('../game/skills').MomentumSkillFramework;
     MomentumLootFramework: typeof import('../game/loot').momentumLootFramework;
     MomentumWorldFramework: typeof import('../game/world').MomentumWorldFramework;

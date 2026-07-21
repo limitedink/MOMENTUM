@@ -15,6 +15,7 @@ import {
   type RoleFitScore
 } from './expedition-types';
 import { EXPEDITION_SLOT_EFFICIENCY } from './expedition-slot-policy';
+import { legacyCombatLevelMap } from '../combat-progression';
 
 const clamp = (value: number, min = 0, max = 100): number => Math.max(min, Math.min(max, value));
 const round = (value: number, digits = 2): number => {
@@ -23,19 +24,6 @@ const round = (value: number, digits = 2): number => {
 };
 export const SOLO_SLOT_EFFICIENCY = EXPEDITION_SLOT_EFFICIENCY;
 
-const LEGACY_SKILL_DISTRIBUTION: Readonly<Record<(typeof COMPONENT_COMBAT_SKILL_IDS)[number], number>> = {
-  Strength: 1,
-  'Melee Accuracy': 0.95,
-  Marksmanship: 0.8,
-  Ranged: 0.75,
-  Magic: 0.75,
-  Reflexes: 0.8,
-  Healing: 0.65,
-  'Light Armour Proficiency': 0.8,
-  'Medium Armour Proficiency': 0.9,
-  'Heavy Armour Proficiency': 0.7
-};
-
 function nonNegative(value: unknown): number {
   return Math.max(0, Number.isFinite(Number(value)) ? Number(value) : 0);
 }
@@ -43,74 +31,6 @@ function nonNegative(value: unknown): number {
 function legacyCombatLevel(profile: PlayerProfileSnapshot): number {
   if (profile.legacyCombatLevel !== undefined) return nonNegative(profile.legacyCombatLevel);
   return nonNegative(profile.skills?.Combat);
-}
-
-export function convertLegacyCombatSkills(level: number): Record<(typeof COMPONENT_COMBAT_SKILL_IDS)[number], number> {
-  const normalizedLevel = Math.max(1, nonNegative(level));
-  return Object.fromEntries(COMPONENT_COMBAT_SKILL_IDS.map(skillId => [
-    skillId,
-    round(normalizedLevel * LEGACY_SKILL_DISTRIBUTION[skillId], 2)
-  ])) as Record<(typeof COMPONENT_COMBAT_SKILL_IDS)[number], number>;
-}
-
-export function convertLegacyCombatProfile(input: {
-  playerId: string;
-  displayName?: string;
-  combatLevel: number;
-  gold?: number;
-  skills?: Readonly<Record<string, number>>;
-  gear?: readonly GearSnapshot[];
-  equippedGearIds?: readonly string[];
-  talents?: readonly string[];
-  loadout?: PlayerProfileSnapshot['loadout'];
-}): PlayerProfileSnapshot {
-  return {
-    playerId: input.playerId,
-    displayName: input.displayName,
-    combatSkills: convertLegacyCombatSkills(input.combatLevel),
-    skills: { ...input.skills, Combat: input.combatLevel },
-    gold: nonNegative(input.gold),
-    gear: input.gear ?? [],
-    equippedGearIds: input.equippedGearIds ?? [],
-    talents: input.talents ?? [],
-    loadout: input.loadout ?? {},
-    legacyCombatLevel: input.combatLevel
-  };
-}
-
-export function respecCost(profile: Pick<PlayerProfileSnapshot, 'combatSkills' | 'legacyCombatLevel'>): number {
-  const level = Math.max(1, profile.legacyCombatLevel ?? Math.round(Object.values(profile.combatSkills).reduce((sum, value) => sum + nonNegative(value), 0) / COMPONENT_COMBAT_SKILL_IDS.length));
-  return 100 + level * 25;
-}
-
-export interface CombatRespecResult {
-  accepted: boolean;
-  cost: number;
-  profile: PlayerProfileSnapshot;
-  reason?: 'insufficient_gold' | 'invalid_allocation';
-}
-
-export function respecCombatSkills(
-  profile: PlayerProfileSnapshot,
-  allocation: CombatSkillMap
-): CombatRespecResult {
-  const cost = respecCost(profile);
-  const nextSkills = {} as Record<(typeof COMPONENT_COMBAT_SKILL_IDS)[number], number>;
-  let total = 0;
-  for (const skillId of COMPONENT_COMBAT_SKILL_IDS) {
-    const value = Number(allocation[skillId] ?? 0);
-    if (!Number.isFinite(value) || value < 0 || value > 99) return { accepted: false, cost, profile, reason: 'invalid_allocation' };
-    nextSkills[skillId] = round(value, 2);
-    total += value;
-  }
-  const currentTotal = COMPONENT_COMBAT_SKILL_IDS.reduce((sum, skillId) => sum + nonNegative(profile.combatSkills[skillId]), 0);
-  if (total > Math.max(1, currentTotal) * 1.01) return { accepted: false, cost, profile, reason: 'invalid_allocation' };
-  if (nonNegative(profile.gold) < cost) return { accepted: false, cost, profile, reason: 'insufficient_gold' };
-  return {
-    accepted: true,
-    cost,
-    profile: { ...profile, gold: round(profile.gold - cost, 2), combatSkills: nextSkills, legacyCombatLevel: undefined }
-  };
 }
 
 function equippedGear(profile: PlayerProfileSnapshot): GearSnapshot[] {
@@ -132,14 +52,15 @@ function affixTotal(gear: readonly GearSnapshot[], stats?: readonly string[]): n
 
 export function deriveCombatProfile(profile: PlayerProfileSnapshot): DerivedCombatProfile {
   const legacy = legacyCombatLevel(profile);
+  const convertedLegacy = legacyCombatLevelMap(legacy);
   const componentSkills = Object.fromEntries(COMPONENT_COMBAT_SKILL_IDS.map(skillId => [
     skillId,
-    nonNegative(profile.combatSkills[skillId]) || (legacy > 0 ? convertLegacyCombatSkills(legacy)[skillId] : 0)
+    nonNegative(profile.combatSkills[skillId]) || (legacy > 0 ? convertedLegacy[skillId] : 0)
   ])) as Record<(typeof COMPONENT_COMBAT_SKILL_IDS)[number], number>;
   const skillScore = COMPONENT_COMBAT_SKILL_IDS.reduce((sum, skillId) => sum + componentSkills[skillId], 0) / COMPONENT_COMBAT_SKILL_IDS.length;
-  const melee = (componentSkills.Strength + componentSkills['Melee Accuracy']) / 2;
+  const melee = (componentSkills.Strength + componentSkills['Melee Accuracy'] + componentSkills['Light Melee Weapon Proficiency'] + componentSkills['Medium Melee Weapon Proficiency'] + componentSkills['Heavy Melee Weapon Proficiency']) / 5;
   const ranged = (componentSkills.Marksmanship + componentSkills.Ranged) / 2;
-  const magic = componentSkills.Magic;
+  const magic = (componentSkills['Offensive Magic'] + componentSkills['Support Magic']) / 2;
   const gear = equippedGear(profile);
   const gearScore = gear.reduce((sum, item) => sum + nonNegative(item.power), 0);
   const defenseGearScore = gear.reduce((sum, item) => sum + nonNegative(item.defense), 0);
@@ -152,7 +73,7 @@ export function deriveCombatProfile(profile: PlayerProfileSnapshot): DerivedComb
     playerId: profile.playerId,
     componentSkills,
     combatRating: round(skillScore * 2.8 + melee * 0.35 + ranged * 0.25 + magic * 0.2 + gearScore * 0.9 + affixScore * 0.55 + talentScore * 0.7 + loadoutScore),
-    defenseRating: round((componentSkills.Reflexes * 0.45 + componentSkills['Light Armour Proficiency'] * 0.35 + componentSkills['Medium Armour Proficiency'] * 0.65 + componentSkills['Heavy Armour Proficiency'] * 0.9 + componentSkills.Healing * 0.2) + defenseGearScore * 1.25 + affixScore * 0.35 + talentScore * 0.45),
+    defenseRating: round((componentSkills.Reflexes * 0.25 + componentSkills.Vitality * 0.25 + componentSkills.Evasion * 0.2 + componentSkills.Warding * 0.2 + componentSkills['Light Armour Proficiency'] * 0.2 + componentSkills['Medium Armour Proficiency'] * 0.4 + componentSkills['Heavy Armour Proficiency'] * 0.55 + componentSkills.Healing * 0.15) + defenseGearScore * 1.25 + affixScore * 0.35 + talentScore * 0.45),
     skillScore: round(skillScore),
     gearScore: round(gearScore),
     defenseGearScore: round(defenseGearScore),
@@ -331,10 +252,6 @@ export function targetDefinition(definition: ExpeditionDefinition, targetId: str
 }
 
 export const expeditionRules = Object.freeze({
-  convertLegacyCombatSkills,
-  convertLegacyCombatProfile,
-  respecCost,
-  respecCombatSkills,
   deriveCombatProfile,
   scoreRoleFit,
   forecastExpedition,

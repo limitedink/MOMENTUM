@@ -1,4 +1,5 @@
 import '../styles.scss';
+import './game/combat-progression';
 import './game/skills';
 import './game/loot';
 import './game/world';

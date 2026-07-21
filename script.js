@@ -19,6 +19,7 @@ const XP_BAL = {
   cap: 100          // max level
 };
 
+const COMBAT_PROGRESSION_FRAMEWORK = window.MomentumCombatProgression;
 const SKILL_FRAMEWORK = window.MomentumSkillFramework;
 const SKILL_REGISTRY = SKILL_FRAMEWORK?.registry;
 const COMBAT_SKILL_TREE = SKILL_FRAMEWORK?.combatTree;
@@ -32,13 +33,13 @@ const skills = [
   { id:'Mining',   basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
   { id:'Smithing', basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
   { id:'Crafting', basePerSec: 0.35, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
-  { id:'Combat',   basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
+  COMBAT_PROGRESSION_FRAMEWORK.compatibility.createRuntimeState(),
   { id:'Fishing',  basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
   { id:'Cooking',  basePerSec: 1 / 2.5, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
   { id:'Woodcutting', basePerSec: RATE_BASE, active:false, qty:0, lvl:1, xp:0, next: xpToNext(1), progress:0 },
 ];
-const COMPONENT_COMBAT_SKILL_IDS = ['Strength','Melee Accuracy','Marksmanship','Ranged','Magic','Reflexes','Healing','Light Armour Proficiency','Medium Armour Proficiency','Heavy Armour Proficiency'];
-let combatComponentSkills = null;
+let combatProgression = COMBAT_PROGRESSION_FRAMEWORK.progression.createInitialCombatProgression();
+let legacyCombatAudit = null;
 
 const UI_ICONS = {
   skill: {
@@ -1336,7 +1337,7 @@ let selectedArenaStyle = null;
    SAVE / LOAD
 ===================================== */
 const SAVE_KEY = 'momentum-save';
-const SAVE_VERSION = 17;
+const SAVE_VERSION = 18;
 const AUTO_SAVE_MS = 10_000;
 let resetInProgress = false;
 
@@ -1344,7 +1345,7 @@ function createSaveData() {
   return {
     version: SAVE_VERSION,
     savedAt: Date.now(),
-    skills: skills.map(({ id, basePerSec, active, qty, lvl, xp, progress, selectedToolId }) => ({
+    skills: skills.filter(skill => skill.id !== 'Combat').map(({ id, basePerSec, active, qty, lvl, xp, progress, selectedToolId }) => ({
       id, basePerSec, active, qty, lvl, xp, progress, selectedToolId
     })),
     unlockedNormalSlots,
@@ -1353,7 +1354,14 @@ function createSaveData() {
     keys,
     rareGems,
     gold,
-    combatComponentSkills: combatComponentSkills ? { ...combatComponentSkills } : null,
+    combatProgression: COMBAT_PROGRESSION_FRAMEWORK.progression.normalizeCombatProgression(combatProgression),
+    legacyCombat: legacyCombatAudit,
+    combatCompatibility: {
+      skill: (() => {
+        const { id, basePerSec, active, qty, lvl, xp, progress, selectedToolId } = skills.find(skill => skill.id === 'Combat');
+        return { id, basePerSec, active, qty, lvl, xp, progress, selectedToolId };
+      })()
+    },
     scrap,
     basicBait,
     uncommonFish,
@@ -1414,7 +1422,8 @@ function loadGame() {
   if (!raw) return false;
 
   try {
-    const save = JSON.parse(raw);
+    let save = JSON.parse(raw);
+    if (save.version === 17) save = COMBAT_PROGRESSION_FRAMEWORK.migration.migrateV17SaveToV18(save);
     if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, SAVE_VERSION].includes(save.version)) return false;
 
     save.skills.forEach(savedSkill => {
@@ -1506,10 +1515,12 @@ function loadGame() {
     arenaTierUnlocked = save.version >= 4 ? save.arenaTierUnlocked : 1;
     selectedArenaTier = save.version >= 4 ? Math.min(save.selectedArenaTier, arenaTierUnlocked) : 1;
     arenaWins = save.version >= 4 ? [...save.arenaWins] : [0, 0, 0];
-    const convertedCombatSkills = window.MomentumExpeditions?.rules?.convertLegacyCombatSkills?.(skills.find(skill => skill.id === 'Combat')?.lvl || 1) || {};
-    combatComponentSkills = save.version >= 17 && save.combatComponentSkills && typeof save.combatComponentSkills === 'object'
-      ? Object.fromEntries(COMPONENT_COMBAT_SKILL_IDS.map(id => [id, Math.max(0, Number(save.combatComponentSkills[id]) || 0)]))
-      : convertedCombatSkills;
+    const compatibilitySource = save.version >= 18 ? save.combatCompatibility?.skill || save.legacyCombat?.combatSkill : null;
+    if (compatibilitySource) Object.assign(skills.find(skill => skill.id === 'Combat'), COMBAT_PROGRESSION_FRAMEWORK.compatibility.createRuntimeState(compatibilitySource));
+    legacyCombatAudit = save.version >= 18 ? save.legacyCombat || null : null;
+    combatProgression = save.version >= 18
+      ? COMBAT_PROGRESSION_FRAMEWORK.progression.normalizeCombatProgression(save.combatProgression)
+      : COMBAT_PROGRESSION_FRAMEWORK.migration.convertLegacyCombatProgression(skills.find(skill => skill.id === 'Combat'), null);
     ensureWorldRuntime(save.version >= 15 ? save.world || null : null, save.version);
 
     updateSaveStatus(save.savedAt);
@@ -2696,23 +2707,9 @@ function queueSkillXpDrop(skill, amount) {
 
 
 const loadedSave = loadGame();
-if (!combatComponentSkills) combatComponentSkills = window.MomentumExpeditions?.rules?.convertLegacyCombatSkills?.(skills.find(skill => skill.id === 'Combat')?.lvl || 1) || Object.fromEntries(COMPONENT_COMBAT_SKILL_IDS.map(id => [id, skills.find(skill => skill.id === 'Combat')?.lvl || 1]));
 window.MomentumCombatProfile = Object.freeze({
   getSnapshot() {
-    return { playerId:'local-player', combatSkills:{ ...combatComponentSkills }, gold, legacyCombatLevel:skills.find(skill => skill.id === 'Combat')?.lvl || 1 };
-  },
-  respec(allocation = combatComponentSkills) {
-    const rules = window.MomentumExpeditions?.rules;
-    if (!rules?.respecCombatSkills) return { accepted:false, reason:'rules-unavailable' };
-    const current = this.getSnapshot();
-    const result = rules.respecCombatSkills({ playerId:current.playerId, combatSkills:current.combatSkills, gold:current.gold, gear:[], equippedGearIds:[], talents:[], loadout:{}, legacyCombatLevel:current.legacyCombatLevel }, allocation);
-    if (result.accepted) {
-      combatComponentSkills = { ...result.profile.combatSkills };
-      gold = result.profile.gold;
-      showToast(`Combat skills respecialized · -${result.cost} Gold`);
-      saveGame();
-    }
-    return result;
+    return { playerId:'local-player', combatSkills:COMBAT_PROGRESSION_FRAMEWORK.compatibility.progressionLevelMap(combatProgression), gold, legacyCombatLevel:skills.find(skill => skill.id === 'Combat')?.lvl || 1 };
   }
 });
 if (!worldRuntime) ensureWorldRuntime();

@@ -373,14 +373,21 @@ function localModernProfile(player: PartyMember): PlayerProfileSnapshot {
     combatSkills: profile?.combatSkills || {
       Strength: combatLevel,
       'Melee Accuracy': combatLevel,
+      'Light Melee Weapon Proficiency': combatLevel,
+      'Medium Melee Weapon Proficiency': combatLevel,
+      'Heavy Melee Weapon Proficiency': combatLevel,
       Marksmanship: combatLevel,
       Ranged: combatLevel,
-      Magic: combatLevel,
+      'Offensive Magic': combatLevel,
+      'Support Magic': combatLevel,
       Reflexes: combatLevel,
       Healing: combatLevel,
+      Vitality: combatLevel,
       'Light Armour Proficiency': combatLevel,
       'Medium Armour Proficiency': combatLevel,
-      'Heavy Armour Proficiency': combatLevel
+      'Heavy Armour Proficiency': combatLevel,
+      Evasion: combatLevel,
+      Warding: combatLevel
     },
     skills: skillLevels,
     gold: 0,
