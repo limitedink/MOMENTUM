@@ -39,10 +39,10 @@ const edge = (from: string, to: string) => ({
  */
 export const COMBAT_SKILL_TREE: SkillTreeDefinition = {
   id: 'combat',
-  name: 'Combat Skill Tree',
+  name: 'Arena Discipline',
   skillId: 'Combat',
   currencyLabel: 'Combat Points',
-  description: 'Shape how you strike, move, and survive in the Arena.',
+  description: 'Shape how you strike, move, and survive in active Arena runs.',
   viewBox: { width: 1000, height: 650 },
   branches: [
     { id: 'assault', name: 'Assault', description: 'Build pressure and finish the fight.', color: '#ff637d' },

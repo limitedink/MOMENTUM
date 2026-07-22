@@ -25,6 +25,9 @@ const SKILL_REGISTRY = SKILL_FRAMEWORK?.registry;
 const COMBAT_SKILL_TREE = SKILL_FRAMEWORK?.combatTree;
 const SKILL_TREE_RULES = SKILL_FRAMEWORK?.skillTree;
 const LOOT_FRAMEWORK = window.MomentumLootFramework;
+const ICON_MANIFEST = window.MomentumIconManifest;
+const COMBAT_DEVELOPMENT_FRAMEWORK = window.MomentumCombatDevelopment;
+const FRONTIER_EXCHANGE_FRAMEWORK = window.MomentumFrontierExchange;
 const WORLD_FRAMEWORK = window.MomentumWorldFramework;
 const WORLD_REGION = WORLD_FRAMEWORK?.frontier;
 const SOLO_FRONTIER_FRAMEWORK = window.MomentumSoloFrontier;
@@ -69,6 +72,22 @@ function iconMarkup(sheet, key, extraClass = '') {
   if (!position) return '';
   return `<span class="game-icon icon-${sheet} ${extraClass}" style="--icon-x:${position[0]}%;--icon-y:${position[1]}%" aria-hidden="true"></span>`;
 }
+function iconRefMarkup(ref, extraClass = '') {
+  if (!ref) return '<span class="asset-icon-fallback" aria-hidden="true">◆</span>';
+  if (ref.kind === 'asset') return `<img class="asset-icon ${extraClass}" src="${ref.src}" alt="${ref.alt || ''}">`;
+  return iconMarkup(ref.sheet, ref.key, extraClass) || `<span class="asset-icon-fallback" aria-hidden="true">◆</span>`;
+}
+function itemVisualMarkup(instance, cache, extraClass = '', options = {}) {
+  const visual = instance ? LOOT_FRAMEWORK?.describeItemVisual?.(instance, cache, options) : null;
+  if (!visual) return '';
+  const badges = [
+    visual.active && '<span class="item-visual-badge is-active">ACTIVE</span>',
+    visual.equipped && '<span class="item-visual-badge is-equipped">E</span>',
+    visual.favorite && '<span class="item-visual-badge is-favourite">★</span>',
+    visual.isNew && '<span class="item-visual-badge is-new">NEW</span>'
+  ].filter(Boolean).join('');
+  return `<span class="item-visual rarity-${instance.rarity} glow-${visual.rarityGlow} ${extraClass}" style="--rarity-color:${visual.rarityColor}">${iconRefMarkup(visual.icon,'item-visual-icon')}<span class="item-level-badge">${visual.itemLevel}</span>${badges}</span>`;
+}
 function resourceIconMarkup(key, extraClass = 'resource-icon') {
   const customIcons = {
     'Boss Keys':'./assets/ui-icons/boss-key.png',
@@ -103,12 +122,9 @@ let selectedTree = 'pine';
 let craftingSelectedRecipe = 'ironBlade';
 let craftingActiveBonus = { multiplier:1, expiresAt:0 };
 let craftingAssembly = null;
-let lootInventory = [];
 let skillToolInventory = [];
 let salvageMaterials = 0;
 let collectionProgress = {};
-let selectedLootFilter = 'all';
-let selectedLootItemId = null;
 let latestLootReward = null;
 const TREE_TYPES = [
   { id:'pine', name:'Pine', level:1, seconds:2.5, perSec:1 / 2.5 },
@@ -288,9 +304,6 @@ const loadoutModal = document.getElementById('loadoutModal');
 const loadoutBuildSummary = document.getElementById('loadoutBuildSummary');
 const loadoutSlots = document.getElementById('loadoutSlots');
 const inventoryList = document.getElementById('inventoryList');
-const lootInventoryList = document.getElementById('lootInventoryList');
-const lootFilterSelect = document.getElementById('lootFilterSelect');
-const lootDetail = document.getElementById('lootDetail');
 const baseUpList  = document.getElementById('baseUpList');
 const skillUpList = document.getElementById('skillUpList');
 const talentModal = document.getElementById('talentModal');
@@ -365,10 +378,23 @@ const soloCacheRarityFilter = document.getElementById('soloCacheRarityFilter');
 const soloCacheSlotFilter = document.getElementById('soloCacheSlotFilter');
 const soloCacheSort = document.getElementById('soloCacheSort');
 const soloCacheFavouritesOnly = document.getElementById('soloCacheFavouritesOnly');
+const soloCachePageControls = document.getElementById('soloCachePageControls');
+const soloCachePrevPage = document.getElementById('soloCachePrevPage');
+const soloCacheNextPage = document.getElementById('soloCacheNextPage');
+const soloCachePageLabel = document.getElementById('soloCachePageLabel');
 const soloCacheList = document.getElementById('soloCacheList');
 const soloCacheInspector = document.getElementById('soloCacheInspector');
 const soloPaperDollDetails = document.getElementById('soloPaperDollDetails');
 const soloPaperDoll = document.getElementById('soloPaperDoll');
+const productionSkillMatrix = document.getElementById('productionSkillMatrix');
+const combatSkillMatrix = document.getElementById('combatSkillMatrix');
+const combatTreeModal = document.getElementById('combatTreeModal');
+const combatTreeTitle = document.getElementById('combatTreeTitle');
+const combatTreeSummary = document.getElementById('combatTreeSummary');
+const combatTreeContent = document.getElementById('combatTreeContent');
+const respecCombatTree = document.getElementById('respecCombatTree');
+const frontierExchange = document.getElementById('frontierExchange');
+const frontierExchangeSummary = document.getElementById('frontierExchangeSummary');
 const soloDebriefPanel = document.getElementById('soloDebriefPanel');
 const soloDebriefOutcome = document.getElementById('soloDebriefOutcome');
 const soloDebriefSummary = document.getElementById('soloDebriefSummary');
@@ -377,6 +403,8 @@ const soloQaSeedStage = document.getElementById('soloQaSeedStage');
 const soloQaForceDefeat = document.getElementById('soloQaForceDefeat');
 const soloQaFillCache = document.getElementById('soloQaFillCache');
 const soloQaClearCache = document.getElementById('soloQaClearCache');
+let selectedCombatTreeSkill = null;
+let selectedExchangeCategory = 'gun';
 
 // Attach confetti to our overlay canvas
 const confettiCanvas = document.getElementById('confettiCanvas');
@@ -657,6 +685,7 @@ let worldActiveActivity = null;
 let soloFrontierState = SOLO_FRONTIER_FRAMEWORK.createInitialSoloFrontierState();
 let soloFrontierRuntime = null;
 let soloFrontierLastDebrief = null;
+let soloFrontierLastEarnedGold = 0;
 let soloDeskRenderer = null;
 let soloDeskSelectedItemId = null;
 let soloDeskStance = 'Balanced';
@@ -673,6 +702,7 @@ let soloDeskCacheRarity = 'common';
 let soloDeskCacheSlot = 'all';
 let soloDeskCacheSort = 'power';
 let soloDeskCacheFavouritesOnly = false;
+let soloDeskCachePage = 0;
 if (soloBattleCanvas && SOLO_BATTLE_DESK_RENDERER) soloDeskRenderer = SOLO_BATTLE_DESK_RENDERER.create(soloBattleCanvas);
 
 const SOLO_TECHNIQUE_BY_WEAPON_STYLE = Object.freeze({
@@ -866,9 +896,12 @@ function evaluateWorldRequirements(requirements = [], state = worldState) {
       if (amount < requirement.amount) missing.push(`${requirement.amount} ${requirement.resourceId}`);
     }
     if (requirement.type === 'equipment') {
+      const cache = canonicalLootCache();
       const equipped = requirement.slot === 'combat'
-        ? ['gun', 'melee', 'ranged', 'magic'].some(slot => equipment[slot] && ownedItems.has(equipment[slot]))
-        : Boolean(equipment[requirement.slot] && ownedItems.has(equipment[requirement.slot]));
+        ? ['gun', 'melee', 'ranged', 'magic'].some(slot => Boolean(cache.equipment[slot]))
+        : requirement.slot === 'tool'
+          ? Boolean(equipment.tool)
+          : Boolean(cache.equipment[requirement.slot === 'armor' ? 'chest' : requirement.slot]);
       if (!equipped) missing.push(`equip ${requirement.slot}`);
     }
     if (requirement.type === 'arenaTier' && arenaTierUnlocked < requirement.tierId) missing.push(`Clear Solo Stage ${soloStageForArenaTier(requirement.tierId)}`);
@@ -1342,13 +1375,99 @@ function consumeFoodItem(id) {
   return true;
 }
 
-const LOADOUT_SLOTS = ['melee','ranged','gun','magic','armor','tool','food'];
+const LOADOUT_SLOTS = ['melee','ranged','gun','magic','chest','tool','food'];
 const ownedGear = new Set();
-const ownedItems = new Set(['pulseSidearm', 'frontierBow', 'emberFocus']);
+const ownedItems = new Set();
 let equippedTool = null;
-let equipment = { melee:null, ranged:'frontierBow', gun:'pulseSidearm', magic:'emberFocus', armor:null, tool:null, food:null };
-const weaponRefinements = { pulseSidearm:0, ironBlade:0 };
+let equipment = { tool:null };
 const MAX_WEAPON_REFINEMENT = 5;
+const LEGACY_COMBAT_DEFINITION_IDS = Object.freeze({
+  pulseSidearm:'pulse-sidearm', ironBlade:'iron-blade', frontierBow:'frontier-bow', emberFocus:'ember-focus', platedVest:'plated-vest'
+});
+
+// Fresh saves pass through the same canonicalizer as historical saves. That
+// keeps starter gear, crafted gear, Arena and Solo on one item-instance model.
+if (!soloFrontierState.lootCache.items.length) {
+  soloFrontierState = SOLO_FRONTIER_FRAMEWORK.migrateV20SaveToV21({
+    version:20,
+    skills:[],
+    savedAt:Date.now(),
+    equipment:{ gun:'pulseSidearm', ranged:'frontierBow', magic:'emberFocus', melee:null, armor:null, food:null, tool:null },
+    weaponRefinements:{ pulseSidearm:0, ironBlade:0 },
+    soloFrontier:{ ...soloFrontierState, version:20 }
+  }).soloFrontier;
+}
+
+function canonicalLootCache() {
+  return soloFrontierRuntime?.getState()?.lootCache || soloFrontierState.lootCache;
+}
+
+function setCanonicalLootCache(cache) {
+  if (soloFrontierRuntime) {
+    const state = soloFrontierRuntime.getState();
+    soloFrontierRuntime.hydrate({ ...state, lootCache:cache });
+  } else {
+    soloFrontierState = { ...soloFrontierState, lootCache:cache };
+  }
+  rehydrateLootInventory();
+  return cache;
+}
+
+function canonicalEquippedInstance(slot) {
+  const cache = canonicalLootCache();
+  const instanceId = cache.equipment[slot];
+  return instanceId ? cache.items.find(instance => instance.instanceId === instanceId) || null : null;
+}
+
+function canonicalFoodId() {
+  return canonicalLootCache().foodId || null;
+}
+
+function setCanonicalFoodId(foodId) {
+  const cache = canonicalLootCache();
+  setCanonicalLootCache({ ...cache, foodId:foodId || null });
+}
+
+function ensureCanonicalCombatItem(legacyId, sourceId = 'workshop') {
+  const definitionId = LEGACY_COMBAT_DEFINITION_IDS[legacyId] || legacyId;
+  const cache = canonicalLootCache();
+  const existing = cache.items.find(instance => instance.definitionId === definitionId && ['legacy-equipment', 'workshop'].includes(instance.sourceId));
+  if (existing) return existing;
+  const definition = LOOT_FRAMEWORK.getItemDefinition(definitionId);
+  if (!definition) return null;
+  const instance = {
+    instanceId:`${sourceId}:${definitionId}`,
+    definitionId,
+    rarity:'common',
+    itemLevel:1,
+    affixes:[],
+    signatureId:definition.signatureId,
+    sourceId,
+    acquiredAt:Date.now(),
+    rerolls:0,
+    enhancementRank:Math.max(0, Number(weaponRefinements[legacyId]) || 0)
+  };
+  const uniqueId = cache.items.some(item => item.instanceId === instance.instanceId) ? `${instance.instanceId}:${Date.now()}` : instance.instanceId;
+  const created = { ...instance, instanceId:uniqueId };
+  setCanonicalLootCache({ ...cache, items:[...cache.items, created] });
+  return created;
+}
+
+function equipCanonicalCombatItem(instance, requestedSlot) {
+  if (!instance) return false;
+  const cache = canonicalLootCache();
+  const result = LOOT_FRAMEWORK.equipItem(cache.equipment, instance, requestedSlot);
+  if (!result.accepted) { showToast(result.reason); return false; }
+  setCanonicalLootCache({ ...cache, equipment:result.loadout });
+  return true;
+}
+
+function unequipCanonicalSlot(slot) {
+  const cache = canonicalLootCache();
+  const next = { ...cache.equipment, [slot]:null };
+  if (next.activeWeaponSlot === slot) next.activeWeaponSlot = ['melee','gun','ranged','magic'].find(candidate => next[candidate]) || null;
+  setCanonicalLootCache({ ...cache, equipment:next });
+}
 
 function lootDefinitionFor(instance) {
   return LOOT_FRAMEWORK?.getItemDefinition(instance?.definitionId) || null;
@@ -1387,20 +1506,19 @@ function materializeLootItem(instance) {
     dynamicLoot: true
   };
   ITEMS[instance.instanceId] = item;
-  if (typeof ownedItems !== 'undefined') ownedItems.add(instance.instanceId);
   return item;
 }
 
 function rehydrateLootInventory() {
-  lootInventory.forEach(instance => materializeLootItem(instance));
+  canonicalLootCache().items.forEach(instance => materializeLootItem(instance));
 }
 
 function equippedLootIds() {
-  return Object.values(equipment).filter(Boolean);
+  return LOOT_FRAMEWORK?.equippedItemIds?.(canonicalLootCache().equipment) || [];
 }
 
 function inspectLoot(instanceId) {
-  const instance = lootInventory.find(candidate => candidate.instanceId === instanceId);
+  const instance = canonicalLootCache().items.find(candidate => candidate.instanceId === instanceId);
   return instance ? LOOT_FRAMEWORK?.inspectItem(instance) : null;
 }
 
@@ -1426,7 +1544,6 @@ function awardLootResolution(resolution) {
     }
   }
   if (retainedItem) {
-    lootInventory.push(retainedItem);
     materializeLootItem(retainedItem);
     latestLootReward = retainedItem;
   }
@@ -1446,36 +1563,41 @@ function lootResultMarkup(resolution) {
   if (!item) return `<div class="loot-reward-summary"><strong>Combat cache secured</strong><span>${collection}</span></div>`;
   const inspection = inspectLoot(item.instanceId);
   const rarity = lootRarityFor(item);
-  return `<article class="loot-reveal rarity-${item.rarity}" style="--loot-color:${rarity.color}"><div class="eyebrow">LOOT DROP</div><strong>${lootLabel(item)}</strong><span>${inspection?.signature || ''}</span><small>${item.affixes.length} affixes · ${collection}</small></article>`;
+  return `<article class="loot-reveal rarity-${item.rarity}" style="--loot-color:${rarity.color}">${itemVisualMarkup(item,canonicalLootCache(),'loot-reveal-icon',{ isNew:true })}<div><div class="eyebrow">LOOT DROP</div><strong>${lootLabel(item)}</strong><span>${inspection?.signature || ''}</span><small>${item.affixes.length} affixes · ${collection}</small></div></article>`;
 }
 
 function salvageLootItem(instanceId) {
-  const result = LOOT_FRAMEWORK?.salvageItem(lootInventory, instanceId, equippedLootIds());
+  const result = LOOT_FRAMEWORK?.salvageCachedItem(canonicalLootCache(), instanceId);
   if (!result?.accepted) {
     if (result?.reason) showToast(result.reason);
     return false;
   }
-  lootInventory = lootInventory.filter(instance => instance.instanceId !== instanceId);
+  setCanonicalLootCache(result.cache);
   delete ITEMS[instanceId];
-  ownedItems.delete(instanceId);
-  salvageMaterials += result.value;
-  selectedLootItemId = null;
-  showToast(`Salvaged ${result.value} materials`);
-  logActivity(`Salvaged ${lootLabel(result.item)} · +${result.value} Salvage`, 'loot');
+  salvageMaterials += result.salvage;
+  showToast(`Salvaged ${result.salvage} materials`);
+  logActivity(`Salvaged ${lootLabel(result.item)} · +${result.salvage} Salvage`, 'loot');
   renderLoadout();
   saveGame();
   return true;
 }
 function weaponDamage(item) {
-  return item.damage + (weaponRefinements[item.id] || 0) * 2;
+  return Number(item?.damage || 0);
 }
 function gearRateMult(skillId) {
   if (skillId === 'Mining' && equipment.tool === 'reinforcedPick') return 1.25;
   if (skillId === 'Smithing' && equipment.tool === 'forgeGauntlet') return 1.25;
   return 1;
 }
-function playerMaxHp() { return 100 + (ITEMS[equipment.armor]?.hp || 0); }
-function equippedGun() { return ITEMS[equipment.gun] || ITEMS.pulseSidearm; }
+function playerMaxHp() {
+  const cache = canonicalLootCache();
+  const snapshot = LOOT_FRAMEWORK?.calculateEquippedStats?.(cache.equipment, cache.items) || { stats:{} };
+  return 100 + Number(snapshot.stats?.hp || 0);
+}
+function equippedGun() {
+  const instance = canonicalEquippedInstance('gun');
+  return instance ? materializeLootItem(instance) : null;
+}
 
 function soloFrontierCombatInput(stage, seed, runtimeState = null) {
   const slots = ['melee', 'gun', 'ranged', 'magic'];
@@ -1484,7 +1606,6 @@ function soloFrontierCombatInput(stage, seed, runtimeState = null) {
   const activeSlot = cache?.equipment?.activeWeaponSlot || slots.find(slot => cache?.equipment?.[slot]) || 'gun';
   const cachedInstance = cache?.items?.find(instance => instance.instanceId === cache?.equipment?.[activeSlot]);
   const inspection = cachedInstance ? LOOT_FRAMEWORK?.inspectItem(cachedInstance) : null;
-  const legacyItem = ITEMS[equipment[activeSlot]] || ITEMS.pulseSidearm;
   const definition = inspection?.definition;
   const itemStats = inspection?.stats || {};
   const style = activeSlot === 'melee'
@@ -1501,9 +1622,9 @@ function soloFrontierCombatInput(stage, seed, runtimeState = null) {
   return {
     combatSkills: COMBAT_PROGRESSION_FRAMEWORK.compatibility.progressionLevelMap(frontierSnapshot.combatProgression || combatProgression),
     equippedStats: {
-      hitPoints: isForcedDefeat ? -99 : playerMaxHp() - 100 + Number(equippedStats.hp || 0),
+      hitPoints: isForcedDefeat ? -99 : Number(equippedStats.hp || 0),
       damage: Number(equippedStats.damage || 0),
-      accuracy: Number(equippedStats.accuracy || 0) + Number(itemStats.accuracy || legacyItem.accuracy || 0),
+      accuracy: Number(equippedStats.accuracy || 0),
       evasion: Number(equippedStats.evasion || 0),
       ward: Number(equippedStats.ward || 0),
       armourPieces: equippedSnapshot.armourPieces || [],
@@ -1511,12 +1632,12 @@ function soloFrontierCombatInput(stage, seed, runtimeState = null) {
       criticalMultiplierBonus: 0
     },
     activeWeapon: {
-      id: cachedInstance?.instanceId || legacyItem.id,
-      name: definition?.name || legacyItem.name || 'Frontier Sidearm',
+      id: cachedInstance?.instanceId || 'unarmed',
+      name: definition?.name || 'Unarmed Wayfinder',
       style,
-      damage: isForcedDefeat ? 0 : Number(itemStats.damage || legacyItem.damage || weaponDamage(legacyItem)),
-      accuracy: Number(itemStats.accuracy || legacyItem.accuracy || 0),
-      attackInterval: Math.max(.2, Number(itemStats.attackInterval || legacyItem.attackInterval || 1)),
+      damage: isForcedDefeat ? 0 : Number(itemStats.damage || 1),
+      accuracy: Number(itemStats.accuracy || 0),
+      attackInterval: Math.max(.2, Number(itemStats.attackInterval || 1)),
       damageType: style === 'magic' ? 'magical' : 'physical'
     },
     stance: soloDeskStance,
@@ -1554,8 +1675,8 @@ function soloDeskSlotCategory(definition) {
 function soloDeskSlotLabel(slot) {
   return ({
     melee:'Melee weapon', gun:'Gun', ranged:'Ranged weapon', magic:'Magic focus', helm:'Helm', chest:'Chest',
-    gloves:'Gloves', pants:'Pants', boots:'Boots', belt:'Belt', cloak:'Cloak', amulet:'Amulet', ring1:'Ring I',
-    ring2:'Ring II', trinket1:'Trinket I', trinket2:'Trinket II', food:'Food'
+    gloves:'Gloves', pants:'Pants', boots:'Boots', belt:'Belt', cloak:'Cloak', amulet:'Amulet', ring:'Ring', ring1:'Ring I',
+    ring2:'Ring II', trinket:'Trinket', trinket1:'Trinket I', trinket2:'Trinket II', food:'Food'
   })[slot] || slot;
 }
 
@@ -1616,22 +1737,173 @@ function renderSoloCombatSkills(state) {
   if (!soloCombatSkills) return;
   soloCombatSkills.innerHTML = soloDeskCombatSkillGroups().map(([group, ids]) => `<section class="combat-skill-group"><h4>${group}</h4>${ids.map(skillId => {
     const progress = state.combatProgression[skillId] || { level:1, xp:0 };
-    const next = xpToNext(progress.level);
+    const next = COMBAT_PROGRESSION_FRAMEWORK.progression.xpToNextCombatLevel(progress.level);
     const percent = Number.isFinite(next) ? Math.min(100, progress.xp / Math.max(1, next) * 100) : 100;
     const recent = Number(soloDeskRecentXp[skillId] || 0);
-    return `<div class="combat-skill-row"><strong title="${skillId}">${skillId}</strong><em>Lv ${progress.level}</em><small>${Math.floor(progress.xp)}/${Number.isFinite(next) ? next : 'MAX'} XP${recent > 0 ? ` · +${Math.round(recent)} recent` : ''}</small><div class="combat-skill-meter"><i style="width:${percent}%"></i></div></div>`;
+    const treeEntry = COMBAT_DEVELOPMENT_FRAMEWORK.trees[skillId];
+    const earned = COMBAT_DEVELOPMENT_FRAMEWORK.earnedPoints(progress.level);
+    const spent = state.combatDevelopment.trees[skillId].ownedNodeIds.length;
+    const drilling = state.combatDevelopment.drill.skillId === skillId;
+    const icon = ICON_MANIFEST.iconForCombatSkill(skillId);
+    return `<article class="combat-skill-card${drilling ? ' is-drilling' : ''}">
+      ${iconRefMarkup(icon,'combat-skill-icon')}
+      <div class="combat-skill-card-copy"><div class="combat-skill-heading"><strong title="${skillId}">${skillId}</strong><em>Lv ${progress.level}</em></div><small>${Math.floor(progress.xp)}/${Number.isFinite(next) ? next : 'MAX'} XP${recent > 0 ? ` · +${Math.round(recent)} recent` : ''}</small><div class="combat-skill-meter"><i style="width:${percent}%"></i></div><span>${spent}/${earned} points spent · ${treeEntry.status === 'authored' ? 'Tree available' : `Authored in ${treeEntry.release}`}</span></div>
+      <div class="combat-skill-actions"><button type="button" class="btn btn-small${drilling ? ' btn-primary' : ''}" data-combat-drill="${skillId}" ${progress.level >= 100 ? 'disabled' : ''}>${drilling ? 'Drilling · 0.1 XP/s' : 'Start Drill'}</button><button type="button" class="btn btn-small btn-quiet" data-combat-tree="${skillId}">Open Tree</button></div>
+    </article>`;
   }).join('')}</section>`).join('');
+  soloCombatSkills.querySelectorAll('[data-combat-drill]').forEach(button => button.addEventListener('click', () => {
+    const current = soloDeskState();
+    const skillId = button.dataset.combatDrill;
+    const selected = current.combatDevelopment.drill.skillId === skillId ? null : skillId;
+    const result = COMBAT_DEVELOPMENT_FRAMEWORK.selectDrill(current.combatDevelopment, current.combatProgression, selected);
+    if (!result.accepted) { showToast(result.reason); return; }
+    soloFrontierRuntime.hydrate({ ...current, combatDevelopment:result.state });
+    syncSoloFrontierProjection();
+    saveGame();
+    renderSoloCombatSkills(soloDeskState());
+  }));
+  soloCombatSkills.querySelectorAll('[data-combat-tree]').forEach(button => button.addEventListener('click', () => openCombatSkillTree(button.dataset.combatTree)));
   const recentTotal = Object.values(soloDeskRecentXp).reduce((sum, amount) => sum + Number(amount || 0), 0);
   soloRecentXpSummary.textContent = recentTotal > 0 ? `Recent XP · +${Math.round(recentTotal)}` : 'Recent XP · none';
 }
 
+function frontierWallet() {
+  return {
+    gold,
+    bars:Number(skills.find(skill => skill.id === 'Smithing')?.qty || 0),
+    craftedComponents:Number(skills.find(skill => skill.id === 'Crafting')?.qty || 0),
+    rareGems,
+    food:{ cookedFish:Number(skills.find(skill => skill.id === 'Cooking')?.qty || 0), smokedRation:smokedRations, surgefinRation:surgefinRations }
+  };
+}
+
+function applyFrontierWallet(wallet) {
+  gold = wallet.gold;
+  const smithing = skills.find(skill => skill.id === 'Smithing');
+  const crafting = skills.find(skill => skill.id === 'Crafting');
+  const cooking = skills.find(skill => skill.id === 'Cooking');
+  if (smithing) smithing.qty = wallet.bars;
+  if (crafting) crafting.qty = wallet.craftedComponents;
+  if (cooking) cooking.qty = wallet.food.cookedFish;
+  rareGems = wallet.rareGems;
+  smokedRations = wallet.food.smokedRation;
+  surgefinRations = wallet.food.surgefinRation;
+}
+
+function applyFrontierTransaction(result) {
+  if (!result.accepted) { showToast(result.reason); return false; }
+  applyFrontierWallet(result.wallet);
+  const state = soloDeskState();
+  soloFrontierRuntime.hydrate({
+    ...state,
+    lootCache:result.cache,
+    frontierExchange:result.exchange,
+    combatDevelopment:result.development || state.combatDevelopment
+  });
+  syncSoloFrontierProjection();
+  showToast(result.reason);
+  saveGame();
+  renderSoloFrontierDesk();
+  renderSoloCombatSkills(soloDeskState());
+  renderCombatSkillTree();
+  return true;
+}
+
+function openCombatSkillTree(skillId) {
+  selectedCombatTreeSkill = skillId;
+  renderCombatSkillTree();
+  combatTreeModal.style.display = 'flex';
+}
+
+function renderCombatSkillTree() {
+  if (!combatTreeContent || !selectedCombatTreeSkill) return;
+  const state = soloDeskState();
+  const skillId = selectedCombatTreeSkill;
+  const entry = COMBAT_DEVELOPMENT_FRAMEWORK.trees[skillId];
+  const progress = state.combatProgression[skillId];
+  const treeState = state.combatDevelopment.trees[skillId];
+  const earned = COMBAT_DEVELOPMENT_FRAMEWORK.earnedPoints(progress.level);
+  const spent = treeState.ownedNodeIds.length;
+  const available = Math.max(0, earned - spent);
+  combatTreeTitle.textContent = `${skillId} Tree`;
+  combatTreeSummary.innerHTML = `<span>Level ${progress.level}</span><strong>${available} available</strong><span>${spent}/${earned} spent</span><span>Respec ${COMBAT_DEVELOPMENT_FRAMEWORK.respecCost(spent)} Gold</span>`;
+  respecCombatTree.disabled = spent === 0;
+  respecCombatTree.textContent = spent ? `Respec · ${COMBAT_DEVELOPMENT_FRAMEWORK.respecCost(spent)} Gold` : 'No points allocated';
+  if (!entry.tree) {
+    combatTreeContent.innerHTML = `<section class="combat-tree-roadmap"><div>${iconRefMarkup(ICON_MANIFEST.iconForCombatSkill(skillId),'combat-tree-roadmap-icon')}</div><h3>${skillId}</h3><p>Your ${earned} earned points already exist and will remain unspent.</p><strong>${entry.release === 'v21.1' ? 'Sustain tree authored in v21.1' : 'Defense tree authored in v21.2'}</strong></section>`;
+    return;
+  }
+  combatTreeContent.innerHTML = entry.tree.branches.map(branch => {
+    const nodes = entry.tree.nodes.filter(node => node.branch === branch.id);
+    return `<section class="combat-tree-branch" style="--branch-color:${branch.color}"><header><span>${branch.name}</span><small>${branch.description}</small></header>${nodes.map(node => {
+      const status = SKILL_TREE_RULES.nodeState(entry.tree, treeState, node.id);
+      const allocation = SKILL_TREE_RULES.canAllocate(entry.tree, treeState, node.id, available);
+      return `<button type="button" class="combat-tree-node is-${status}${node.capstone ? ' is-capstone' : ''}" data-combat-tree-node="${node.id}" ${status === 'available' && allocation.allowed ? '' : 'disabled'}><span class="combat-tree-node-icon">${node.capstone ? '★' : '◆'}</span><span><strong>${node.name}</strong><small>${node.description}</small><em>${status === 'owned' ? 'OWNED' : allocation.reason}</em></span></button>`;
+    }).join('')}</section>`;
+  }).join('');
+  combatTreeContent.querySelectorAll('[data-combat-tree-node]').forEach(button => button.addEventListener('click', () => {
+    const current = soloDeskState();
+    const result = COMBAT_DEVELOPMENT_FRAMEWORK.allocateNode(current.combatDevelopment, current.combatProgression, skillId, button.dataset.combatTreeNode);
+    if (!result.accepted) { showToast(result.reason); return; }
+    soloFrontierRuntime.hydrate({ ...current, combatDevelopment:result.state });
+    syncSoloFrontierProjection();
+    saveGame();
+    renderCombatSkillTree();
+    renderSoloCombatSkills(soloDeskState());
+  }));
+}
+
+function dailyOfferLabel(offer) {
+  if (offer.kind === 'resource') return `${offer.quantity} ${offer.resource}`;
+  if (offer.kind === 'food') return `${offer.quantity} ${ITEMS[offer.foodId]?.name || offer.foodId}`;
+  const inspection = soloDeskInspection(offer.item);
+  return `${inspection?.rarity.name || offer.item.rarity} ${inspection?.definition.name || offer.category}`;
+}
+
+function renderFrontierExchange(state) {
+  if (!frontierExchange) return;
+  let exchange = FRONTIER_EXCHANGE_FRAMEWORK.refreshDailyStock(state.frontierExchange, state.seed, state.highestClearedStage, Date.now());
+  if (exchange.storeDay !== state.frontierExchange.storeDay || exchange.dailyOffers[0]?.id !== state.frontierExchange.dailyOffers[0]?.id) {
+    soloFrontierRuntime.hydrate({ ...state, frontierExchange:exchange });
+    state = soloFrontierRuntime.getState();
+  }
+  const categories = FRONTIER_EXCHANGE_FRAMEWORK.COMBAT_GEAR_CATEGORIES;
+  const requisitionCost = FRONTIER_EXCHANGE_FRAMEWORK.requisitionPrice(state.highestClearedStage);
+  const contractCost = FRONTIER_EXCHANGE_FRAMEWORK.targetContractPrice(state.highestClearedStage);
+  const contract = exchange.activeContract;
+  const contractPercent = contract ? Math.min(100, contract.successfulMs / contract.requiredMs * 100) : 0;
+  frontierExchangeSummary.textContent = `${Math.floor(gold)} Gold · earned ${exchange.ledger.earned} · spent ${exchange.ledger.spent}`;
+  frontierExchange.innerHTML = `<div class="exchange-wallet"><span>AVAILABLE GOLD</span><strong>${Math.floor(gold)}</strong><small>Earned ${exchange.ledger.earned} · spent ${exchange.ledger.spent}</small></div>
+    <section class="exchange-services"><h4>Permanent services</h4><label><span>Exact gear category</span><select class="btn" id="exchangeCategory">${categories.map(category => `<option value="${category}" ${category === selectedExchangeCategory ? 'selected' : ''}>${soloDeskSlotLabel(category)}</option>`).join('')}</select></label><div class="exchange-service-actions"><button class="btn" data-exchange-action="requisition">Requisition · ${requisitionCost} Gold</button><button class="btn" data-exchange-action="contract" ${contract || exchange.pendingContractReward ? 'disabled' : ''}>Target contract · ${contractCost} Gold</button></div>${contract ? `<div class="exchange-contract"><strong>${soloDeskSlotLabel(contract.category)} contract</strong><span>${(contract.successfulMs / 3_600_000).toFixed(2)} / 8 successful hours</span><div class="combat-skill-meter"><i style="width:${contractPercent}%"></i></div><button class="btn btn-quiet" data-exchange-action="cancel-contract">Cancel · no refund</button></div>` : ''}${exchange.pendingContractReward ? `<div class="exchange-contract is-complete">${itemVisualMarkup(exchange.pendingContractReward,state.lootCache,'exchange-reward')}<strong>Rare+ contract reward held</strong><button class="btn btn-primary" data-exchange-action="claim-contract">Claim reward</button></div>` : ''}</section>
+    <section class="daily-stock"><h4>Daily stock · ${exchange.storeDay}</h4><div>${exchange.dailyOffers.map(offer => {
+      const purchased = exchange.purchasedOfferIds.includes(offer.id);
+      return `<article class="daily-offer">${offer.kind === 'item' ? itemVisualMarkup(offer.item,state.lootCache,'daily-offer-icon') : resourceIconMarkup(offer.kind === 'food' ? (ITEMS[offer.foodId]?.name === 'Cooked Fish' ? 'Cooked Fish' : `${ITEMS[offer.foodId]?.name}s`) : offer.resource,'daily-offer-icon')}<span><strong>${dailyOfferLabel(offer)}</strong><small>${offer.price} Gold · one purchase</small></span><button class="btn btn-small" data-daily-offer="${offer.id}" ${purchased ? 'disabled' : ''}>${purchased ? 'Purchased' : 'Buy'}</button></article>`;
+    }).join('')}</div></section>`;
+  frontierExchange.querySelector('#exchangeCategory')?.addEventListener('change', event => { selectedExchangeCategory = event.target.value; });
+  frontierExchange.querySelector('[data-exchange-action="requisition"]')?.addEventListener('click', () => applyFrontierTransaction(FRONTIER_EXCHANGE_FRAMEWORK.purchaseRequisition(exchange, frontierWallet(), state.lootCache, selectedExchangeCategory, state.highestClearedStage, `${state.seed}:requisition:${Date.now()}`, Date.now())));
+  frontierExchange.querySelector('[data-exchange-action="contract"]')?.addEventListener('click', () => applyFrontierTransaction(FRONTIER_EXCHANGE_FRAMEWORK.startTargetContract(exchange, frontierWallet(), state.lootCache, selectedExchangeCategory, state.highestClearedStage, Date.now())));
+  frontierExchange.querySelector('[data-exchange-action="cancel-contract"]')?.addEventListener('click', () => {
+    soloFrontierRuntime.hydrate({ ...state, frontierExchange:FRONTIER_EXCHANGE_FRAMEWORK.cancelTargetContract(exchange) });
+    syncSoloFrontierProjection(); saveGame(); renderSoloFrontierDesk();
+  });
+  frontierExchange.querySelector('[data-exchange-action="claim-contract"]')?.addEventListener('click', () => applyFrontierTransaction(FRONTIER_EXCHANGE_FRAMEWORK.claimTargetContractReward(exchange, frontierWallet(), state.lootCache)));
+  frontierExchange.querySelectorAll('[data-daily-offer]').forEach(button => button.addEventListener('click', () => applyFrontierTransaction(FRONTIER_EXCHANGE_FRAMEWORK.purchaseDailyStock(exchange, frontierWallet(), state.lootCache, button.dataset.dailyOffer))));
+}
+
 function soloDeskCacheVisibleItems(state) {
   const minimum = soloDeskRarityIndex(soloDeskCacheRarity);
+  const equippedIds = new Set(soloDeskEquippedIds(state.lootCache));
   const items = state.lootCache.items.filter(instance => {
     const inspection = soloDeskInspection(instance);
+    if (equippedIds.has(instance.instanceId)) return false;
     if (!inspection || soloDeskRarityIndex(instance.rarity) < minimum) return false;
     if (soloDeskCacheFavouritesOnly && !state.lootCache.favoriteIds.includes(instance.instanceId)) return false;
-    if (soloDeskCacheSlot !== 'all' && soloDeskSlotCategory(inspection.definition) !== soloDeskCacheSlot) return false;
+    if (soloDeskCacheSlot !== 'all') {
+      const broadFilters = new Set(['weapon','armour','ring','trinket','accessory']);
+      if (broadFilters.has(soloDeskCacheSlot)) {
+        if (soloDeskSlotCategory(inspection.definition) !== soloDeskCacheSlot) return false;
+      } else if (!LOOT_FRAMEWORK.validateEquipItem(instance, soloDeskCacheSlot).accepted) return false;
+    }
     return true;
   });
   return items.sort((left, right) => {
@@ -1665,7 +1937,7 @@ function renderSoloCacheInspector(state) {
   const equipped = soloDeskEquippedIds(state.lootCache).includes(instance.instanceId);
   const favourite = state.lootCache.favoriteIds.includes(instance.instanceId);
   const cost = LOOT_FRAMEWORK.calculateReforgeCost(instance);
-  soloCacheInspector.innerHTML = `<h4 style="color:${inspection.rarity.color}">${inspection.rarity.name} ${inspection.definition.name}</h4><div class="cache-inspector-meta">${soloDeskSlotLabel(inspection.definition.slot)} · item level ${instance.itemLevel} · power ${Math.round(soloDeskItemPower(instance))} · ${favourite ? 'favourited' : 'not favourited'}</div><p class="small">${inspection.signature}</p><div class="loot-affixes">${instance.affixes.length ? instance.affixes.map(affix => `<span>${affix.name} +${affix.value}${affix.unit === '%' ? '%' : ''}</span>`).join('') : '<span>No rolled affixes</span>'}</div><div class="cache-inspector-actions"><button class="btn btn-primary" data-solo-cache-action="equip" data-solo-cache-id="${instance.instanceId}" ${equipped ? 'disabled' : ''}>${equipped ? 'Equipped' : 'Equip + compare'}</button><button class="btn btn-quiet" data-solo-cache-action="favorite" data-solo-cache-id="${instance.instanceId}">${favourite ? 'Unfavourite' : 'Favourite'}</button><button class="btn btn-quiet" data-solo-cache-action="salvage" data-solo-cache-id="${instance.instanceId}" ${equipped || favourite ? 'disabled' : ''}>Manual salvage</button></div>${soloDeskCompareMarkup(instance, state.lootCache)}<div class="cache-reforge"><span class="small">Reforge one affix · ${cost.salvage} Salvage${cost.bars ? ` · ${cost.bars} Bars` : ''}${cost.craftedComponents ? ` · ${cost.craftedComponents} Components` : ''}</span>${instance.affixes.map(affix => `<button type="button" data-solo-cache-action="reforge" data-solo-cache-id="${instance.instanceId}" data-solo-cache-affix="${affix.id}"><span>${affix.name} · ${affix.value}</span><strong>Reforge</strong></button>`).join('') || '<span class="small">Common items have no affixes to reforge.</span>'}</div>`;
+  soloCacheInspector.innerHTML = `<div class="cache-inspector-heading">${itemVisualMarkup(instance,state.lootCache,'inspector-item-visual')}<div><h4 style="color:${inspection.rarity.color}">${inspection.rarity.name} ${inspection.definition.name}</h4><div class="cache-inspector-meta">${soloDeskSlotLabel(inspection.definition.slot)} · item level ${instance.itemLevel} · power ${Math.round(soloDeskItemPower(instance))} · ${favourite ? 'favourited' : 'not favourited'}</div></div></div><p class="small">${inspection.signature}</p><div class="loot-affixes">${instance.affixes.length ? instance.affixes.map(affix => `<span>${affix.name} +${affix.value}${affix.unit === '%' ? '%' : ''}</span>`).join('') : '<span>No rolled affixes</span>'}</div><div class="cache-inspector-actions"><button class="btn btn-primary" data-solo-cache-action="equip" data-solo-cache-id="${instance.instanceId}" ${equipped ? 'disabled' : ''}>${equipped ? 'Equipped' : 'Equip + compare'}</button><button class="btn btn-quiet" data-solo-cache-action="favorite" data-solo-cache-id="${instance.instanceId}">${favourite ? 'Unfavourite' : 'Favourite'}</button><button class="btn btn-quiet" data-solo-cache-action="salvage" data-solo-cache-id="${instance.instanceId}" ${equipped || favourite ? 'disabled' : ''}>Manual salvage</button></div>${soloDeskCompareMarkup(instance, state.lootCache)}<div class="cache-reforge"><span class="small">Reforge one affix · ${cost.salvage} Salvage${cost.bars ? ` · ${cost.bars} Bars` : ''}${cost.craftedComponents ? ` · ${cost.craftedComponents} Components` : ''}</span>${instance.affixes.map(affix => `<button type="button" data-solo-cache-action="reforge" data-solo-cache-id="${instance.instanceId}" data-solo-cache-affix="${affix.id}"><span>${affix.name} · ${affix.value}</span><strong>Reforge</strong></button>`).join('') || '<span class="small">Common items have no affixes to reforge.</span>'}</div>`;
   soloCacheInspector.querySelectorAll('[data-solo-cache-action]').forEach(button => button.addEventListener('click', () => soloDeskCacheAction(button.dataset.soloCacheAction, button.dataset.soloCacheId, button.dataset.soloCacheAffix)));
 }
 
@@ -1682,29 +1954,70 @@ function renderSoloCache(state) {
   soloCacheSort.value = soloDeskCacheSort;
   soloCacheFavouritesOnly.checked = soloDeskCacheFavouritesOnly;
   const visible = soloDeskCacheVisibleItems(state);
-  soloCacheList.innerHTML = visible.length ? visible.map(instance => {
+  const pageCount = Math.max(1, Math.ceil(visible.length / 35));
+  soloDeskCachePage = Math.min(soloDeskCachePage, pageCount - 1);
+  if (soloCachePageControls) soloCachePageControls.hidden = pageCount <= 1;
+  if (soloCachePageLabel) soloCachePageLabel.textContent = `Page ${soloDeskCachePage + 1} / ${pageCount}`;
+  if (soloCachePrevPage) soloCachePrevPage.disabled = soloDeskCachePage === 0;
+  if (soloCacheNextPage) soloCacheNextPage.disabled = soloDeskCachePage >= pageCount - 1;
+  const newIds = new Set([latestLootReward?.instanceId, ...(state.debrief?.keptDrops || []).map(item => item.instanceId)].filter(Boolean));
+  const pageOffset = soloDeskCachePage * 35;
+  const cells = Array.from({ length:35 }, (_, index) => visible[pageOffset + index] || null);
+  soloCacheList.innerHTML = cells.map((instance, index) => {
+    const position = pageOffset + index + 1;
+    if (!instance) return `<button type="button" class="solo-cache-cell is-empty" data-cache-grid-index="${index}" aria-label="Empty cache position ${position}"><span>${String(position).padStart(2,'0')}</span></button>`;
     const inspection = soloDeskInspection(instance);
     const favourite = state.lootCache.favoriteIds.includes(instance.instanceId);
-    const equipped = soloDeskEquippedIds(state.lootCache).includes(instance.instanceId);
-    return `<article class="solo-cache-item${soloDeskSelectedItemId === instance.instanceId ? ' is-selected' : ''}${equipped ? ' is-equipped' : ''}" style="--loot-color:${inspection.rarity.color}" data-solo-cache-item="${instance.instanceId}"><header><strong>${inspection.definition.name}</strong><span>${inspection.rarity.name}</span></header><p>${soloDeskSlotLabel(inspection.definition.slot)} · ilvl ${instance.itemLevel} · ${Math.round(soloDeskItemPower(instance))} power</p><footer><span>${equipped ? 'EQUIPPED' : 'CACHE'} · ${instance.affixes.length} affix${instance.affixes.length === 1 ? '' : 'es'}</span><span class="solo-cache-favourite">${favourite ? '★' : '☆'}</span></footer></article>`;
-  }).join('') : '<div class="solo-cache-empty">No retained drops match this view. Adjust the filter or clear a wall to generate a fresh report.</div>';
+    return `<button type="button" class="solo-cache-cell${soloDeskSelectedItemId === instance.instanceId ? ' is-selected' : ''}" data-cache-grid-index="${index}" data-solo-cache-item="${instance.instanceId}" aria-label="${inspection.rarity.name} ${inspection.definition.name}, item level ${instance.itemLevel}">${itemVisualMarkup(instance,state.lootCache,'cache-item-visual',{ isNew:newIds.has(instance.instanceId) })}${favourite ? '<span class="sr-only">Favourite</span>' : ''}</button>`;
+  }).join('');
   soloCacheList.querySelectorAll('[data-solo-cache-item]').forEach(card => card.addEventListener('click', () => {
     soloDeskSelectedItemId = card.dataset.soloCacheItem;
+    if (latestLootReward?.instanceId === soloDeskSelectedItemId) latestLootReward = null;
     renderSoloCache(soloDeskState());
     renderSoloCacheInspector(soloDeskState());
+  }));
+  soloCacheList.querySelectorAll('[data-cache-grid-index]').forEach(cell => cell.addEventListener('keydown', event => {
+    if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) return;
+    event.preventDefault();
+    const columns = window.matchMedia('(max-width: 520px)').matches ? 5 : 7;
+    const index = Number(cell.dataset.cacheGridIndex);
+    const delta = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : event.key === 'ArrowUp' ? -columns : columns;
+    const next = Math.max(0, Math.min(34, index + delta));
+    soloCacheList.querySelector(`[data-cache-grid-index="${next}"]`)?.focus();
   }));
   renderSoloCacheInspector(state);
 }
 
 function renderSoloPaperDoll(state) {
   if (!soloPaperDoll) return;
-  const slots = ['melee', 'gun', 'ranged', 'magic', 'helm', 'chest', 'gloves', 'pants', 'boots', 'belt', 'cloak', 'amulet', 'ring1', 'ring2', 'trinket1', 'trinket2', 'food'];
-  soloPaperDoll.innerHTML = slots.map(slot => {
-    const instanceId = state.lootCache.equipment[slot];
+  const groups = [
+    ['arsenal', ['melee','gun','ranged','magic']],
+    ['armour', ['helm','chest','gloves','pants','boots','cloak']],
+    ['accessories', ['amulet','belt','ring1','ring2','trinket1','trinket2','food']]
+  ];
+  const slotMarkup = slot => {
+    const instanceId = slot === 'food' ? null : state.lootCache.equipment[slot];
     const instance = instanceId ? state.lootCache.items.find(candidate => candidate.instanceId === instanceId) : null;
     const inspection = soloDeskInspection(instance);
-    return `<div class="paper-doll-slot${inspection ? ' is-filled' : ''}"><small>${soloDeskSlotLabel(slot)}</small><strong>${inspection?.definition.name || 'Empty'}</strong><span>${inspection ? `${inspection.rarity.name} · ilvl ${instance.itemLevel}` : 'Field position open'}</span></div>`;
-  }).join('');
+    const food = slot === 'food' ? ITEMS[state.lootCache.foodId] : null;
+    const emptyIcon = ICON_MANIFEST.iconForPaperDollSlot(slot);
+    return `<button type="button" class="paper-doll-slot${inspection || food ? ' is-filled' : ''}${inspection && state.lootCache.equipment.activeWeaponSlot === slot ? ' is-active-weapon' : ''}" data-paper-slot="${slot}" ${instance ? `data-paper-item="${instance.instanceId}"` : ''} aria-label="${soloDeskSlotLabel(slot)}: ${inspection?.definition.name || food?.name || 'empty'}"><small>${soloDeskSlotLabel(slot)}</small>${instance ? itemVisualMarkup(instance,state.lootCache,'paper-doll-item') : food ? `<span class="paper-doll-food">${resourceIconMarkup(food.name === 'Cooked Fish' ? 'Cooked Fish' : `${food.name}s`,'paper-doll-food-icon')}<em>${food.name}</em></span>` : `<span class="empty-slot-visual">${iconRefMarkup(emptyIcon,'empty-slot-icon')}<em>Empty</em></span>`}</button>`;
+  };
+  soloPaperDoll.innerHTML = groups.map(([group,slots]) => `<section class="paper-doll-group is-${group}"><h4>${group}</h4><div>${slots.map(slotMarkup).join('')}</div></section>`).join('');
+  soloPaperDoll.querySelectorAll('[data-paper-slot]').forEach(button => button.addEventListener('click', () => {
+    if (button.dataset.paperItem) {
+      soloDeskSelectedItemId = button.dataset.paperItem;
+      soloCacheDetails.open = true;
+      renderSoloCacheInspector(soloDeskState());
+      return;
+    }
+    const slot = button.dataset.paperSlot;
+    soloDeskCacheSlot = slot === 'food' ? 'all' : slot;
+    soloDeskCachePage = 0;
+    soloCacheDetails.open = true;
+    renderSoloCache(soloDeskState());
+    soloCacheDetails.scrollIntoView({ block:'center', behavior:reduceMotionEnabled() ? 'auto' : 'smooth' });
+  }));
 }
 
 function renderSoloDebrief(debrief) {
@@ -1717,8 +2030,10 @@ function renderSoloDebrief(debrief) {
   soloDebriefOutcome.textContent = outcome;
   const best = debrief.strongestKeptDrops?.[0];
   if (best) soloDeskSelectedItemId = best.instanceId;
+  const bestInstance = best ? soloDeskState().lootCache.items.find(item => item.instanceId === best.instanceId) : null;
+  const bestVisual = bestInstance ? itemVisualMarkup(bestInstance, soloDeskState().lootCache, 'debrief-item-visual') : '';
   const xpTotal = Object.values(debrief.skillXp || {}).reduce((sum, amount) => sum + Number(amount || 0), 0);
-  soloDebriefSummary.innerHTML = `<div class="debrief-stat is-good"><small>Victories</small><strong>${debrief.victories}</strong></div><div class="debrief-stat is-danger"><small>Deaths</small><strong>${reportedDeaths}</strong></div><div class="debrief-stat"><small>Combat XP</small><strong>+${Math.round(xpTotal)}</strong></div><div class="debrief-stat"><small>Kept drops</small><strong>${debrief.keptDropCount}</strong></div><div class="debrief-stat"><small>Salvage</small><strong>${debrief.filterSalvage + debrief.fullCacheSalvage}</strong></div><div class="debrief-stat"><small>Next order</small><strong>${wall?.fallbackStage ? `Farm ${wall.fallbackStage}` : debrief.finalOrder.toUpperCase()}</strong></div>${wall ? `<div class="debrief-stat"><small>Wall diagnosis</small><strong>${wall.termination === 'timeout' ? 'Timeout' : wall.reason}</strong></div>` : ''}${best ? `<div class="debrief-stat"><small>Best drop</small><strong>${soloDeskInspection(soloDeskState().lootCache.items.find(item => item.instanceId === best.instanceId))?.definition.name || 'Cached drop'}</strong></div>` : ''}`;
+  soloDebriefSummary.innerHTML = `${bestVisual}<div class="debrief-stat is-good"><small>Victories</small><strong>${debrief.victories}</strong></div><div class="debrief-stat is-danger"><small>Deaths</small><strong>${reportedDeaths}</strong></div><div class="debrief-stat"><small>Combat XP</small><strong>+${Math.round(xpTotal)}</strong></div><div class="debrief-stat"><small>Gold</small><strong>+${Math.floor(debrief.gold || 0)}</strong></div><div class="debrief-stat"><small>Contract</small><strong>+${((debrief.contractProgressMs || 0) / 3_600_000).toFixed(2)}h</strong></div><div class="debrief-stat"><small>Kept drops</small><strong>${debrief.keptDropCount}</strong></div><div class="debrief-stat"><small>Salvage</small><strong>${debrief.filterSalvage + debrief.fullCacheSalvage}</strong></div><div class="debrief-stat"><small>Next order</small><strong>${wall?.fallbackStage ? `Farm ${wall.fallbackStage}` : debrief.finalOrder.toUpperCase()}</strong></div>${wall ? `<div class="debrief-stat"><small>Wall diagnosis</small><strong>${wall.termination === 'timeout' ? 'Timeout' : wall.reason}</strong></div>` : ''}${best ? `<div class="debrief-stat"><small>Best drop</small><strong>${soloDeskInspection(bestInstance)?.definition.name || 'Cached drop'}</strong></div>` : ''}`;
   renderSoloCacheInspector(soloDeskState());
 }
 
@@ -1828,6 +2143,7 @@ function renderSoloFrontierDesk() {
   renderSoloCombatSkills(state);
   renderSoloCache(state);
   renderSoloPaperDoll(state);
+  renderFrontierExchange(state);
   if (soloDeskDebriefSnapshot) renderSoloDebrief(soloDeskDebriefSnapshot);
   soloDeskRenderer?.render({
     stage: deskActive ? shownStage : null,
@@ -1914,7 +2230,7 @@ let selectedArenaStyle = null;
    SAVE / LOAD
 ===================================== */
 const SAVE_KEY = 'momentum-save';
-const SAVE_VERSION = 20;
+const SAVE_VERSION = 21;
 const AUTO_SAVE_MS = 10_000;
 let resetInProgress = false;
 
@@ -1931,8 +2247,6 @@ function createSaveData() {
     keys,
     rareGems,
     gold,
-    combatProgression: COMBAT_PROGRESSION_FRAMEWORK.progression.normalizeCombatProgression(combatProgression),
-    legacyCombat: legacyCombatAudit,
     scrap,
     basicBait,
     uncommonFish,
@@ -1946,8 +2260,7 @@ function createSaveData() {
     ownedGear: [...ownedGear],
     equippedTool: equipment.tool,
     ownedItems: [...ownedItems],
-    equipment: { ...equipment },
-    weaponRefinements: { ...weaponRefinements },
+    equipment: { tool:equipment.tool || null },
     combatTalents: [...ownedCombatTalents],
     combatSkillTreeView: { ...combatSkillTreeView },
     arenaRecords: { ...arenaRecords },
@@ -1965,7 +2278,6 @@ function createSaveData() {
     soloDesk:{ stance:soloDeskStance, technique:soloDeskTechnique, defensive:soloDeskDefensiveAbility, aura:soloDeskAura, cacheRarity:soloDeskCacheRarity, cacheSlot:soloDeskCacheSlot, cacheSort:soloDeskCacheSort, favouritesOnly:soloDeskCacheFavouritesOnly },
     claimedOperations:[...claimedOperations],
     crafting:{ selectedRecipe:craftingSelectedRecipe },
-    lootInventory: lootInventory.map(instance => ({ ...instance, affixes: instance.affixes.map(affix => ({ ...affix })) })),
     salvageMaterials,
     collectionProgress:{ ...collectionProgress },
     skillTools: skillToolInventory.map(instance => ({ ...instance })),
@@ -1996,7 +2308,7 @@ function loadGame() {
   try {
     let save = JSON.parse(raw);
     if (!Number.isInteger(save.version) || save.version < 1 || save.version > SAVE_VERSION) return false;
-    save = SOLO_FRONTIER_FRAMEWORK.migrateMomentumSaveToV20(save);
+    save = SOLO_FRONTIER_FRAMEWORK.migrateMomentumSaveToV21(save);
 
     save.skills.forEach(savedSkill => {
       const skill = skills.find(s => s.id === savedSkill.id) || (savedSkill.id === 'Music' ? ensureSkillState('Music') : null);
@@ -2034,28 +2346,15 @@ function loadGame() {
     ownedGear.clear();
     if (save.version >= 3) save.ownedGear.forEach(id => ownedGear.add(id));
     ownedItems.clear();
-    ownedItems.add('pulseSidearm');
-    ownedItems.add('frontierBow');
-    ownedItems.add('emberFocus');
-    ownedGear.forEach(id => ownedItems.add(id));
-    if (save.version >= 6) save.ownedItems.forEach(id => { if (ITEMS[id]) ownedItems.add(id); });
-    lootInventory = save.version >= 14 && Array.isArray(save.lootInventory) ? save.lootInventory.filter(instance => LOOT_FRAMEWORK?.inspectItem(instance)) : [];
+    ownedGear.forEach(id => { if (ITEMS[id]?.slot === 'tool') ownedItems.add(id); });
+    if (save.version >= 6) save.ownedItems.forEach(id => { if (ITEMS[id]?.slot === 'tool') ownedItems.add(id); });
     salvageMaterials = save.version >= 14 ? Math.max(0, Number(save.salvageMaterials) || 0) : 0;
     collectionProgress = save.version >= 14 && save.collectionProgress && typeof save.collectionProgress === 'object' ? Object.fromEntries(Object.entries(save.collectionProgress).map(([id, value]) => [id, Math.max(0, Number(value) || 0)])) : {};
     skillToolInventory = save.version >= 14 && Array.isArray(save.skillTools) ? save.skillTools.filter(instance => getSkillToolDefinition(instance.toolId)).map(instance => ({ instanceId:String(instance.instanceId), toolId:String(instance.toolId), acquiredAt:Number(instance.acquiredAt) || Date.now() })) : [];
     rehydrateLootInventory();
     skillToolInventory.forEach(instance => ensureSkillState(getSkillToolDefinition(instance.toolId).skillId));
     const legacyTool = save.version >= 3 && ownedGear.has(save.equippedTool) ? save.equippedTool : null;
-    equipment = save.version >= 6 ? { ...equipment, ...save.equipment } : { melee:null, ranged:null, gun:'pulseSidearm', magic:null, armor:ownedGear.has('platedVest')?'platedVest':null, tool:legacyTool, food:null };
-    LOADOUT_SLOTS.forEach(slot => { if (equipment[slot] && !ownedItems.has(equipment[slot]) && equipment[slot] !== 'rawFish') equipment[slot] = null; });
-    if (!equipment.gun) equipment.gun = 'pulseSidearm';
-    if (!equipment.ranged) equipment.ranged = 'frontierBow';
-    if (!equipment.magic) equipment.magic = 'emberFocus';
-    if (save.version >= 7) {
-      Object.keys(weaponRefinements).forEach(id => {
-        weaponRefinements[id] = clamp(Number(save.weaponRefinements?.[id]) || 0, 0, MAX_WEAPON_REFINEMENT);
-      });
-    }
+    equipment = { tool:typeof save.equipment?.tool === 'string' ? save.equipment.tool : legacyTool };
     equippedTool = equipment.tool;
     ownedCombatTalents.clear();
     if (save.version >= 8) validateLoadedTalents(save.combatTalents || []).forEach(id => ownedCombatTalents.add(id));
@@ -2081,7 +2380,7 @@ function loadGame() {
       if (['none', 'Mend', 'Arcane Barrier'].includes(savedDesk.defensive)) soloDeskDefensiveAbility = savedDesk.defensive;
       if (['none', 'Battle Focus'].includes(savedDesk.aura)) soloDeskAura = savedDesk.aura;
       if (LOOT_FRAMEWORK?.rarities?.some(rarity => rarity.id === savedDesk.cacheRarity)) soloDeskCacheRarity = savedDesk.cacheRarity;
-      if (['all', 'weapon', 'armour', 'ring', 'trinket', 'accessory'].includes(savedDesk.cacheSlot)) soloDeskCacheSlot = savedDesk.cacheSlot;
+      if (['all', 'weapon', 'armour', 'ring', 'trinket', 'accessory', 'melee', 'gun', 'ranged', 'magic', 'helm', 'chest', 'gloves', 'pants', 'boots', 'cloak', 'belt', 'amulet', 'ring1', 'ring2', 'trinket1', 'trinket2'].includes(savedDesk.cacheSlot)) soloDeskCacheSlot = savedDesk.cacheSlot;
       if (['power', 'rarity', 'newest', 'slot'].includes(savedDesk.cacheSort)) soloDeskCacheSort = savedDesk.cacheSort;
       soloDeskCacheFavouritesOnly = Boolean(savedDesk.favouritesOnly);
       claimedOperations.clear();
@@ -2095,15 +2394,12 @@ function loadGame() {
     }
     const knownCraftingRecipeIds = new Set((SKILL_FRAMEWORK?.craftingRecipes || []).map(recipe => recipe.id));
     craftingSelectedRecipe = knownCraftingRecipeIds.has(save.crafting?.selectedRecipe) ? save.crafting.selectedRecipe : 'ironBlade';
-    if (equipment.food === 'rawFish') equipment.food = null;
     arenaTierUnlocked = save.version >= 4 ? Math.max(0, Math.min(3, Number(save.arenaTierUnlocked) || 0)) : 1;
     selectedArenaTier = save.version >= 4 ? Math.max(1, Number(save.selectedArenaTier) || 1) : 1;
     arenaWins = save.version >= 4 && Array.isArray(save.arenaWins) ? [0, 1, 2].map(index => Math.max(0, Number(save.arenaWins[index]) || 0)) : [0, 0, 0];
-    legacyCombatAudit = save.version >= 18 ? save.legacyCombat || null : null;
-    combatProgression = save.version >= 18
-      ? COMBAT_PROGRESSION_FRAMEWORK.progression.normalizeCombatProgression(save.combatProgression)
-      : COMBAT_PROGRESSION_FRAMEWORK.migration.convertLegacyCombatProgression(save.skills?.find(skill => skill?.id === 'Combat'), null);
-    soloFrontierState = save.version >= 20
+    legacyCombatAudit = null;
+    combatProgression = COMBAT_PROGRESSION_FRAMEWORK.progression.normalizeCombatProgression(save.soloFrontier?.combatProgression);
+    soloFrontierState = save.version >= 21
       ? SOLO_FRONTIER_FRAMEWORK.normalizeSoloFrontierState(save.soloFrontier)
       : SOLO_FRONTIER_FRAMEWORK.createInitialSoloFrontierState();
     soloFrontierRuntime = SOLO_FRONTIER_FRAMEWORK.createSoloFrontierRuntime(soloFrontierState);
@@ -2538,7 +2834,8 @@ function renderTalents() {
   const state = SKILL_TREE_RULES.createState(COMBAT_SKILL_TREE, [...ownedCombatTalents], combatSkillTreeView);
   const earned = earnedCombatTalentPoints();
   const combatLevel = combatLevelForUI();
-  talentPointSummary.innerHTML = `<span>Combat ${combatLevel}</span><strong>${availableCombatTalentPoints()} available</strong><span>${ownedCombatTalents.size}/${earned} spent</span><span>Build: ${combatBuildLabel()}</span><span>Next point: ${COMBAT_TALENT_LEVELS.find(level => level > combatLevel) || 'all earned'}</span>`;
+  const respecCost = COMBAT_DEVELOPMENT_FRAMEWORK.respecCost(ownedCombatTalents.size);
+  talentPointSummary.innerHTML = `<span>Arena Discipline · Combat ${combatLevel}</span><strong>${availableCombatTalentPoints()} available</strong><span>${ownedCombatTalents.size}/${earned} spent</span><span>Build: ${combatBuildLabel()}</span><span>Respec: ${respecCost} Gold</span>`;
   const branchById = new Map(COMBAT_SKILL_TREE.branches.map(branch => [branch.id, branch]));
   const selectedNode = COMBAT_TALENTS.find(node => node.id === combatSkillTreeView.focusNodeId) || COMBAT_TALENTS.find(node => node.id === COMBAT_SKILL_TREE.rootNodeIds[0]);
   const selectedStatus = selectedNode ? canSelectTalent(selectedNode) : { allowed:false, reason:'Select a node' };
@@ -2655,6 +2952,7 @@ function renderTalents() {
     setView({ zoom: Math.max(0.55, Math.min(1.45, combatSkillTreeView.zoom + (event.deltaY < 0 ? 0.08 : -0.08))) });
   }, { passive:false });
   refundTalentsBtn.disabled = ownedCombatTalents.size === 0 || window.MomentumArena.isRunning();
+  refundTalentsBtn.textContent = ownedCombatTalents.size ? `Respec · ${COMBAT_DEVELOPMENT_FRAMEWORK.respecCost(ownedCombatTalents.size)} Gold` : 'No points allocated';
 }
 
 function renderFrontier() {
@@ -2689,13 +2987,14 @@ function renderFrontier() {
     openArenaPreparation();
   });
 
-  presetList.innerHTML = combatPresets.map((preset, index) => `<div class="preset-card"><div><strong>Preset ${index + 1}</strong><div class="small">${preset ? `${preset.styleId} · ${preset.talents.length} talents · ${ITEMS[preset.foodId]?.name || 'No Food'}` : 'Empty slot'}</div></div><select class="btn" data-preset-style="${index}"><option value="gun">Gun</option><option value="melee" ${equipment.melee ? '' : 'disabled'}>Melee</option><option value="ranged" ${equipment.ranged ? '' : 'disabled'}>Ranged</option><option value="magic" ${equipment.magic ? '' : 'disabled'}>Magic</option></select><button class="btn" data-save-preset="${index}">Save Current</button><button class="btn" data-apply-preset="${index}" ${preset ? '' : 'disabled'}>Apply</button></div>`).join('');
+  const cache = canonicalLootCache();
+  presetList.innerHTML = combatPresets.map((preset, index) => `<div class="preset-card"><div><strong>Preset ${index + 1}</strong><div class="small">${preset ? `${preset.styleId} · ${preset.talents.length} talents · ${ITEMS[preset.foodId]?.name || 'No Food'}` : 'Empty slot'}</div></div><select class="btn" data-preset-style="${index}"><option value="gun" ${cache.equipment.gun ? '' : 'disabled'}>Gun</option><option value="melee" ${cache.equipment.melee ? '' : 'disabled'}>Melee</option><option value="ranged" ${cache.equipment.ranged ? '' : 'disabled'}>Ranged</option><option value="magic" ${cache.equipment.magic ? '' : 'disabled'}>Magic</option></select><button class="btn" data-save-preset="${index}">Save Current</button><button class="btn" data-apply-preset="${index}" ${preset ? '' : 'disabled'}>Apply</button></div>`).join('');
   presetList.querySelectorAll('[data-save-preset]').forEach(button => button.onclick = () => {
     const index = Number(button.dataset.savePreset);
     const styleId = presetList.querySelector(`[data-preset-style="${index}"]`).value;
-    const itemId = equipment[styleId];
+    const itemId = cache.equipment[styleId];
     if (!itemId) { showToast(`No ${styleId} weapon equipped`); return; }
-    combatPresets[index] = { styleId, itemId, armorId:equipment.armor, foodId:equipment.food, talents:[...ownedCombatTalents] };
+    combatPresets[index] = { styleId, itemId, armorId:cache.equipment.chest, foodId:cache.foodId, talents:[...ownedCombatTalents] };
     logActivity(`Saved Combat Preset ${index + 1}`, 'frontier');
     renderFrontier();
   });
@@ -2718,14 +3017,17 @@ function applyCombatPreset(index) {
   if (masteryStars() < 2 || window.MomentumArena.isRunning()) return;
   const preset = combatPresets[index];
   if (!preset) return;
-  if (!ownedItems.has(preset.itemId)) { showToast('Preset weapon is no longer available'); return; }
-  if (preset.armorId && !ownedItems.has(preset.armorId)) { showToast('Preset armor is no longer available'); return; }
+  const cache = canonicalLootCache();
+  if (!cache.items.some(item => item.instanceId === preset.itemId)) { showToast('Preset weapon is no longer available'); return; }
+  if (preset.armorId && !cache.items.some(item => item.instanceId === preset.armorId)) { showToast('Preset armor is no longer available'); return; }
   if (preset.foodId && foodCount(preset.foodId) < 1) { showToast(`No ${ITEMS[preset.foodId]?.name || 'preset Food'} available`); return; }
   const validTalents = validateLoadedTalents(preset.talents);
   ownedCombatTalents.clear(); validTalents.forEach(id => ownedCombatTalents.add(id));
-  equipment[preset.styleId] = preset.itemId;
-  equipment.armor = preset.armorId || null;
-  equipment.food = preset.foodId || null;
+  setCanonicalLootCache({
+    ...cache,
+    foodId:preset.foodId || null,
+    equipment:{ ...cache.equipment, [preset.styleId]:preset.itemId, chest:preset.armorId || null, activeWeaponSlot:preset.styleId }
+  });
   selectedArenaStyle = preset.styleId;
   renderLoadout();
   logActivity(`Applied Combat Preset ${index + 1}`, 'frontier');
@@ -2803,10 +3105,10 @@ function arenaStyleState(style) {
   const cachedInstanceId = cache?.equipment?.[style.slot];
   const cachedInstance = cache?.items?.find(instance => instance.instanceId === cachedInstanceId);
   const cachedInspection = cachedInstance ? LOOT_FRAMEWORK?.inspectItem(cachedInstance) : null;
-  const itemId = cachedInspection ? cachedInstance.instanceId : equipment[style.slot];
-  const weapon = cachedInspection ? materializeLootItem(cachedInstance) : ITEMS[itemId];
+  const itemId = cachedInspection ? cachedInstance.instanceId : null;
+  const weapon = cachedInspection ? materializeLootItem(cachedInstance) : null;
   if (!weapon) return { style, weapon:null, available:false, status:'Empty slot' };
-  if ((!cachedInspection && !ownedItems.has(itemId)) || weapon.unavailable) return { style, weapon, available:false, status:'Unavailable' };
+  if (weapon.unavailable) return { style, weapon, available:false, status:'Unavailable' };
   if (!style.implemented) return { style, weapon, available:false, status:'Combat support coming next' };
   return { style, weapon, available:true, status:'Available' };
 }
@@ -2843,10 +3145,8 @@ function arenaEquippedStats() {
   const activeStats = activeInstance ? LOOT_FRAMEWORK?.inspectItem(activeInstance)?.stats || {} : {};
   const stats = Object.fromEntries(Object.entries(snapshot?.stats || {}).map(([key, value]) => [key, Math.max(0, Number(value || 0) - Number(activeStats[key] || 0))]));
   const armourPieces = [...(snapshot?.armourPieces || [])];
-  const legacyArmor = ITEMS[equipment.armor];
-  if (legacyArmor) armourPieces.push({ id: equipment.armor, armourClass: 'medium', armour: 6, });
   return {
-    hitPoints: Math.max(0, playerMaxHp() - 100) + Number(stats.hp || 0),
+    hitPoints: Number(stats.hp || 0),
     accuracy: Number(stats.accuracy || 0),
     evasion: Number(stats.evasion || 0),
     ward: Number(stats.ward || 0),
@@ -2858,9 +3158,7 @@ function arenaEquippedStats() {
 
 function captureArenaWeapon(state) {
   const { style, weapon } = state;
-  const damage = style.id === 'gun'
-    ? BULLET_DAMAGE + (weaponRefinements[weapon.id] || 0) * 2
-    : weaponDamage(weapon);
+  const damage = weaponDamage(weapon);
   return Object.freeze({
     styleId: style.id,
     itemId: weapon.id,
@@ -2883,6 +3181,8 @@ function captureArenaWeapon(state) {
 
 function buildArenaCombatBuild(tier, runLoadout) {
   const enemy = arenaEnemyForTier(tier);
+  const technique = runLoadout.style === 'magic' ? 'Arc Bolt' : runLoadout.style === 'gun' ? 'Burst Fire' : runLoadout.style === 'ranged' ? 'Piercing Shot' : 'Power Strike';
+  const development = soloDeskState().combatDevelopment;
   return {
     combatSkills: COMBAT_PROGRESSION_FRAMEWORK.compatibility.progressionLevelMap(combatProgression),
     equippedStats: arenaEquippedStats(),
@@ -2896,12 +3196,22 @@ function buildArenaCombatBuild(tier, runLoadout) {
       damageType: runLoadout.damageType
     },
     stance: soloDeskStance,
-    technique: runLoadout.style === 'magic' ? 'Arc Bolt' : runLoadout.style === 'gun' ? 'Burst Fire' : runLoadout.style === 'ranged' ? 'Piercing Shot' : 'Power Strike',
+    technique,
     defensiveAbility: soloDeskDefensiveAbility,
     aura: soloDeskAura,
     enemy,
     stage: tier.id * 10,
-    seed: `arena:${tier.id}:${Date.now()}`
+    seed: `arena:${tier.id}:${Date.now()}`,
+    combatModifiers:COMBAT_DEVELOPMENT_FRAMEWORK.resolveModifiers(development, combatProgression, {
+      style:runLoadout.style,
+      technique,
+      stance:soloDeskStance,
+      boss:true,
+      enemyWarded:enemy.ward > 0,
+      playerHealthRatio:1,
+      enemyHealthRatio:1,
+      baseInterval:runLoadout.attackInterval
+    })
   };
 }
 
@@ -3005,13 +3315,20 @@ function renderGear() {
   const crafting = skills.find(s => s.id === 'Crafting');
   GEAR.forEach(item => {
     const owned = ownedGear.has(item.id);
-    const equipped = equipment[item.slot] === item.id;
+    const combatInstance = LEGACY_COMBAT_DEFINITION_IDS[item.id]
+      ? canonicalLootCache().items.find(instance => instance.definitionId === LEGACY_COMBAT_DEFINITION_IDS[item.id] && ['legacy-equipment','workshop'].includes(instance.sourceId))
+      : null;
+    const canonicalSlot = item.slot === 'armor' ? 'chest' : item.slot;
+    const equipped = item.slot === 'tool'
+      ? equipment.tool === item.id
+      : Boolean(combatInstance && canonicalLootCache().equipment[canonicalSlot] === combatInstance.instanceId);
     const recipe = craftingRecipeFor(item.id);
     const requirementState = evaluateRequirements([...(item.requirements || []), ...recipeRequirements(recipe)]);
     const unlocked = requirementState.met;
     const row = document.createElement('div');
     row.className = 'workshop-row';
-    row.innerHTML = `<div style="font-weight:600">${item.name}</div><div style="opacity:.9; margin:2px 0 6px">${item.desc}</div><div class="small recipe-preview">${recipe ? `${recipeInputLabel(recipe)} · Crafting ${recipe.requiredLevel}` : `Legacy cost: ${item.cost} Bars`}</div><div class="flex"><span>${owned ? 'Crafted' : unlocked ? 'Ready to assemble' : `Requires: ${requirementState.missing.join(' · ')}`}</span><button class="btn" ${equipped || (!owned && !unlocked) ? 'disabled' : ''}>${equipped ? 'Equipped' : owned ? 'Equip' : unlocked ? 'Assemble' : 'Locked'}</button></div>`;
+    const craftedVisual = combatInstance ? itemVisualMarkup(combatInstance, canonicalLootCache(), 'workshop-item-visual') : '';
+    row.innerHTML = `<div class="workshop-item-heading">${craftedVisual}<div><strong>${item.name}</strong><div style="opacity:.9; margin:2px 0 6px">${item.desc}</div></div></div><div class="small recipe-preview">${recipe ? `${recipeInputLabel(recipe)} · Crafting ${recipe.requiredLevel}` : `Legacy cost: ${item.cost} Bars`}</div><div class="flex"><span>${owned ? 'Crafted' : unlocked ? 'Ready to assemble' : `Requires: ${requirementState.missing.join(' · ')}`}</span><button class="btn" ${equipped || (!owned && !unlocked) ? 'disabled' : ''}>${equipped ? 'Equipped' : owned ? 'Equip' : unlocked ? 'Assemble' : 'Locked'}</button></div>`;
     row.querySelector('button').onclick = () => {
       if (!ownedGear.has(item.id)) {
         const required = [...(item.requirements || []), ...recipeRequirements(recipe)];
@@ -3020,12 +3337,17 @@ function renderGear() {
         if (recipe) payCraftingRecipe(recipe);
         else smithing.qty -= item.cost;
         ownedGear.add(item.id);
-        ownedItems.add(item.id);
+        if (item.slot === 'tool') ownedItems.add(item.id);
         showToast(`Crafted ${item.name}`);
         logActivity(`Crafted ${item.name}`, 'craft');
       }
-      equipment[item.slot] = item.id;
-      if (item.slot === 'tool') equippedTool = item.id;
+      if (item.slot === 'tool') {
+        equipment.tool = item.id;
+        equippedTool = item.id;
+      } else {
+        const instance = ensureCanonicalCombatItem(item.id);
+        equipCanonicalCombatItem(instance, canonicalSlot);
+      }
       renderGear();
       renderLoadout();
     };
@@ -3057,25 +3379,30 @@ function renderGear() {
     gearList.appendChild(row);
   });
 
-  const refinable = ['pulseSidearm', 'ironBlade'].filter(id => ownedItems.has(id));
+  const refinable = ['pulseSidearm', 'ironBlade'].filter(id => canonicalLootCache().items.some(instance => instance.definitionId === LEGACY_COMBAT_DEFINITION_IDS[id]));
   if (refinable.length) gearList.insertAdjacentHTML('beforeend', '<h3>Weapon Refinement</h3><div class="small">Spend existing Bars and Rare Gems for permanent +2 damage, up to +5.</div>');
   refinable.forEach(id => {
     const item = ITEMS[id];
-    const level = weaponRefinements[id];
+    const definitionId = LEGACY_COMBAT_DEFINITION_IDS[id];
+    const instance = canonicalLootCache().items.find(candidate => candidate.definitionId === definitionId && ['legacy-equipment','workshop'].includes(candidate.sourceId))
+      || canonicalLootCache().items.find(candidate => candidate.definitionId === definitionId);
+    const level = Math.max(0, Number(instance?.enhancementRank) || 0);
     const maxed = level >= MAX_WEAPON_REFINEMENT;
     const barCost = 25 * (level + 1);
     const row = document.createElement('div');
     row.className = 'workshop-row';
-    row.innerHTML = `<div style="font-weight:600">${item.name} +${level}</div><div class="small">${weaponDamage(item)} damage</div><div class="flex"><span>${maxed ? 'Maximum refinement' : `Cost: ${barCost} Bars, 1 Rare Gem`}</span><button class="btn" ${maxed ? 'disabled' : ''}>${maxed ? 'Maxed' : 'Refine'}</button></div>`;
+    row.innerHTML = `<div style="font-weight:600">${item.name} +${level}</div><div class="small">${Number(item.damage || 0) + level * 2} damage</div><div class="flex"><span>${maxed ? 'Maximum refinement' : `Cost: ${barCost} Bars, 1 Rare Gem`}</span><button class="btn" ${maxed ? 'disabled' : ''}>${maxed ? 'Maxed' : 'Refine'}</button></div>`;
     row.querySelector('button').onclick = () => {
       if (maxed) return;
       const refinementRequirements = evaluateRequirements([{type:'resource',resource:'Bars',value:barCost},{type:'resource',resource:'Rare Gems',value:1}]);
       if (!refinementRequirements.met) { showToast(`Requires ${refinementRequirements.missing.join(' · ')}`); return; }
       smithing.qty -= barCost;
       rareGems -= 1;
-      weaponRefinements[id] += 1;
-      showToast(`${item.name} refined to +${weaponRefinements[id]}`);
-      logActivity(`${item.name} refined to +${weaponRefinements[id]}`, 'craft');
+      const cache = canonicalLootCache();
+      const nextRank = Math.min(MAX_WEAPON_REFINEMENT, level + 1);
+      setCanonicalLootCache({ ...cache, items:cache.items.map(candidate => candidate.instanceId === instance.instanceId ? { ...candidate, enhancementRank:nextRank } : candidate) });
+      showToast(`${item.name} refined to +${nextRank}`);
+      logActivity(`${item.name} refined to +${nextRank}`, 'craft');
       renderGear();
       renderLoadout();
     };
@@ -3096,75 +3423,51 @@ function equipItem(itemId) {
   const item = ITEMS[itemId];
   if (!item || item.unavailable) return;
   if (item.slot === 'food' && foodCount(itemId) <= 0) return;
-  if (item.slot !== 'food' && !ownedItems.has(itemId)) return;
-  equipment[item.slot] = itemId;
-  if (item.slot === 'tool') equippedTool = itemId;
-  renderLoadout();
-}
-
-function lootMatchesFilter(instance) {
-  if (selectedLootFilter === 'all') return true;
-  if (selectedLootFilter === 'weapon') return ['melee', 'ranged', 'gun', 'magic'].includes(ITEMS[instance.instanceId]?.slot);
-  if (selectedLootFilter === 'armor') return ITEMS[instance.instanceId]?.slot === 'armor';
-  return instance.rarity === selectedLootFilter;
-}
-
-function renderLootInventory() {
-  if (!lootInventoryList) return;
-  if (lootFilterSelect) lootFilterSelect.value = selectedLootFilter;
-  const visible = lootInventory.filter(lootMatchesFilter);
-  const collection = Object.entries(collectionProgress).map(([source, progress]) => `${source} ${progress}`).join(' · ') || 'No combat collection progress yet.';
-  if (!visible.length) lootInventoryList.innerHTML = `<div class="small loot-empty">No generated loot matches this filter.</div>`;
-  else lootInventoryList.innerHTML = visible.map(instance => {
-    const definition = lootDefinitionFor(instance);
-    const rarity = lootRarityFor(instance);
-    const equipped = equippedLootIds().includes(instance.instanceId);
-    const inspection = LOOT_FRAMEWORK?.inspectItem(instance);
-    return `<article class="loot-inventory-item rarity-${instance.rarity}${selectedLootItemId === instance.instanceId ? ' is-selected' : ''}" style="--loot-color:${rarity.color}" data-loot-instance="${instance.instanceId}"><div class="loot-item-heading"><strong>${rarity.name}</strong><span>${definition?.name || 'Unknown item'}</span></div><div class="small">${definition?.slot || 'unknown'} · ${instance.affixes.length} affixes · ilvl ${instance.itemLevel}</div><div class="small loot-signature">${inspection?.signature || ''}</div><div class="flex"><button class="btn" data-loot-equip="${instance.instanceId}">${equipped ? 'Equipped' : 'Equip'}</button><button class="btn btn-quiet" data-loot-salvage="${instance.instanceId}" ${equipped ? 'disabled' : ''}>Salvage</button></div></article>`;
-  }).join('');
-  lootInventoryList.querySelectorAll('[data-loot-instance]').forEach(card => card.addEventListener('click', event => {
-    if (event.target.closest('button')) return;
-    selectedLootItemId = card.dataset.lootInstance;
-    renderLootInventory();
-  }));
-  lootInventoryList.querySelectorAll('[data-loot-equip]').forEach(button => button.onclick = () => {
-    const instance = lootInventory.find(candidate => candidate.instanceId === button.dataset.lootEquip);
-    const item = ITEMS[button.dataset.lootEquip];
-    const validation = instance && LOOT_FRAMEWORK?.validateEquipItem(instance, item?.slot);
-    if (!item || !ownedItems.has(item.id) || !validation?.accepted) {
-      if (validation?.reason) showToast(validation.reason);
-      return;
-    }
-    equipment[item.slot] = item.id;
-    showToast(`${item.name} equipped`);
-    renderLoadout();
-    saveGame();
-  });
-  lootInventoryList.querySelectorAll('[data-loot-salvage]').forEach(button => button.onclick = () => salvageLootItem(button.dataset.lootSalvage));
-  if (lootDetail) {
-    const inspection = selectedLootItemId ? inspectLoot(selectedLootItemId) : null;
-    lootDetail.innerHTML = inspection
-      ? `<div class="loot-detail-card rarity-${inspection.instance.rarity}" style="--loot-color:${inspection.rarity.color}"><strong>${inspection.rarity.name} ${inspection.definition.name}</strong><span>${inspection.definition.slot} · item level ${inspection.instance.itemLevel}</span><span>${inspection.signature}</span><div class="loot-affixes">${inspection.instance.affixes.map(affix => `<span>${affix.name} +${affix.value}${affix.unit === '%' ? '%' : ''}</span>`).join('') || '<span>No rolled affixes</span>'}</div></div>`
-      : '<div class="small">Select a drop to inspect its signature and rolled stats.</div>';
-    lootDetail.insertAdjacentHTML('beforeend', `<div class="small loot-collection-progress">Collection progress: ${collection}</div>`);
+  if (item.slot === 'food') setCanonicalFoodId(itemId);
+  else if (item.slot === 'tool') {
+    if (!ownedItems.has(itemId)) return;
+    equipment.tool = itemId;
+    equippedTool = itemId;
+  } else if (item.dynamicLoot) {
+    const instance = canonicalLootCache().items.find(candidate => candidate.instanceId === itemId);
+    if (!instance || !equipCanonicalCombatItem(instance)) return;
+  } else {
+    if (!ownedItems.has(itemId)) return;
+    const instance = ensureCanonicalCombatItem(itemId);
+    if (!equipCanonicalCombatItem(instance, item.slot === 'armor' ? 'chest' : item.slot)) return;
   }
+  renderLoadout();
 }
 
 function renderLoadout() {
   if (!loadoutSlots) return;
+  const cache = canonicalLootCache();
   if (loadoutBuildSummary) {
     loadoutBuildSummary.innerHTML = `<span class="eyebrow">ACTIVE BUILD</span><strong>${combatBuildLabel()}</strong><span class="small">Combat talents and equipped gear shape your expedition role.</span>`;
   }
   loadoutSlots.innerHTML = LOADOUT_SLOTS.map(slot => {
-    const item = ITEMS[equipment[slot]];
-    return `<div class="loadout-slot ${item ? 'is-equipped' : 'is-empty'}">${iconMarkup('loadout',slot,'slot-icon')}<div class="slot-copy"><div class="slot-name">${slot === 'magic' ? 'Magic Spell' : slot}</div><strong>${item?.name || 'Empty'}</strong><div class="small">${itemStats(item)}</div>${item ? `<button class="btn" data-unequip="${slot}">Unequip</button>` : ''}</div></div>`;
+    const canonicalSlot = slot === 'chest' ? 'chest' : slot;
+    const instance = ['tool','food'].includes(slot) ? null : canonicalEquippedInstance(canonicalSlot);
+    const item = slot === 'tool'
+      ? ITEMS[equipment.tool]
+      : slot === 'food'
+        ? ITEMS[canonicalFoodId()]
+        : instance ? materializeLootItem(instance) : null;
+    const visual = instance ? itemVisualMarkup(instance, cache, 'loadout-item-visual') : iconMarkup('loadout',slot,'slot-icon');
+    return `<div class="loadout-slot ${item ? 'is-equipped' : 'is-empty'}">${visual}<div class="slot-copy"><div class="slot-name">${slot === 'magic' ? 'Magic Spell' : slot}</div><strong>${item?.name || 'Empty'}</strong><div class="small">${itemStats(item)}</div>${item ? `<button class="btn" data-unequip="${slot}">Unequip</button>` : ''}</div></div>`;
   }).join('');
-  loadoutSlots.querySelectorAll('[data-unequip]').forEach(btn => btn.onclick = () => { const slot=btn.dataset.unequip; equipment[slot]=null; if(slot==='tool') equippedTool=null; renderLoadout(); });
+  loadoutSlots.querySelectorAll('[data-unequip]').forEach(btn => btn.onclick = () => {
+    const slot=btn.dataset.unequip;
+    if (slot === 'tool') { equipment.tool=null; equippedTool=null; }
+    else if (slot === 'food') setCanonicalFoodId(null);
+    else unequipCanonicalSlot(slot);
+    renderLoadout();
+  });
   const fishing = skills.find(s=>s.id==='Fishing');
   const materials = [['Ore',skills[0].qty],['Bars',skills[1].qty],['Scrap',scrap],['Raw Fish',fishing.qty],['Cooked Fish',skills.find(skill=>skill.id==='Cooking').qty],['Burnt Fish',burntFish],['Pine Logs',woodInventory.pine],['Oak Logs',woodInventory.oak],['Yew Logs',woodInventory.yew],['Ancient Logs',woodInventory.ancient],['Basic Bait',basicBait],['Uncommon Fish',uncommonFish],['Rare Gems',rareGems]];
   const owned = [...ownedItems].map(id => ITEMS[id]).filter(Boolean);
   const foods = ['cookedFish','smokedRation','surgefinRation'].map(id => ITEMS[id]);
-  inventoryList.innerHTML = `<div class="inventory-materials">${materials.map(([n,q])=>`<div>${resourceIconMarkup(n,'material-icon')}<span>${n}</span><strong>${Number(q).toFixed(0)}</strong></div>`).join('')}<div>${resourceIconMarkup('Smoked Rations','material-icon')}<span>Smoked Rations</span><strong>${smokedRations}</strong></div><div>${resourceIconMarkup('Surgefin Rations','material-icon')}<span>Surgefin Rations</span><strong>${surgefinRations}</strong></div><div class="inventory-salvage">${resourceIconMarkup('Salvage','material-icon')}<span>Salvage</span><strong>${salvageMaterials}</strong></div></div><h3>Owned Equipment</h3>${owned.filter(item=>item.slot!=='food' && !item.dynamicLoot).map(item=>`<div class="inventory-item"><div class="inventory-item-copy">${iconMarkup('loadout',item.slot,'item-icon')}<div><strong>${item.name}</strong><div class="small">${itemStats(item)}</div></div></div><button class="btn" data-equip="${item.id}">Equip</button></div>`).join('')}<h3>Skill Instruments</h3>${skillToolInventory.map(instance=>{ const tool=getSkillToolDefinition(instance.toolId); return `<div class="inventory-item skill-tool-inventory"><div class="inventory-item-copy"><span class="skill-icon-fallback">♫</span><div><strong>${tool?.name || instance.toolId}</strong><div class="small">${tool?.description || 'Skill training tool'}</div></div></div><button class="btn btn-quiet" data-discard-tool="${instance.instanceId}">Salvage</button></div>`; }).join('')}<h3>Food</h3>${foods.map(item=>`<div class="inventory-item"><div class="inventory-item-copy">${resourceIconMarkup(item.name === 'Cooked Fish' ? 'Cooked Fish' : `${item.name}s`,'item-icon')}<div><strong>${item.name} ×${Math.floor(foodCount(item.id))}</strong><div class="small">${item.detail}</div></div></div><button class="btn" data-equip="${item.id}" ${foodCount(item.id)<1?'disabled':''}>Equip</button></div>`).join('')}`;
+  inventoryList.innerHTML = `<div class="inventory-materials">${materials.map(([n,q])=>`<div>${resourceIconMarkup(n,'material-icon')}<span>${n}</span><strong>${Number(q).toFixed(0)}</strong></div>`).join('')}<div>${resourceIconMarkup('Smoked Rations','material-icon')}<span>Smoked Rations</span><strong>${smokedRations}</strong></div><div>${resourceIconMarkup('Surgefin Rations','material-icon')}<span>Surgefin Rations</span><strong>${surgefinRations}</strong></div><div class="inventory-salvage">${resourceIconMarkup('Salvage','material-icon')}<span>Salvage</span><strong>${salvageMaterials}</strong></div></div><h3>Non-combat Tools</h3>${owned.filter(item=>item.slot==='tool').map(item=>`<div class="inventory-item"><div class="inventory-item-copy">${iconMarkup('loadout',item.slot,'item-icon')}<div><strong>${item.name}</strong><div class="small">${itemStats(item)}</div></div></div><button class="btn" data-equip="${item.id}">Equip</button></div>`).join('')}<h3>Skill Instruments</h3>${skillToolInventory.map(instance=>{ const tool=getSkillToolDefinition(instance.toolId); return `<div class="inventory-item skill-tool-inventory"><div class="inventory-item-copy"><span class="skill-icon-fallback">♫</span><div><strong>${tool?.name || instance.toolId}</strong><div class="small">${tool?.description || 'Skill training tool'}</div></div></div><button class="btn btn-quiet" data-discard-tool="${instance.instanceId}">Salvage</button></div>`; }).join('')}<h3>Food</h3>${foods.map(item=>`<div class="inventory-item"><div class="inventory-item-copy">${resourceIconMarkup(item.name === 'Cooked Fish' ? 'Cooked Fish' : `${item.name}s`,'item-icon')}<div><strong>${item.name} ×${Math.floor(foodCount(item.id))}</strong><div class="small">${item.detail}</div></div></div><button class="btn" data-equip="${item.id}" ${foodCount(item.id)<1?'disabled':''}>Equip</button></div>`).join('')}`;
   inventoryList.querySelectorAll('[data-equip]').forEach(btn => btn.onclick = () => equipItem(btn.dataset.equip));
   inventoryList.querySelectorAll('[data-discard-tool]').forEach(btn => btn.onclick = () => {
     const tool = skillToolInventory.find(instance => instance.instanceId === btn.dataset.discardTool);
@@ -3175,7 +3478,6 @@ function renderLoadout() {
     renderLoadout();
     saveGame();
   });
-  renderLootInventory();
 }
 
 /* =====================================
@@ -3432,9 +3734,11 @@ function syncSoloFrontierProjection() {
   soloFrontierState = soloFrontierRuntime.getState();
   combatProgression = soloFrontierState.combatProgression;
   keys = soloFrontierState.keys;
-  lootInventory = [...soloFrontierState.lootCache.items];
   collectionProgress = { ...soloFrontierState.collectionProgress };
   reconcileArenaTierUnlocks(arenaTierUnlocked);
+  const earnedGold = Number(soloFrontierState.frontierExchange?.ledger?.earned || 0);
+  if (earnedGold > soloFrontierLastEarnedGold) gold += earnedGold - soloFrontierLastEarnedGold;
+  soloFrontierLastEarnedGold = earnedGold;
   if (soloFrontierState.debrief && soloFrontierState.debrief !== soloFrontierLastDebrief) {
     salvageMaterials += soloFrontierState.debrief.filterSalvage + soloFrontierState.debrief.fullCacheSalvage;
     soloFrontierLastDebrief = soloFrontierState.debrief;
@@ -3447,6 +3751,7 @@ soloFrontierRuntime = SOLO_FRONTIER_FRAMEWORK.createSoloFrontierRuntime(soloFron
   seed: soloFrontierState.seed
 });
 soloFrontierLastDebrief = soloFrontierState.debrief;
+soloFrontierLastEarnedGold = Number(soloFrontierState.frontierExchange?.ledger?.earned || 0);
 soloDeskDebriefSnapshot = soloFrontierState.debrief;
 syncSoloFrontierProjection();
 window.MomentumSoloFrontierRuntime = Object.freeze({
@@ -3955,7 +4260,7 @@ function finishFishingCast(success, message, applyRewards = true) {
 let gauntletIntermissionTimer = null;
 
 function openArena(tier, runLoadout, options = {}) {
-  const food = arenaFoodDefinition(equipment.food);
+  const food = arenaFoodDefinition(canonicalFoodId());
   clearTimeout(closeArenaBtn._confirmTimer);
   closeArenaBtn.dataset.confirmGiveUp = 'false';
   closeArenaBtn.textContent = 'Give up';
@@ -4227,7 +4532,7 @@ function closeCraftingAssembly() {
    MODAL UX
 ===================================== */
 const uiModalIds = [
-  'settingsModal','frontierModal','specModal','talentModal','loadoutModal','gearModal','baseUpModal','skillUpModal',
+  'settingsModal','frontierModal','specModal','talentModal','combatTreeModal','loadoutModal','gearModal','baseUpModal','skillUpModal',
   'offlineModal','resultModal','arenaPrepModal','fishingModal','craftingModal','arenaModal','taskbarSummaryModal'
 ];
 const uiModals = uiModalIds.map(id => document.getElementById(id)).filter(Boolean);
@@ -4296,7 +4601,7 @@ document.addEventListener('keydown', event => {
 
 const dismissibleModals = [
   ['settingsModal','closeSettingsBtn'], ['frontierModal','closeFrontier'], ['specModal','closeSpecs'],
-  ['talentModal','closeTalents'], ['loadoutModal','closeLoadout'], ['gearModal','closeGear'],
+  ['talentModal','closeTalents'], ['combatTreeModal','closeCombatTree'], ['loadoutModal','closeLoadout'], ['gearModal','closeGear'],
   ['baseUpModal','closeBaseUp'], ['skillUpModal','closeSkillUp'], ['craftingModal','closeCrafting']
 ];
 function topVisibleDismissibleModal() {
@@ -4353,17 +4658,31 @@ document.getElementById('soloOpenPaperDollBtn')?.addEventListener('click', () =>
 });
 soloCacheRarityFilter?.addEventListener('change', () => {
   soloDeskCacheRarity = soloCacheRarityFilter.value;
+  soloDeskCachePage = 0;
   const cache = LOOT_FRAMEWORK.setLootFilters(soloDeskState().lootCache, { globalMinimumRarity:soloDeskCacheRarity });
   soloDeskCacheMutation(cache);
 });
-soloCacheSlotFilter?.addEventListener('change', () => { soloDeskCacheSlot = soloCacheSlotFilter.value; renderSoloFrontierDesk(); });
-soloCacheSort?.addEventListener('change', () => { soloDeskCacheSort = soloCacheSort.value; renderSoloFrontierDesk(); });
-soloCacheFavouritesOnly?.addEventListener('change', () => { soloDeskCacheFavouritesOnly = soloCacheFavouritesOnly.checked; renderSoloFrontierDesk(); });
+soloCacheSlotFilter?.addEventListener('change', () => { soloDeskCacheSlot = soloCacheSlotFilter.value; soloDeskCachePage = 0; renderSoloFrontierDesk(); });
+soloCacheSort?.addEventListener('change', () => { soloDeskCacheSort = soloCacheSort.value; soloDeskCachePage = 0; renderSoloFrontierDesk(); });
+soloCacheFavouritesOnly?.addEventListener('change', () => { soloDeskCacheFavouritesOnly = soloCacheFavouritesOnly.checked; soloDeskCachePage = 0; renderSoloFrontierDesk(); });
+soloCachePrevPage?.addEventListener('click', () => { soloDeskCachePage = Math.max(0, soloDeskCachePage - 1); renderSoloCache(soloDeskState()); });
+soloCacheNextPage?.addEventListener('click', () => { soloDeskCachePage += 1; renderSoloCache(soloDeskState()); });
 document.querySelectorAll('[data-solo-debrief-action]').forEach(button => button.addEventListener('click', () => soloDeskDebriefAction(button.dataset.soloDebriefAction)));
 soloQaSeedStage?.addEventListener('click', () => window.MomentumSoloFrontierDebug?.seedProgress(2));
 soloQaForceDefeat?.addEventListener('click', () => window.MomentumSoloFrontierDebug?.forceDefeat());
 soloQaFillCache?.addEventListener('click', () => window.MomentumSoloFrontierDebug?.fillCache(35));
 soloQaClearCache?.addEventListener('click', () => window.MomentumSoloFrontierDebug?.clearCache());
+document.querySelectorAll('[data-skill-matrix-view]').forEach(button => button.addEventListener('click', () => {
+  const combat = button.dataset.skillMatrixView === 'combat';
+  productionSkillMatrix.hidden = combat;
+  combatSkillMatrix.hidden = !combat;
+  document.querySelectorAll('[data-skill-matrix-view]').forEach(candidate => {
+    const active = candidate === button;
+    candidate.classList.toggle('is-active', active);
+    candidate.setAttribute('aria-selected', String(active));
+  });
+  if (combat) renderSoloCombatSkills(soloDeskState());
+}));
 window.addEventListener('resize', () => renderSoloFrontierDesk());
 
 operationsToggle?.addEventListener('click', () => setOperationsExpanded(!operationsExpanded));
@@ -4404,17 +4723,27 @@ document.getElementById('openGearBtn').onclick = ()=>{ renderGear(); gearModal.s
 document.getElementById('openLoadoutBtn').onclick = ()=>{ renderLoadout(); loadoutModal.style.display='flex'; };
 document.getElementById('closeLoadout').onclick = ()=> loadoutModal.style.display='none';
 document.getElementById('closeGear').onclick = ()=> gearModal.style.display='none';
-lootFilterSelect?.addEventListener('change', () => { selectedLootFilter = lootFilterSelect.value; renderLootInventory(); });
 document.getElementById('closeBaseUp').onclick   = ()=> baseUpModal.style.display='none';
 
 document.getElementById('openTalentsBtn').onclick = () => { renderTalents(); talentModal.style.display='flex'; };
 document.getElementById('closeTalents').onclick = () => talentModal.style.display='none';
+document.getElementById('closeCombatTree').onclick = () => combatTreeModal.style.display='none';
+respecCombatTree.onclick = () => {
+  if (!selectedCombatTreeSkill) return;
+  const state = soloDeskState();
+  const result = FRONTIER_EXCHANGE_FRAMEWORK.purchaseTreeRespec(state.frontierExchange, frontierWallet(), state.lootCache, state.combatDevelopment, selectedCombatTreeSkill);
+  applyFrontierTransaction(result);
+};
 refundTalentsBtn.onclick = () => {
   if (window.MomentumArena.isRunning() || ownedCombatTalents.size === 0) return;
-  if (!confirm('Reset all Combat Skill Tree nodes? All spent Combat Points will return.')) return;
+  const state = soloDeskState();
+  const cost = COMBAT_DEVELOPMENT_FRAMEWORK.respecCost(ownedCombatTalents.size);
+  if (!confirm(`Respec Arena Discipline for ${cost} Gold? All spent points will return.`)) return;
+  const transaction = FRONTIER_EXCHANGE_FRAMEWORK.purchaseArenaDisciplineRespec(state.frontierExchange, frontierWallet(), state.lootCache, ownedCombatTalents.size, window.MomentumArena.isRunning());
+  if (!applyFrontierTransaction(transaction)) return;
   ownedCombatTalents.clear();
   combatSkillTreeView = { ...combatSkillTreeView, focusNodeId:null };
-  logActivity('Combat Skill Tree reset', 'talent');
+  logActivity(`Arena Discipline reset · ${cost} Gold`, 'talent');
   saveGame();
   renderTalents();
 };

@@ -932,7 +932,11 @@
       defensiveReadyAt: 0,
       skillEvents: [],
       onEvent: config.onEvent,
-      weapon: Object.freeze({ ...config.weapon }),
+      weapon: Object.freeze({
+        ...config.weapon,
+        damage: sharedStats?.damage || config.weapon.damage,
+        attackInterval: sharedStats?.attackInterval || config.weapon.attackInterval
+      }),
       talents: new Set(config.talents || []),
       consumeFood: config.consumeFood,
       onFinish: config.onFinish,

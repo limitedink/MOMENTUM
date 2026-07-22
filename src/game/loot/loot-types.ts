@@ -68,6 +68,12 @@ export interface EquipmentLoadout extends EquipmentSlotMap {
   activeWeaponSlot: WeaponSlotId | null;
 }
 
+export type ItemIconId = string;
+
+export type IconRef =
+  | { kind: 'asset'; id: string; src: string; alt: string }
+  | { kind: 'atlas'; id: string; sheet: 'skill' | 'resource' | 'loadout'; key: string; alt: string };
+
 export type CombatStat =
   | 'damage'
   | 'attackInterval'
@@ -114,6 +120,8 @@ export interface AffixRoll {
 
 export interface ItemDefinition {
   id: string;
+  /** Stable manifest key. Filenames are implementation details, not save data. */
+  iconId: ItemIconId;
   name: string;
   slot: LootSlot;
   description: string;
@@ -139,6 +147,8 @@ export interface ItemInstance {
   acquiredAt: number;
   /** Number of completed one-affix reforges. */
   rerolls?: number;
+  /** Preserves the legacy +2 weapon damage per rank refinement system. */
+  enhancementRank?: number;
 }
 
 export interface LootFilters {
@@ -150,6 +160,8 @@ export interface LootFilters {
 export interface LootCacheState {
   items: readonly ItemInstance[];
   equipment: EquipmentLoadout;
+  /** Stack-backed consumables are deliberately separate from item instances. */
+  foodId: string | null;
   favoriteIds: readonly string[];
   filters: LootFilters;
   capacity: 35;
@@ -232,6 +244,8 @@ export interface LootSourceContext {
   minimumRarity?: RarityId;
   /** Stage-advertised item slots receive 60% of the slot-selection weight. */
   targetSlots?: readonly LootSlot[];
+  /** Overrides the normal 60% target bucket, used by active contracts. */
+  targetSlotWeight?: number;
 }
 
 export interface LootResolution {
@@ -266,4 +280,19 @@ export interface LootInspection {
   stats: Partial<Record<CombatStat, number>>;
   rarity: RarityDefinition;
   signature: string;
+}
+
+
+export interface ItemVisualDescriptor {
+  instanceId: string | null;
+  definitionId: string | null;
+  icon: IconRef;
+  rarity: RarityDefinition | null;
+  rarityColor: string;
+  rarityGlow: RarityDefinition['glow'] | 'none';
+  itemLevel: number | null;
+  equipped: boolean;
+  active: boolean;
+  favorite: boolean;
+  isNew: boolean;
 }

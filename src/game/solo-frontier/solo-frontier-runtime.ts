@@ -11,7 +11,23 @@ import {
   type CombatSkillId
 } from '../combat-progression';
 import {
+  advanceCombatDrill,
+  createCombatDevelopmentState,
+  normalizeCombatDevelopmentState,
+  resolveCombatModifierSnapshot,
+  type CombatDevelopmentState
+} from '../combat-development';
+import {
+  advanceTargetContract,
+  awardFrontierGold,
+  createFrontierExchangeState,
+  normalizeFrontierExchangeState,
+  type FrontierExchangeState,
+  type FrontierLedgerSource
+} from '../frontier-exchange';
+import {
   COMBAT_LOOT_DEFINITIONS,
+  COMBAT_EQUIPMENT_SLOT_IDS,
   RARITY_DEFINITIONS,
   createLootCache,
   insertLoot,
@@ -27,7 +43,7 @@ import { SOLO_FRONTIER_ENCOUNTER_RECOVERY_SECONDS, SOLO_FRONTIER_STAGE_COUNT, so
 import { simulateSoloCombat } from './solo-combat-engine';
 import type { SoloCombatInput, SoloCombatResult } from './solo-frontier-types';
 
-export const SOLO_FRONTIER_SAVE_VERSION = 20 as const;
+export const SOLO_FRONTIER_SAVE_VERSION = 21 as const;
 export const MOMENTUM_SAVE_VERSION = SOLO_FRONTIER_SAVE_VERSION;
 export const SOLO_FRONTIER_OFFLINE_CAP_SECONDS = 8 * 60 * 60;
 export const SOLO_FRONTIER_EXTENDED_OFFLINE_CAP_SECONDS = 12 * 60 * 60;
@@ -37,6 +53,7 @@ export const SOLO_FRONTIER_POINT_STAGES = Object.freeze([5, 10, 15, 20, 25, 30])
 export const SOLO_FRONTIER_BOSS_STAGES = Object.freeze([10, 20, 30]);
 export const ARENA_TIER_UNLOCK_STAGES = Object.freeze([10, 20, 30]);
 export const SOLO_FRONTIER_BOSS_KEY_REWARDS: Readonly<Record<number, number>> = Object.freeze({ 10: 3, 20: 5, 30: 8 });
+export const SOLO_FRONTIER_BOSS_GOLD_REWARDS: Readonly<Record<number, number>> = Object.freeze({ 10: 250, 20: 750, 30: 2_000 });
 export const SOLO_FRONTIER_LOOT_CHANCE = Object.freeze({
   onboardingRegular: 0.012,
   onboardingThroughStage: 7,
@@ -97,6 +114,9 @@ export interface SoloFrontierDebrief {
   skillXp: Record<CombatSkillId, number>;
   skillLevels: Record<CombatSkillId, number>;
   keys: number;
+  gold: number;
+  goldBySource: Partial<Record<FrontierLedgerSource, number>>;
+  contractProgressMs: number;
   keptDrops: readonly ItemInstance[];
   keptDropCount: number;
   filterSalvage: number;
@@ -106,7 +126,7 @@ export interface SoloFrontierDebrief {
 }
 
 export interface SoloFrontierRuntimeState {
-  version: 20;
+  version: 21;
   order: SoloFrontierOrder;
   configuredFallbackStage: number | null;
   farmStage: number | null;
@@ -125,6 +145,8 @@ export interface SoloFrontierRuntimeState {
   keys: number;
   combatProgression: CombatProgressionState;
   combatDiscipline: CombatDisciplineState;
+  combatDevelopment: CombatDevelopmentState;
+  frontierExchange: FrontierExchangeState;
   lootCache: LootCacheState;
   collectionProgress: Readonly<Record<string, number>>;
   nonCombatSkills: Readonly<Record<string, NonCombatSkillRuntimeState>>;
@@ -304,6 +326,7 @@ function normalizeLootCache(value: unknown, fallback?: Partial<LootCacheState>):
     return createLootCache({
       items: Array.isArray(value.items) ? value.items.filter(item => inspectItem(item as ItemInstance) !== null) as ItemInstance[] : fallback?.items,
       equipment: isRecord(value.equipment) ? value.equipment as unknown as LootCacheState['equipment'] : fallback?.equipment,
+      foodId: typeof value.foodId === 'string' ? value.foodId : fallback?.foodId,
       favoriteIds: Array.isArray(value.favoriteIds) ? value.favoriteIds.filter((id): id is string => typeof id === 'string') : fallback?.favoriteIds,
       filters: isRecord(value.filters) ? value.filters as unknown as LootFilters : fallback?.filters
     });
@@ -338,6 +361,7 @@ export function normalizeSoloFrontierState(value: unknown, now = Date.now()): So
   const nonCombatSource = isRecord(source.nonCombatSkills) ? source.nonCombatSkills : {};
   const nonCombatSkills = Object.fromEntries(Object.entries(nonCombatSource).map(([id, skill]) => [id, normalizeNonCombatSkill(skill, id)]));
   const cache = normalizeLootCache(source.lootCache);
+  const combatProgression = normalizeCombatProgression(source.combatProgression);
   return {
     version: SOLO_FRONTIER_SAVE_VERSION,
     order: highestClearedStage >= SOLO_FRONTIER_STAGE_COUNT && order === 'push' ? 'farm' : order,
@@ -356,12 +380,14 @@ export function normalizeSoloFrontierState(value: unknown, now = Date.now()): So
     totalVictories: finiteNonNegative(source.totalVictories),
     totalDeaths: finiteNonNegative(source.totalDeaths),
     keys: finiteNonNegative(source.keys),
-    combatProgression: normalizeCombatProgression(source.combatProgression),
+    combatProgression,
     combatDiscipline,
+    combatDevelopment: normalizeCombatDevelopmentState(source.combatDevelopment, combatProgression),
+    frontierExchange: normalizeFrontierExchangeState(source.frontierExchange),
     lootCache: cache,
     collectionProgress: isRecord(source.collectionProgress) ? Object.fromEntries(Object.entries(source.collectionProgress).map(([id, amount]) => [id, finiteNonNegative(amount)])) : {},
     nonCombatSkills,
-    debrief: isRecord(source.debrief) ? source.debrief as unknown as SoloFrontierDebrief : null,
+    debrief: isRecord(source.debrief) ? normalizeDebrief(source.debrief, order, combatProgression) : null,
     seed: canonicalSeed(source.seed),
     lastUpdatedAt: finiteNonNegative(source.lastUpdatedAt, now) || now
   };
@@ -379,6 +405,8 @@ export function createInitialSoloFrontierState(options: Partial<SoloFrontierRunt
     stageVictories: {},
     combatProgression: createInitialCombatProgression(),
     combatDiscipline: { earnedPoints: 0, grantedStages: [], ownedNodeIds: [] },
+    combatDevelopment: createCombatDevelopmentState(),
+    frontierExchange: createFrontierExchangeState(),
     lootCache: createLootCache(),
     nonCombatSkills: {},
     ...options
@@ -411,6 +439,16 @@ function inputForEncounter(options: SoloFrontierSimulationOptions, stage: number
     ...configured,
     stage,
     seed,
+    combatModifiers: resolveCombatModifierSnapshot(state.combatDevelopment, state.combatProgression, {
+      style: configured.activeWeapon.style,
+      technique: configured.technique,
+      stance: configured.stance,
+      boss: (options.useConfiguredEnemy ? configured.enemy : soloFrontierStage(stage).enemy).kind === 'boss',
+      enemyWarded: (options.useConfiguredEnemy ? configured.enemy : soloFrontierStage(stage).enemy).ward > 0,
+      playerHealthRatio: 1,
+      enemyHealthRatio: 1,
+      baseInterval: configured.activeWeapon.attackInterval
+    }),
     enemy: options.useConfiguredEnemy ? configured.enemy : soloFrontierStage(stage).enemy
   };
 }
@@ -463,6 +501,9 @@ function createDebrief(order: SoloFrontierOrder): SoloFrontierDebrief {
     skillXp: emptySkillXp(),
     skillLevels: combatSkillLevels(createInitialCombatProgression()),
     keys: 0,
+    gold: 0,
+    goldBySource: {},
+    contractProgressMs: 0,
     keptDrops: [],
     keptDropCount: 0,
     filterSalvage: 0,
@@ -470,6 +511,37 @@ function createDebrief(order: SoloFrontierOrder): SoloFrontierDebrief {
     rarityCounts: emptyRarityCounts(),
     strongestKeptDrops: []
   };
+}
+
+function normalizeDebrief(value: unknown, order: SoloFrontierOrder, progression: CombatProgressionState): SoloFrontierDebrief {
+  const source = isRecord(value) ? value : {};
+  const fallback = createDebrief(order);
+  const sourceSkillXp = isRecord(source.skillXp) ? source.skillXp : {};
+  return {
+    ...fallback,
+    ...source,
+    elapsedMs: finiteNonNegative(source.elapsedMs),
+    priorOrder: source.priorOrder === 'push' || source.priorOrder === 'farm' ? source.priorOrder : order,
+    finalOrder: source.finalOrder === 'push' || source.finalOrder === 'farm' ? source.finalOrder : order,
+    victories: finiteNonNegative(source.victories),
+    deaths: finiteNonNegative(source.deaths),
+    skillXp: Object.fromEntries(COMBAT_SKILL_IDS.map(skillId => [skillId, finiteNonNegative(sourceSkillXp[skillId])])) as Record<CombatSkillId, number>,
+    skillLevels: combatSkillLevels(progression),
+    keys: finiteNonNegative(source.keys),
+    gold: finiteNonNegative(source.gold),
+    goldBySource: isRecord(source.goldBySource)
+      ? Object.fromEntries(Object.entries(source.goldBySource).map(([sourceId, amount]) => [sourceId, finiteNonNegative(amount)]))
+      : {},
+    contractProgressMs: finiteNonNegative(source.contractProgressMs),
+    keptDrops: validItemInstances(source.keptDrops),
+    keptDropCount: finiteNonNegative(source.keptDropCount),
+    filterSalvage: finiteNonNegative(source.filterSalvage),
+    fullCacheSalvage: finiteNonNegative(source.fullCacheSalvage),
+    rarityCounts: normalizeRarityCounts(source.rarityCounts),
+    strongestKeptDrops: Array.isArray(source.strongestKeptDrops)
+      ? source.strongestKeptDrops.filter(isRecord) as unknown as StrongestKeptDrop[]
+      : []
+  } as SoloFrontierDebrief;
 }
 
 function dropScore(item: ItemInstance): number {
@@ -511,7 +583,10 @@ function addLootToDebrief(
     runId: `${state.seed}:${state.encounterSequence}`,
     itemChance,
     minimumRarity: firstClear && boss ? 'rare' : undefined,
-    targetSlots: soloFrontierStage(stage).advertisedTargetSlots,
+    targetSlots: state.frontierExchange.activeContract
+      ? [state.frontierExchange.activeContract.category]
+      : soloFrontierStage(stage).advertisedTargetSlots,
+    targetSlotWeight: state.frontierExchange.activeContract ? 0.70 : 0.60,
     now: atMs
   }, soloFrontierRandom(`${seed}:loot`));
 
@@ -580,6 +655,7 @@ function copyDebrief(debrief: SoloFrontierDebrief): SoloFrontierDebrief {
     ...debrief,
     skillXp: { ...debrief.skillXp },
     skillLevels: { ...debrief.skillLevels },
+    goldBySource: { ...debrief.goldBySource },
     keptDrops: [...debrief.keptDrops],
     rarityCounts: { ...debrief.rarityCounts },
     strongestKeptDrops: [...debrief.strongestKeptDrops]
@@ -590,6 +666,15 @@ function addCombatXpToDebrief(debrief: SoloFrontierDebrief, xpBySkill: Record<Co
   const skillXp = { ...debrief.skillXp };
   COMBAT_SKILL_IDS.forEach(skillId => { skillXp[skillId] += finiteNonNegative(xpBySkill[skillId]); });
   return { ...debrief, skillXp };
+}
+
+function addGoldToDebrief(debrief: SoloFrontierDebrief, source: FrontierLedgerSource, amount: number): SoloFrontierDebrief {
+  if (!amount) return debrief;
+  return {
+    ...debrief,
+    gold: debrief.gold + amount,
+    goldBySource: { ...debrief.goldBySource, [source]: finiteNonNegative(debrief.goldBySource[source]) + amount }
+  };
 }
 
 function completeStage(
@@ -664,7 +749,8 @@ function applyEncounter(
   stage: number,
   result: SoloCombatResult,
   atMs: number,
-  seed: string
+  seed: string,
+  encounterDurationMs: number
 ): { state: SoloFrontierRuntimeState; debrief: SoloFrontierDebrief; firstClear: boolean } {
   const progression = applyCombatEncounterProgression(
     state.combatProgression,
@@ -712,6 +798,26 @@ function applyEncounter(
   const keys = addKeysForVictory(nextState, nextDebrief, stage, seed);
   nextState = keys.state;
   nextDebrief = keys.debrief;
+  const timedGold = awardFrontierGold(
+    nextState.frontierExchange,
+    (1 + 0.1 * stage) * encounterDurationMs / 60_000,
+    'solo-time'
+  );
+  nextState = { ...nextState, frontierExchange: timedGold.exchange };
+  nextDebrief = addGoldToDebrief(nextDebrief, 'solo-time', timedGold.wholeGold);
+  const bossGold = firstClear ? (SOLO_FRONTIER_BOSS_GOLD_REWARDS[stage] || 0) : 0;
+  if (bossGold) {
+    const firstClearGold = awardFrontierGold(nextState.frontierExchange, bossGold, 'boss-first-clear');
+    nextState = { ...nextState, frontierExchange: firstClearGold.exchange };
+    nextDebrief = addGoldToDebrief(nextDebrief, 'boss-first-clear', firstClearGold.wholeGold);
+  }
+  if (nextState.frontierExchange.activeContract) {
+    nextState = {
+      ...nextState,
+      frontierExchange: advanceTargetContract(nextState.frontierExchange, encounterDurationMs, seed, atMs)
+    };
+    nextDebrief = { ...nextDebrief, contractProgressMs: nextDebrief.contractProgressMs + encounterDurationMs };
+  }
   return { state: nextState, debrief: nextDebrief, firstClear };
 }
 
@@ -734,6 +840,14 @@ export function advanceSoloFrontier(
   const consumeTime = (amount: number): void => {
     if (amount <= 0) return;
     state = advanceNonCombatSkills(state, amount);
+    const drilledSkillId = state.combatDevelopment.drill.skillId;
+    const drill = advanceCombatDrill(state.combatDevelopment, state.combatProgression, amount);
+    state = { ...state, combatDevelopment: drill.state, combatProgression: drill.progression };
+    if (drill.xpAwarded && drilledSkillId) {
+      const skillXp = { ...debrief.skillXp };
+      skillXp[drilledSkillId] += drill.xpAwarded;
+      debrief = { ...debrief, skillXp };
+    }
     processedMs += amount;
     remainingMs -= amount;
     debrief.elapsedMs += amount;
@@ -768,7 +882,7 @@ export function advanceSoloFrontier(
     consumeTime(timeToCompletion);
     state = { ...state, encounterElapsedMs: 0 };
     const orderBefore = state.order;
-    const outcome = applyEncounter(state, debrief, stage, combat, state.lastUpdatedAt + processedMs, encounterSeed);
+    const outcome = applyEncounter(state, debrief, stage, combat, state.lastUpdatedAt + processedMs, encounterSeed, encounterDurationMs);
     state = outcome.state;
     debrief = outcome.debrief;
     events.push({
@@ -908,16 +1022,18 @@ export function createSoloFrontierRuntime(
   });
 }
 
+export type SoloFrontierRuntimeStateV20 = Omit<SoloFrontierRuntimeState, 'version'> & { version: 20 };
+
 export type MomentumSaveV20 = Record<string, unknown> & {
   version: 20;
   skills: unknown[];
-  soloFrontier: SoloFrontierRuntimeState;
+  soloFrontier: SoloFrontierRuntimeStateV20;
 };
 
 /** Idempotent v19 -> v20 migration. */
 export function migrateV19SaveToV20(value: unknown): MomentumSaveV20 {
   const source = isRecord(value) ? value : {};
-  if (source.version === SOLO_FRONTIER_SAVE_VERSION && isRecord(source.soloFrontier)) return source as MomentumSaveV20;
+  if (source.version === 20 && isRecord(source.soloFrontier)) return source as MomentumSaveV20;
   const compatibility = isRecord(source.combatCompatibility) && isRecord(source.combatCompatibility.skill)
     ? source.combatCompatibility.skill
     : isRecord(source.legacyCombat) && isRecord(source.legacyCombat.combatSkill)
@@ -958,10 +1074,25 @@ export function migrateV19SaveToV20(value: unknown): MomentumSaveV20 {
     seed: canonicalSeed(isRecord(source.soloFrontier) ? source.soloFrontier.seed : undefined),
     lastUpdatedAt: finiteNonNegative(source.savedAt, Date.now())
   });
-  const { combatCompatibility: _combatCompatibility, legacyCombat: _legacyCombat, ...preserved } = source;
+  const {
+    combatCompatibility: _combatCompatibility,
+    legacyCombat: _legacyCombat,
+    lootInventory: _lootInventory,
+    lootCache: _lootCache,
+    lootFilters: _lootFilters,
+    lootFavorites: _lootFavorites,
+    lootCapacity: _lootCapacity,
+    grandfatheredLootOverflow: _grandfatheredLootOverflow,
+    weaponRefinements: _weaponRefinements,
+    foodId: _foodId,
+    combatDevelopment: _combatDevelopment,
+    frontierExchange: _frontierExchange,
+    combatProgression: _combatProgression,
+    ...preserved
+  } = source;
   return {
     ...preserved,
-    version: SOLO_FRONTIER_SAVE_VERSION,
+    version: 20,
     skills,
     ownedBaseUps: Array.isArray(source.ownedBaseUps) ? source.ownedBaseUps : [],
     ownedSkillUps: Array.isArray(source.ownedSkillUps) ? source.ownedSkillUps : [],
@@ -974,15 +1105,15 @@ export function migrateV19SaveToV20(value: unknown): MomentumSaveV20 {
     lootFavorites: lootCache.favoriteIds,
     lootCapacity: lootCache.capacity,
     grandfatheredLootOverflow: lootCache.grandfatheredOverflow,
-    soloFrontier: initial
+    soloFrontier: { ...initial, version: 20 }
   };
 }
 
 /** Runs every supported historical save through the complete, idempotent chain. */
 export function migrateMomentumSaveToV20(value: unknown): MomentumSaveV20 {
   const source = isRecord(value) ? value : {};
-  const version = integerInRange(source.version, 1, SOLO_FRONTIER_SAVE_VERSION, 1);
-  if (version === SOLO_FRONTIER_SAVE_VERSION) return migrateV19SaveToV20(source);
+  const version = integerInRange(source.version, 1, 20, 1);
+  if (version === 20) return migrateV19SaveToV20(source);
   const v18 = version <= 17 ? migrateV17SaveToV18(source) : source;
   const v19 = version <= 18 ? migrateV18SaveToV19(v18) : v18;
   return migrateV19SaveToV20(v19);
@@ -990,3 +1121,225 @@ export function migrateMomentumSaveToV20(value: unknown): MomentumSaveV20 {
 
 export const migrateV19ToV20 = migrateV19SaveToV20;
 export const migrateSoloFrontierSaveToV20 = migrateV19SaveToV20;
+
+export type MomentumSaveV21 = Record<string, unknown> & {
+  version: 21;
+  skills: unknown[];
+  soloFrontier: SoloFrontierRuntimeState;
+};
+
+const LEGACY_COMBAT_ITEM_IDS: Readonly<Record<string, string>> = Object.freeze({
+  pulseSidearm: 'pulse-sidearm',
+  'pulse-sidearm': 'pulse-sidearm',
+  ironBlade: 'iron-blade',
+  'iron-blade': 'iron-blade',
+  frontierBow: 'frontier-bow',
+  'frontier-bow': 'frontier-bow',
+  emberFocus: 'ember-focus',
+  'ember-focus': 'ember-focus',
+  platedVest: 'plated-vest',
+  'plated-vest': 'plated-vest'
+});
+
+function validItemInstances(value: unknown): ItemInstance[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is ItemInstance => inspectItem(item as ItemInstance) !== null);
+}
+
+function mergeInstances(...groups: readonly ItemInstance[][]): ItemInstance[] {
+  const byId = new Map<string, ItemInstance>();
+  groups.flat().forEach(item => {
+    if (!byId.has(item.instanceId)) byId.set(item.instanceId, item);
+  });
+  return [...byId.values()];
+}
+
+function legacyCombatItem(
+  legacyId: string,
+  definitionId: string,
+  enhancementRank: number,
+  acquiredAt: number,
+  usedIds: ReadonlySet<string>
+): ItemInstance {
+  const definition = COMBAT_LOOT_DEFINITIONS.find(item => item.id === definitionId)!;
+  let instanceId = `legacy:${legacyId}`;
+  let suffix = 2;
+  while (usedIds.has(instanceId)) {
+    instanceId = `legacy:${legacyId}:${suffix}`;
+    suffix += 1;
+  }
+  return {
+    instanceId,
+    definitionId,
+    rarity: 'common',
+    itemLevel: 1,
+    affixes: [],
+    signatureId: definition.signatureId,
+    sourceId: 'legacy-equipment',
+    acquiredAt,
+    rerolls: 0,
+    enhancementRank: Math.max(0, Math.min(5, Math.floor(enhancementRank)))
+  };
+}
+
+function canonicalV21LootCache(source: Record<string, unknown>, soloSource: Record<string, unknown>): LootCacheState {
+  const rawSoloCache = isRecord(soloSource.lootCache) ? soloSource.lootCache : {};
+  const nestedItems = validItemInstances(rawSoloCache.items);
+  const projectedItems = validItemInstances(source.lootInventory);
+  const legacyArray = validItemInstances(source.lootCache);
+  const items = mergeInstances(nestedItems, projectedItems, legacyArray);
+  const itemById = new Map(items.map(item => [item.instanceId, item]));
+  const rawNestedEquipment = isRecord(rawSoloCache.equipment) ? rawSoloCache.equipment : {};
+  const legacyEquipment = isRecord(source.equipment) ? source.equipment : {};
+  const rawRefinements = isRecord(source.weaponRefinements) ? source.weaponRefinements : {};
+  const refinementRankFor = (definitionId: string, ...candidateIds: unknown[]): number => Math.max(
+    0,
+    ...candidateIds.filter((id): id is string => typeof id === 'string').map(id => finiteNonNegative(rawRefinements[id])),
+    ...Object.entries(LEGACY_COMBAT_ITEM_IDS)
+      .filter(([, canonicalId]) => canonicalId === definitionId)
+      .map(([legacyId]) => finiteNonNegative(rawRefinements[legacyId]))
+  );
+  const equipment = Object.fromEntries(COMBAT_EQUIPMENT_SLOT_IDS.map(slot => [slot, null])) as unknown as LootCacheState['equipment'];
+  equipment.food = null;
+  equipment.activeWeaponSlot = rawNestedEquipment.activeWeaponSlot === 'melee'
+    || rawNestedEquipment.activeWeaponSlot === 'gun'
+    || rawNestedEquipment.activeWeaponSlot === 'ranged'
+    || rawNestedEquipment.activeWeaponSlot === 'magic'
+    ? rawNestedEquipment.activeWeaponSlot
+    : null;
+
+  const usedIds = new Set(items.map(item => item.instanceId));
+  const definitionByLegacyItem = new Map<string, ItemInstance>();
+  const equippedSourceForSlot = (slot: string): unknown => {
+    if (typeof rawNestedEquipment[slot] === 'string') return rawNestedEquipment[slot];
+    if (slot === 'chest' && typeof legacyEquipment.armor === 'string') return legacyEquipment.armor;
+    return legacyEquipment[slot];
+  };
+
+  for (const slot of COMBAT_EQUIPMENT_SLOT_IDS) {
+    const rawValue = equippedSourceForSlot(slot);
+    if (typeof rawValue !== 'string') continue;
+    if (itemById.has(rawValue)) {
+      equipment[slot] = rawValue;
+      const existing = itemById.get(rawValue)!;
+      const rank = Math.max(
+        finiteNonNegative(existing.enhancementRank),
+        refinementRankFor(existing.definitionId, rawValue, legacyEquipment[slot])
+      );
+      if (rank !== finiteNonNegative(existing.enhancementRank)) {
+        const enhanced = { ...existing, enhancementRank: Math.max(0, Math.min(5, Math.floor(rank))) };
+        items[items.findIndex(item => item.instanceId === rawValue)] = enhanced;
+        itemById.set(rawValue, enhanced);
+      }
+      continue;
+    }
+    const definitionId = LEGACY_COMBAT_ITEM_IDS[rawValue] || (COMBAT_LOOT_DEFINITIONS.some(item => item.id === rawValue) ? rawValue : null);
+    if (!definitionId) continue;
+    let item = definitionByLegacyItem.get(rawValue);
+    if (!item) {
+      const matchingEquippedItem = items.find(candidate =>
+        candidate.definitionId === definitionId
+        && candidate.sourceId === 'legacy-equipment'
+      );
+      item = matchingEquippedItem || legacyCombatItem(
+        rawValue,
+        definitionId,
+        refinementRankFor(definitionId, rawValue, legacyEquipment[slot]),
+        finiteNonNegative(source.savedAt),
+        usedIds
+      );
+      if (!matchingEquippedItem) {
+        items.push(item);
+        itemById.set(item.instanceId, item);
+        usedIds.add(item.instanceId);
+      }
+      definitionByLegacyItem.set(rawValue, item);
+    }
+    equipment[slot] = item.instanceId;
+  }
+
+  if (!equipment.activeWeaponSlot || !equipment[equipment.activeWeaponSlot]) {
+    equipment.activeWeaponSlot = (['melee', 'gun', 'ranged', 'magic'] as const).find(slot => Boolean(equipment[slot])) || null;
+  }
+  const foodId = typeof rawSoloCache.foodId === 'string'
+    ? rawSoloCache.foodId
+    : typeof rawNestedEquipment.food === 'string'
+      ? rawNestedEquipment.food
+      : typeof legacyEquipment.food === 'string'
+        ? legacyEquipment.food
+        : null;
+  const favorites = [...new Set([
+    ...(Array.isArray(rawSoloCache.favoriteIds) ? rawSoloCache.favoriteIds : []),
+    ...(Array.isArray(source.lootFavorites) ? source.lootFavorites : [])
+  ].filter((id): id is string => typeof id === 'string' && itemById.has(id)))];
+  return createLootCache({
+    items,
+    equipment,
+    foodId,
+    favoriteIds: favorites,
+    filters: isRecord(rawSoloCache.filters)
+      ? rawSoloCache.filters as unknown as LootFilters
+      : isRecord(source.lootFilters)
+        ? source.lootFilters as unknown as LootFilters
+        : undefined
+  });
+}
+
+/** Converts every v20 combat-equipment projection into one v21 cache authority. */
+export function migrateV20SaveToV21(value: unknown): MomentumSaveV21 {
+  const source = isRecord(value) ? value : {};
+  const sourceSolo = isRecord(source.soloFrontier) ? source.soloFrontier : {};
+  const lootCache = canonicalV21LootCache(source, sourceSolo);
+  const combatProgression = normalizeCombatProgression(sourceSolo.combatProgression ?? source.combatProgression);
+  const initial = normalizeSoloFrontierState({
+    ...sourceSolo,
+    version: 21,
+    combatProgression,
+    combatDevelopment: sourceSolo.combatDevelopment ?? source.combatDevelopment,
+    frontierExchange: sourceSolo.frontierExchange ?? source.frontierExchange,
+    lootCache,
+    seed: canonicalSeed(sourceSolo.seed),
+    lastUpdatedAt: finiteNonNegative(sourceSolo.lastUpdatedAt ?? source.savedAt, Date.now())
+  });
+  const legacyEquipment = isRecord(source.equipment) ? source.equipment : {};
+  const {
+    combatCompatibility: _combatCompatibility,
+    legacyCombat: _legacyCombat,
+    lootInventory: _lootInventory,
+    lootCache: _lootCache,
+    lootFilters: _lootFilters,
+    lootFavorites: _lootFavorites,
+    lootCapacity: _lootCapacity,
+    grandfatheredLootOverflow: _grandfatheredLootOverflow,
+    weaponRefinements: _weaponRefinements,
+    foodId: _foodId,
+    combatDevelopment: _combatDevelopment,
+    frontierExchange: _frontierExchange,
+    combatProgression: _combatProgression,
+    ...preserved
+  } = source;
+  return {
+    ...preserved,
+    version: 21,
+    skills: Array.isArray(source.skills) ? source.skills : [],
+    equipment: {
+      tool: typeof legacyEquipment.tool === 'string'
+        ? legacyEquipment.tool
+        : typeof source.equippedTool === 'string'
+          ? source.equippedTool
+          : null
+    },
+    soloFrontier: initial
+  };
+}
+
+/** Single idempotent entry point for every supported v1-v21 save. */
+export function migrateMomentumSaveToV21(value: unknown): MomentumSaveV21 {
+  const source = isRecord(value) ? value : {};
+  const version = integerInRange(source.version, 1, 21, 1);
+  if (version === 21) return migrateV20SaveToV21(source);
+  return migrateV20SaveToV21(migrateMomentumSaveToV20(source));
+}
+
+export const migrateV20ToV21 = migrateV20SaveToV21;
+export const migrateSoloFrontierSaveToV21 = migrateV20SaveToV21;

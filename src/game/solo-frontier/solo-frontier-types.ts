@@ -1,4 +1,5 @@
 import type { CombatSkillLevelMap, CombatSkillUseEvent } from '../combat-progression';
+import type { CombatModifierSnapshot } from '../combat-development';
 import type { LootSlot } from '../loot';
 
 export const SOLO_COMBAT_STANCES = ['Aggressive', 'Balanced', 'Guarded'] as const;
@@ -84,6 +85,7 @@ export interface SoloCombatInput {
   enemy: SoloEnemyDefinition;
   stage: number;
   seed: number | string;
+  combatModifiers?: CombatModifierSnapshot;
 }
 
 export interface DerivedSoloPlayerStats {

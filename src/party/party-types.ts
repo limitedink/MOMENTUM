@@ -406,6 +406,9 @@ declare global {
     MomentumCombatProgression: typeof import('../game/combat-progression').MomentumCombatProgression;
     MomentumSkillFramework: typeof import('../game/skills').MomentumSkillFramework;
     MomentumLootFramework: typeof import('../game/loot').momentumLootFramework;
+    MomentumIconManifest: typeof import('../game/icons').MomentumIconManifest;
+    MomentumCombatDevelopment: typeof import('../game/combat-development').MomentumCombatDevelopment;
+    MomentumFrontierExchange: typeof import('../game/frontier-exchange').MomentumFrontierExchange;
     MomentumWorldFramework: typeof import('../game/world').MomentumWorldFramework;
     MomentumSoloFrontier: typeof import('../game/solo-frontier').MomentumSoloFrontier;
     MomentumExpeditions: typeof import('../game/expeditions').MomentumExpeditions;

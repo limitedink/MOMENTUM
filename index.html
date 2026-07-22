@@ -130,16 +130,17 @@
         <div class="frontier-secondary-grid">
           <details class="frontier-secondary-panel frontier-skills-panel" id="soloSkillsDetails" open>
             <summary><span><span class="eyebrow">COMBAT PROGRESSION</span><strong>17 combat skills</strong></span><span class="small" id="soloRecentXpSummary">Recent XP · none</span></summary>
-            <div id="soloCombatSkills" class="solo-combat-skills"></div>
+            <p class="small">Combat development now lives in the Combat view of the Skill Matrix. Drill one skill, spend its points, then return here to Push or Farm.</p>
           </details>
 
           <details class="frontier-secondary-panel frontier-cache-panel" id="soloCacheDetails">
             <summary><span><span class="eyebrow">FIELD CACHE</span><strong><span id="soloCacheCount">0</span> / 35 slots</strong></span><span class="small" id="soloCacheSummary">No drops retained</span></summary>
             <div class="cache-toolbar">
               <label><span>Minimum rarity</span><select class="btn" id="soloCacheRarityFilter" aria-label="Cache minimum rarity"><option value="common">Common+</option><option value="uncommon">Uncommon+</option><option value="rare">Rare+</option><option value="epic">Epic+</option><option value="legendary">Legendary+</option><option value="mythic">Mythic+</option><option value="ascendant">Ascendant+</option><option value="chase">Chase only</option></select></label>
-              <label><span>View</span><select class="btn" id="soloCacheSlotFilter" aria-label="Cache slot filter"><option value="all">All slots</option><option value="weapon">Weapons</option><option value="armour">Armour</option><option value="ring">Rings</option><option value="trinket">Trinkets</option><option value="accessory">Accessories</option></select></label>
+              <label><span>View</span><select class="btn" id="soloCacheSlotFilter" aria-label="Cache slot filter"><option value="all">All slots</option><optgroup label="Groups"><option value="weapon">Weapons</option><option value="armour">Armour</option><option value="ring">Rings</option><option value="trinket">Trinkets</option><option value="accessory">Accessories</option></optgroup><optgroup label="Exact slots"><option value="melee">Melee weapon</option><option value="gun">Gun</option><option value="ranged">Ranged weapon</option><option value="magic">Magic focus</option><option value="helm">Helm</option><option value="chest">Chest</option><option value="gloves">Gloves</option><option value="pants">Pants</option><option value="boots">Boots</option><option value="cloak">Cloak</option><option value="belt">Belt</option><option value="amulet">Amulet</option><option value="ring1">Ring I</option><option value="ring2">Ring II</option><option value="trinket1">Trinket I</option><option value="trinket2">Trinket II</option></optgroup></select></label>
               <label><span>Sort</span><select class="btn" id="soloCacheSort" aria-label="Cache sort order"><option value="power">Power</option><option value="rarity">Rarity</option><option value="newest">Newest</option><option value="slot">Slot</option></select></label>
               <label class="cache-favourite-filter"><input type="checkbox" id="soloCacheFavouritesOnly" aria-label="Show favourite cache items only"> Favourites only</label>
+              <div class="cache-page-controls" id="soloCachePageControls" hidden><button type="button" class="btn btn-small" id="soloCachePrevPage" aria-label="Previous cache page">←</button><span id="soloCachePageLabel">Page 1 / 1</span><button type="button" class="btn btn-small" id="soloCacheNextPage" aria-label="Next cache page">→</button></div>
             </div>
             <div class="cache-workbench">
               <div id="soloCacheList" class="solo-cache-list"></div>
@@ -150,6 +151,11 @@
           <details class="frontier-secondary-panel frontier-paper-panel" id="soloPaperDollDetails">
             <summary><span><span class="eyebrow">WAYFINDER PAPER DOLL</span><strong>17 field positions</strong></span><span class="small">Two rings · two trinkets</span></summary>
             <div id="soloPaperDoll" class="solo-paper-doll"></div>
+          </details>
+
+          <details class="frontier-secondary-panel frontier-exchange-panel" id="frontierExchangeDetails">
+            <summary><span><span class="eyebrow">FRONTIER EXCHANGE</span><strong>Gold decisions</strong></span><span class="small" id="frontierExchangeSummary">Daily stock · requisitions · contracts</span></summary>
+            <div id="frontierExchange" class="frontier-exchange"></div>
           </details>
         </div>
 
@@ -185,14 +191,21 @@
 
         <!-- Normal tracks -->
         <section class="card card-skills">
-          <div class="section-heading"><div><div class="eyebrow">IDLE PRODUCTION</div><h2 class="title"><span class="title-icon" aria-hidden="true">◆</span> Skill Matrix</h2></div><span class="tag" id="activeCountTag">active: 0</span></div>
+          <div class="section-heading"><div><div class="eyebrow">ACCOUNT DEVELOPMENT</div><h2 class="title"><span class="title-icon" aria-hidden="true">◆</span> Skill Matrix</h2></div><span class="tag" id="activeCountTag">active: 0</span></div>
           <div class="small section-intro">
-            Toggle skills to run them together. Blocked skills wait without reducing the output of productive tracks.
+            Production runs in parallel. Combat uses one independent Drill and individual point trees.
           </div>
-          <div id="skills"></div>
-          <div class="efficiency-readout small">
-            <span>Shared efficiency</span><strong id="effReadout">1.00x</strong>
+          <div class="skill-matrix-tabs" role="tablist" aria-label="Skill Matrix views">
+            <button class="btn is-active" type="button" data-skill-matrix-view="production" aria-selected="true">Production</button>
+            <button class="btn" type="button" data-skill-matrix-view="combat" aria-selected="false">Combat</button>
           </div>
+          <div id="productionSkillMatrix">
+            <div id="skills"></div>
+            <div class="efficiency-readout small">
+              <span>Shared efficiency</span><strong id="effReadout">1.00x</strong>
+            </div>
+          </div>
+          <div id="combatSkillMatrix" hidden><div id="soloCombatSkills" class="solo-combat-skills"></div></div>
         </section>
 
         <!-- Honing -->
@@ -391,25 +404,6 @@
       <div id="loadoutSlots" class="loadout-grid"></div>
       <div class="inventory-heading"><h3 class="title">Inventory</h3><span class="small">Materials stack freely; equipment has no slot cap.</span></div>
       <div id="inventoryList"></div>
-      <section class="loot-inventory-section" aria-labelledby="lootInventoryTitle">
-        <div class="inventory-heading"><h3 class="title" id="lootInventoryTitle">Combat Loot</h3><span class="small">Rare drops are combat-first; duplicates become Salvage.</span></div>
-        <label class="field-label" for="lootFilterSelect">Filter drops</label>
-        <select class="btn full-width" id="lootFilterSelect">
-          <option value="all">All rarities and slots</option>
-          <option value="weapon">Weapons</option>
-          <option value="armor">Armor</option>
-          <option value="common">Common</option>
-          <option value="uncommon">Uncommon</option>
-          <option value="rare">Rare</option>
-          <option value="epic">Epic</option>
-          <option value="legendary">Legendary</option>
-          <option value="mythic">Mythic</option>
-          <option value="ascendant">Ascendant</option>
-          <option value="chase">Chase Unique</option>
-        </select>
-        <div id="lootInventoryList" class="loot-inventory-list"></div>
-        <div id="lootDetail" class="loot-detail"></div>
-      </section>
     </div>
   </div>
 
@@ -477,7 +471,7 @@
   <div id="talentModal" role="dialog" aria-modal="true" aria-labelledby="talentTitle">
     <div class="talent-panel">
       <div class="flex modal-heading">
-        <div><div class="eyebrow">COMBAT SPECIALIZATION</div><h2 class="title" id="talentTitle">Combat Skill Tree</h2></div>
+        <div><div class="eyebrow">ACTIVE ARENA SPECIALIZATION</div><h2 class="title" id="talentTitle">Arena Discipline</h2></div>
         <button class="btn" id="closeTalents">Close</button>
       </div>
       <div id="talentPointSummary" class="talent-point-summary"></div>
@@ -486,6 +480,19 @@
         <div class="small">Tier I opens a three-way Tier II fork. Each path leads to a distinct capstone; choose one fork per branch and one capstone overall. Builds are locked during Arena runs.</div>
         <button class="btn" id="refundTalentsBtn">Reset All</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Individual Combat Skill Tree Modal -->
+  <div id="combatTreeModal" role="dialog" aria-modal="true" aria-labelledby="combatTreeTitle">
+    <div class="combat-tree-panel">
+      <div class="flex modal-heading">
+        <div><div class="eyebrow">WAYFINDER DEVELOPMENT</div><h2 class="title" id="combatTreeTitle">Combat Skill Tree</h2></div>
+        <button class="btn" id="closeCombatTree">Close</button>
+      </div>
+      <div id="combatTreeSummary" class="talent-point-summary"></div>
+      <div id="combatTreeContent" class="combat-tree-content"></div>
+      <div class="talent-footer"><p class="small">One point every ten levels. All six capstones are mutually exclusive within this tree.</p><button class="btn" id="respecCombatTree">Respec tree</button></div>
     </div>
   </div>
 

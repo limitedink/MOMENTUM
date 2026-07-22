@@ -1,10 +1,11 @@
-import { calculateEquippedStats, calculateItemStats, calculateReforgeCost, countUnequippedItems, createEquipmentLoadout, createLootCache, equipItem, getItemDefinition, getRarity, getSkillToolDefinition, inspectItem, insertLoot, listSkillTools, lootDefinitions, lootTables, rarityDefinitions, reforgeItem, rollLoot, salvageCachedItem, salvageItem, setActiveWeaponSlot, setLootFavorite, setLootFilters, skillToolDefinitions, updateCollectionProgress, validateEquipItem } from './loot-registry';
+import { calculateEquippedStats, calculateItemStats, calculateReforgeCost, countUnequippedItems, createEquipmentLoadout, createLootCache, describeItemVisual, equipItem, getItemDefinition, getRarity, getSkillToolDefinition, inspectItem, insertLoot, listSkillTools, lootDefinitions, lootTables, rarityDefinitions, reforgeItem, rollLoot, salvageCachedItem, salvageItem, setActiveWeaponSlot, setLootFavorite, setLootFilters, skillToolDefinitions, updateCollectionProgress, validateEquipItem } from './loot-registry';
 import { ARENA_LOOT_TABLES, COMBAT_LOOT_DEFINITIONS, PARTY_BOSS_LOOT_TABLE, RARITY_DEFINITIONS, SKILL_TOOL_DEFINITIONS, SOLO_FRONTIER_LOOT_TABLE } from './loot-definitions';
 import { migrateV18SaveToV19 } from './loot-migration';
 
 export const momentumLootFramework = Object.freeze({
   rollLoot,
   inspectItem,
+  describeItemVisual,
   calculateItemStats,
   calculateEquippedStats,
   createEquipmentLoadout,

@@ -7,7 +7,7 @@ import {
   SKILL_TOOL_DEFINITIONS,
   SOLO_FRONTIER_LOOT_TABLE
 } from './loot-definitions';
-import { ACCESSORY_SLOT_IDS, ARMOUR_SLOT_IDS, EQUIPMENT_SLOT_IDS } from './loot-types';
+import { ACCESSORY_SLOT_IDS, ARMOUR_SLOT_IDS, COMBAT_EQUIPMENT_SLOT_IDS, EQUIPMENT_SLOT_IDS } from './loot-types';
 import type {
   AccessorySlotId,
   AffixDefinition,
@@ -18,6 +18,7 @@ import type {
   EquippedStatsSnapshot,
   ItemDefinition,
   ItemInstance,
+  ItemVisualDescriptor,
   LootCacheMutation,
   LootCacheState,
   LootFilters,
@@ -158,6 +159,7 @@ function pickLootDefinition(
   definitionIds: readonly string[],
   definitions: readonly ItemDefinition[],
   targetSlots: readonly LootSlot[] | undefined,
+  targetSlotWeight: number,
   random: () => number
 ): ItemDefinition {
   const candidates = definitionIds
@@ -173,7 +175,7 @@ function pickLootDefinition(
   // Advertised slots get 60% of the source's slot-selection weight. This is
   // intentionally a two-bucket roll so the result is independent of how many
   // bases happen to exist in either bucket.
-  const bucket = randomUnit(random) < 0.60 ? targeted : untargeted;
+  const bucket = randomUnit(random) < clamp(targetSlotWeight, 0, 1) ? targeted : untargeted;
   return bucket[Math.floor(randomUnit(random) * bucket.length)];
 }
 
@@ -215,6 +217,9 @@ export function calculateItemStats(definition: ItemDefinition, instance: ItemIns
     const levelMultiplier = scalesWithItemLevel.has(affix.stat) ? itemLevelMultiplier : 1;
     stats[affix.stat] = Number(((stats[affix.stat] || 0) + affix.value * levelMultiplier).toFixed(2));
   });
+  if (definitionKind(definition) === 'weapon' && instance.enhancementRank) {
+    stats.damage = Number(((stats.damage || 0) + clamp(Math.floor(instance.enhancementRank), 0, 5) * 2).toFixed(2));
+  }
   return stats;
 }
 
@@ -233,7 +238,7 @@ export function rollLoot(
   }
 
   const rarity = rollRarity(table, random, context.minimumRarity);
-  const definition = pickLootDefinition(table.itemDefinitionIds, definitions, context.targetSlots, random);
+  const definition = pickLootDefinition(table.itemDefinitionIds, definitions, context.targetSlots, context.targetSlotWeight ?? 0.60, random);
   const itemLevel = clamp(Math.floor(finiteNumber(context.itemLevel, context.sourceTier * 10 + Math.floor(context.playerLevel / 5))), 1, 30);
   const now = context.now || Date.now();
   const instance: ItemInstance = {
@@ -245,7 +250,8 @@ export function rollLoot(
     signatureId: definition.signatureId,
     sourceId: context.sourceId,
     acquiredAt: now,
-    rerolls: 0
+    rerolls: 0,
+    enhancementRank: 0
   };
   return { tableId: table.id, item: instance, salvage, collectionTrackId, collectionProgress: table.collectionProgress, rarity: rarity.id };
 }
@@ -256,6 +262,33 @@ export function inspectItem(instance: ItemInstance, definitions: readonly ItemDe
   const rarity = rarityById(instance.rarity);
   const stats = calculateItemStats(definition, instance);
   return { definition, instance, stats, rarity, signature: `${definition.signatureName}: ${definition.signatureDescription}` };
+}
+
+/** Canonical rarity-and-badge description consumed by every item surface. */
+export function describeItemVisual(
+  instance: ItemInstance,
+  cache?: LootCacheState | null,
+  options: { isNew?: boolean } = {},
+  definitions: readonly ItemDefinition[] = COMBAT_LOOT_DEFINITIONS
+): ItemVisualDescriptor | null {
+  const inspection = inspectItem(instance, definitions);
+  if (!inspection) return null;
+  const equippedSlots = cache
+    ? COMBAT_EQUIPMENT_SLOT_IDS.filter(slot => cache.equipment[slot] === instance.instanceId)
+    : [];
+  return {
+    instanceId: instance.instanceId,
+    definitionId: instance.definitionId,
+    icon: { kind: 'asset', id: inspection.definition.iconId, src: `./assets/icons/items/${inspection.definition.id}.webp`, alt: inspection.definition.name },
+    rarity: inspection.rarity,
+    rarityColor: inspection.rarity.color,
+    rarityGlow: inspection.rarity.glow,
+    itemLevel: instance.itemLevel,
+    equipped: equippedSlots.length > 0,
+    active: Boolean(cache?.equipment.activeWeaponSlot && cache.equipment[cache.equipment.activeWeaponSlot] === instance.instanceId),
+    favorite: Boolean(cache?.favoriteIds.includes(instance.instanceId)),
+    isNew: Boolean(options.isNew)
+  };
 }
 
 export function validateEquipItem(
@@ -289,11 +322,14 @@ export function createEquipmentLoadout(overrides: EquipmentLoadoutInput = {}): E
     if (typeof value === 'string' || value === null) loadout[slot] = value;
   });
   loadout.activeWeaponSlot = isWeaponSlot(overrides.activeWeaponSlot) ? overrides.activeWeaponSlot : null;
+  // Food is stack-backed in v21. The field remains only as a read-compatible
+  // v20 alias and is never written by the canonical loadout.
+  loadout.food = null;
   return loadout;
 }
 
 export function equippedItemIds(loadout: EquipmentLoadout): string[] {
-  return [...new Set(EQUIPMENT_SLOT_IDS
+  return [...new Set(COMBAT_EQUIPMENT_SLOT_IDS
     .map(slot => loadout[slot])
     .filter((id): id is string => typeof id === 'string') )];
 }
@@ -323,7 +359,7 @@ export function equipItem(
     if (next[candidate] === instance.instanceId) next[candidate] = null;
   });
   next[slot as EquipmentSlotId] = instance.instanceId;
-  if (isWeaponSlot(slot) && next.activeWeaponSlot === null) next.activeWeaponSlot = slot;
+  if (isWeaponSlot(slot)) next.activeWeaponSlot = slot;
   return { accepted: true, reason: '', loadout: next, slot, replacedItemId, inspection };
 }
 
@@ -360,7 +396,7 @@ export function calculateEquippedStats(
   const included = new Set<string>();
   const allEquippedIds = equippedItemIds(loadout);
   const activeWeaponSlot = isWeaponSlot(loadout.activeWeaponSlot) ? loadout.activeWeaponSlot : null;
-  EQUIPMENT_SLOT_IDS.forEach(slot => {
+  COMBAT_EQUIPMENT_SLOT_IDS.forEach(slot => {
     const instanceId = loadout[slot];
     if (!instanceId || included.has(instanceId)) return;
     const instance = items.find(candidate => candidate.instanceId === instanceId);
@@ -494,6 +530,7 @@ function normalizeCache(cache: LootCacheState): LootCacheState {
   return {
     items,
     equipment,
+    foodId: typeof cache.foodId === 'string' ? cache.foodId : null,
     favoriteIds,
     filters: cloneFilters(cache.filters),
     capacity: UNEQUIPPED_CACHE_CAPACITY,
@@ -506,6 +543,7 @@ export interface LootCacheOptions {
   equipment?: EquipmentLoadout;
   favoriteIds?: readonly string[];
   filters?: Partial<LootFilters>;
+  foodId?: string | null;
 }
 
 export function createLootCache(options: LootCacheOptions = {}): LootCacheState {
@@ -514,6 +552,7 @@ export function createLootCache(options: LootCacheOptions = {}): LootCacheState 
   const cache: LootCacheState = {
     items,
     equipment,
+    foodId: typeof options.foodId === 'string' ? options.foodId : null,
     favoriteIds: [...new Set(options.favoriteIds || [])],
     filters: cloneFilters(options.filters),
     capacity: UNEQUIPPED_CACHE_CAPACITY,

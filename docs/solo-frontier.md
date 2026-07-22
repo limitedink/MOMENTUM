@@ -1,60 +1,92 @@
-# Solo Frontier design and audit notes
+# Momentum v21 — Wayfinder Arsenal
 
 ## Player loop
 
-Solo Frontier is a persistent solo order: choose **Push**, **Farm**, or **Pause**; configure a fallback stage; select a weapon, stance, technique, defensive ability, and aura; then inspect the return debrief. Push attempts the next uncleared stage. A loss records the wall diagnosis and returns the order to a cleared farm stage. Farm produces use-based combat XP, Boss Keys, collection progress, and targeted equipment. The player compares, equips, favourites, filters, salvages, or reforges drops before pushing again.
+Wayfinder Arsenal adds the decision layer between idle sessions:
 
-Stages 10, 20, and 30 are the Initiate, Vanguard, and Apex gates. They unlock the matching Arena tier and award Combat Discipline points on first clear. Regular stages advertise two target slots; 60% of item-base selection is directed to those slots. Early regular stages use a higher onboarding drop rate, while later repeat farming uses the steady-state rate. Boss first clears guarantee at least Rare quality, repeat bosses retain a higher item chance, and Chase remains a 0.05-weight rarity rather than a pacing assumption.
+**Combat → loot, Gold, and XP → inspect gear → allocate points → buy, respec, or contract → choose Push or Farm → idle again.**
 
-## Combat skill meanings
+Solo Frontier remains a persistent solo order. **Push** attempts the next uncleared stage, **Farm** repeats a cleared stage, and **Pause** stops encounters without stopping Production or the independent Combat Drill. A loss records the original wall diagnosis and changes the order to the configured cleared fallback. Stages 10, 20, and 30 remain the Initiate, Vanguard, and Apex gates and unlock the matching Arena tiers.
 
-- **Strength** scales melee damage; **Melee Accuracy** improves every melee weight's hit chance.
-- **Light**, **Medium**, and **Heavy Melee Weapon Proficiency** scale only their matching melee style.
-- **Marksmanship**, **Ranged**, and **Offensive Magic** scale firearm, bow/crossbow, and spell damage plus accuracy.
-- **Support Magic** scales Battle Focus; **Healing** scales Mend; **Warding** scales Arcane Barrier and magical defence.
-- **Reflexes** shortens attack intervals, capped at 35%; **Vitality** adds maximum health; **Evasion** reduces enemy hit chance.
-- **Light**, **Medium**, and **Heavy Armour Proficiency** scale armour per equipped piece. Light gear owns the evasion/tempo niche, medium balances offence and mitigation, and heavy maximizes health and physical mitigation.
+## Canonical equipment and Arsenal UI
 
-## Balance contract
+`soloFrontier.lootCache` is the only combat-item authority. Its `items` array owns every generated instance and its `equipment` loadout owns the paper-doll positions and active weapon. Arena, Solo Frontier, crafting, expeditions, loadout projection, the inspector, and the Exchange all consume those same instances. Non-combat tools remain in the legacy tool slot; equipped food is the stack-backed `foodId` and consumes no cache position.
 
-The production runtime and `npm run balance:solo` share named constants from `SOLO_FRONTIER_BALANCE`, `SOLO_FRONTIER_LOOT_CHANCE`, item-level scaling, and encounter recovery. The deterministic audit covers starter, melee, firearm, ranged, magic, all three armour weights, sustain, milestone, and intentionally poor builds. It does not grant Chase items.
+The cache capacity is exactly **35 unequipped items**. Equipped items do not consume a position. The Arsenal renders 35 visible cells as 7×5 on desktop and 5×7 at 390px; grandfathered overflow remains accessible on additional 35-cell pages but new full-cache drops still become Salvage. Selection is separate from explicit Equip, Favourite, Salvage, and Reforge actions. Arrow keys move focus through the current grid.
 
-Recorded deterministic results are in [`artifacts/solo-frontier/balance-report.json`](../artifacts/solo-frontier/balance-report.json). The accepted run measured:
+The Wayfinder paper doll groups four arsenal slots on the left, six armour slots in the centre, and amulet, belt, two rings, two trinkets, and food on the right. Mobile collapses these into compact slot groups. Every filled surface uses `ItemVisualDescriptor`: rarity owns the outer border and glow, while equipped, active, favourite, and new states use inner or corner overlays. The v21 pack contains 44 unique item icons, 17 combat-skill icons, and 17 empty-slot icons as transparent 128×128 WebP files.
 
-| Criterion | Measurement |
-| --- | ---: |
-| First loot comparison | 5.03 minute median |
-| First wall | Stage 7 after 20.3 minutes |
-| Initiate / stage 10 | 2.46 hours |
-| Vanguard / stage 20 | 60.70 hours / 2.53 days |
-| Apex / stage 30 | 276.48 hours / 11.52 days |
-| Eight-hour stage-15 farm | 16 item rolls before filters |
-| Equivalent item-level style medians | 1.66–2.00 seconds at stage 15; all within 15% of the four-style median |
-| Apex checkpoint without Chase | 82.4% seeded win rate |
-| Eight-hour catch-up | under 1 second in the automated audit, with repeated event-loop yields |
+## Combat Matrix and Drill
 
-Armour checks use the same ranged weapon and item level: light clears fastest and avoids the opening hit, medium clears faster than heavy while mitigating more than light, and heavy retains the most health and mitigation. The sustain build takes less damage than the balanced medium build. The intentionally poor build fails stage 15.
+The Skill Matrix is split into Production and Combat. Combat presents all 17 typed skills in Offense, Sustain, and Defense groups. Combat cards show icon, level, current XP, recent XP, earned/spent points, Drill state, and the tree action; they never receive Production toggles or Honing.
+
+One Combat Drill may run beside Production and combat. It awards exactly **0.1 XP/second**, retains fractional XP, uses the normal 8-hour offline cap or the existing 12-hour extended cap, and automatically stops at level 100. Drill time creates no loot, Gold, use events, or tree-trigger effects.
+
+## Skill trees and combat modifiers
+
+Arena's existing compatible tree is presented as **Arena Discipline**. Every one of the 17 combat skills has an independent persisted tree state and earns one point at levels 10, 20, …, 100, for ten points total. Existing high-level saves receive earned points without automatic allocation.
+
+The eight Offense trees are authored in v21.0. Each has exactly 21 nodes: three seven-node branches, each formed by one root followed by two independent three-node paths. Every node costs one point. The six capstones share one exclusive group, so lower paths may be mixed but only one capstone may be owned in a skill tree. A full-tree respec costs:
+
+`100 + 50 × allocated nodes` Gold
+
+Arena Discipline uses the same price and is locked only during an active Arena run. Every change saves immediately and affects the next Solo encounter.
+
+Offense effects resolve through the typed `CombatTreeEffectDefinition` registry and `CombatModifierSnapshot`. Same-kind percentages add. Tree attack-speed reduction caps at 30%, technique cooldown reduction at 40%, total critical chance at 60%, and normal armour or ward penetration at 60. Explicit ignore-mitigation capstones bypass that final cap. Repeats and damage-over-time cannot recurse, critically strike, or award extra XP. Hit streaks, marks, shred, burns, bleeds, retaliation charges, first-hit state, and other counters are encounter-local and deterministic across online/offline continuation.
+
+The deterministic balance report includes legal ten-point builds for Strength, Melee Accuracy, all three melee proficiencies, Marksmanship, Ranged, and Offensive Magic. Every capstone variant is also a legal ten-point build. Sibling capstones are compared inside their branch across a deterministic encounter portfolio covering opening burst, a short skirmish, sustained damage, a fortified boss, incoming pressure, evasion, and counterplay; total encounter throughput includes the standard recovery interval. Each sibling pair must remain within 15%. The report retains the all-six spread as a diagnostic because Power, Momentum, Execution, and equivalent branches intentionally solve different fights.
+
+## Gold and Frontier Exchange
+
+Successful Solo encounter time awards Gold at:
+
+`Gold/minute = 1 + 0.1 × stage`
+
+Fractional Gold persists in runtime state. Defeats pay zero. First-clear boss rewards are **250 Gold at stage 10**, **750 at stage 20**, and **2,000 at stage 30**.
+
+Permanent decisions are:
+
+- **Tree respec:** `100 + 50 × allocated nodes` Gold.
+- **Quartermaster Requisition:** choose one exact gear category and pay `150 + 20 × highest cleared stage`. It produces one same-level item with Common/Uncommon/Rare/Epic weights 50/35/12/3. Legendary and higher remain combat chase drops.
+- **Target Contract:** choose one exact category and pay `200 + 20 × highest cleared stage`. One contract may exist at a time. Eight successful Solo hours route 70% of item-base rolls to that category, then create one held Rare+ item. Cancellation gives no refund; contracts never expire; a full cache keeps the reward pending rather than salvaging it.
+
+Daily stock is deterministic from UTC day plus the Solo save seed and never moves its saved day backwards. Each offer may be purchased once:
+
+- 50 Bars for 200 Gold.
+- 10 Crafted Components for 250 Gold.
+- 10 units of one deterministic food for 150 Gold.
+- One deterministic Rare/Epic weapon.
+- One deterministic Rare/Epic armour or accessory.
+- One Rare Gem for 750 Gold.
+
+Rare gear costs `400 + 30 × item level`; Epic gear costs `700 + 35 × item level`. Every transaction validates funds and destination capacity before changing wallet, cache, purchase state, or the earned/spent source ledger.
 
 ## Saves and migration
 
-The current Momentum and Solo Frontier save version is **v20**. `migrateMomentumSaveToV20` is the single entry point and applies the idempotent v17→v18 combat split, v18→v19 paper-doll/loot migration, and v19→v20 Solo Frontier conversion. Representative v1, v14, v17, v18, and v19 fixtures are covered. Legacy Combat is removed from the generic skill list, its component progression is retained, v14 loot/filter/favourite state is preserved, and old Arena clears seed contiguous Solo Frontier credit without paying first-clear rewards twice.
+The Momentum and Solo Frontier save version is **v21**. `migrateMomentumSaveToV21` is the single idempotent entry point for v1–v21 and runs the prior combat split, paper-doll, loot, and Solo migrations before canonicalization.
 
-## Debug and verification commands
+The v21 boundary preserves generated instance IDs, rarity, item level, affixes, favourites, equipped positions, active weapon, `foodId`, 35-slot grandfathered overflow, and legacy refinements. Pulse Sidearm, Iron Blade, Frontier Bow, Ember Focus, and Plated Vest map to canonical definitions. Each legacy refinement rank becomes `enhancementRank` and retains +2 damage per rank. Overlapping legacy projections deduplicate by instance ID and root-level combat loot projections are removed from the resulting save. Only the non-combat tool remains in the root `equipment` object.
+
+Representative v1, v14, v17, v18, v19, and v20 fixtures migrate through v21 twice with byte-equivalent output.
+
+## Deterministic verification
+
+`npm run balance:solo` writes `artifacts/solo-frontier/balance-report.json`. The accepted route remains approximately 2.46 hours to stage 10, 2.53 days to stage 20, and 11.52 days to stage 30, with a 5.03-minute median first loot comparison and 16 median item rolls during an eight-hour stage-15 farm. The report also records Offense-tree build impact, capstone variants, and modifier-cap observations.
+
+Release checks are:
 
 ```bash
-npm run balance:solo
 npm test
 npm run typecheck
 npm run build
-npm run backend:test
-npm run backend:typecheck
-npm run backend:build
+npm run balance:solo
+git diff --check
 ```
 
-Open `/?qa=1`, switch to Solo Frontier, and use **Seed Stage 02**, **Force defeat**, **Fill cache 35**, and **Clear cache**. The same controls are available from `window.MomentumSoloFrontierDebug`; deterministic time control is exposed through `window.MomentumSoloFrontierRuntime.advance(ms)` and `.catchUp(seconds)`.
+Automated contracts cover the 35-cell responsive grid, exact slot filtering, keyboard movement, shared rarity renderer, all 78 asset mappings, historical migration, online/offline replay, Drill caps, Gold and boss rewards, store rollback protection, atomic purchases, contract reward holding, tree topology, every Offense root and capstone, and equipped Common-through-Chase rarity presentation.
 
-Browser evidence is recorded under `artifacts/solo-frontier/`: desktop, mobile, mobile controls, and reduced-motion screenshots. The structured pass checks the canvas and DOM control layer independently, desktop and 390×844 layouts, no horizontal overflow, returning-player debrief actions, stage/order controls, loadout, stance/ability selectors, filters, and zero browser warnings or errors. Reduce Motion applies the `reduce-motion` body class and zero-second canvas animation and shell transition durations without changing simulation timing.
+## Roadmap and scope
 
-## Deferred work
+v21.1 authors the four Sustain trees: Support Magic, Reflexes, Healing, and Vitality. v21.2 authors the five Defense trees: Light, Medium, and Heavy Armour Proficiency, Evasion, and Warding. Their point pools, save state, cards, and tree interfaces already exist in v21.0.
 
-Companions, backend character persistence, matchmaking, chat, monetization, desktop battle overlays, additional regions, and new progression currencies remain deferred. Persistent online multiplayer and broader cooperative content remain separate roadmap work. Solo Frontier keeps renderer-free simulation and local v20 character state until those projects receive their own scope.
+Multiplayer/backend expansion, desktop battle overlays, companions, matchmaking, monetization, and additional regions remain outside Wayfinder Arsenal. No human playtest gate is part of this release workflow.

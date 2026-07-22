@@ -1,4 +1,12 @@
 import { COMBAT_SKILL_IDS, type CombatSkillId } from '../src/game/combat-progression';
+import { createInitialCombatProgression } from '../src/game/combat-progression';
+import {
+  COMBAT_SKILL_TREES,
+  OFFENSE_COMBAT_SKILL_IDS,
+  allocateCombatTreeNode,
+  createCombatDevelopmentState,
+  resolveCombatModifierSnapshot
+} from '../src/game/combat-development';
 import { COMBAT_LOOT_DEFINITIONS, calculateEquippedStats, createEquipmentLoadout, inspectItem, type EquipmentLoadout, type ItemInstance } from '../src/game/loot';
 import {
   SOLO_FRONTIER_ENCOUNTER_RECOVERY_SECONDS,
@@ -134,6 +142,201 @@ function median(values: readonly number[]): number {
   return sorted[Math.floor(sorted.length / 2)] ?? 0;
 }
 
+const TREE_BUILD_NODES: Readonly<Record<(typeof OFFENSE_COMBAT_SKILL_IDS)[number], readonly string[]>> = Object.freeze({
+  Strength: ['Brute Force', 'Weighted Blows', 'Bonebreaker', 'Titan’s Impact', 'Follow Through', 'Driving Rhythm', 'Relentless Advance', 'Finisher', 'Giant Slayer', 'Trophy Breaker'],
+  'Melee Accuracy': ['Confidence', 'Certainty', 'Surgical Window', 'Inevitable', 'Steady Hand', 'Keen Sight', 'Weakpoint', 'Correction', 'Patient Hands', 'Never Twice'],
+  'Light Melee Weapon Proficiency': ['Keen Edge', 'Opening Feint', 'Unreadable', 'First Blood', 'Untouched', 'Riposte', 'Counterstep', 'Quick Hands', 'Rapid Technique', 'Flash Cut'],
+  'Medium Melee Weapon Proficiency': ['Centred', 'Adaptable', 'Fluid Guard', 'Tempered Response', 'Return Force', 'Vengeful Strike', 'Weapon Drill', 'Relentless', 'Exacting Blow', 'Relentless Force'],
+  'Heavy Melee Weapon Proficiency': ['Massive Presence', 'Opening Weight', 'Loaded Swing', 'Cataclysm', 'Fracturing Edge', 'Breach', 'Deep Breach', 'Dominance', 'Anchored', 'Unstoppable'],
+  Marksmanship: ['Trigger Discipline', 'Burst Control', 'Extended Burst', 'Lead Tempest', 'Sighted', 'First Round', 'Weakpoint Round', 'Armour-Piercing Rounds', 'Hollow Points', 'Controlled Burst'],
+  Ranged: ['Bodkin Point', 'Broadhead', 'Barbed', 'Storm Piercer', 'Trophy Hunter', 'Blood Trail', 'Heartline', 'Draw Weight', 'Loose Fast', 'Fleet Quiver'],
+  'Offensive Magic': ['Kindling', 'Flashfire', 'Critical Spark', 'Phoenix Spark', 'Spellflow', 'Arcane Cadence', 'Resonance', 'Null Sight', 'Entropy', 'Collapse']
+});
+
+const TREE_STYLE: Readonly<Record<(typeof OFFENSE_COMBAT_SKILL_IDS)[number], WeaponStyle>> = Object.freeze({
+  Strength: 'medium-melee',
+  'Melee Accuracy': 'medium-melee',
+  'Light Melee Weapon Proficiency': 'light-melee',
+  'Medium Melee Weapon Proficiency': 'medium-melee',
+  'Heavy Melee Weapon Proficiency': 'heavy-melee',
+  Marksmanship: 'gun',
+  Ranged: 'ranged',
+  'Offensive Magic': 'magic'
+});
+
+interface OffenseScenarioProfile {
+  id: string;
+  kind: 'regular' | 'boss';
+  hitPoints: number;
+  armour: number;
+  ward: number;
+  evasion: number;
+  accuracy: number;
+  damage: number;
+  attackInterval: number;
+  stance?: SoloCombatInput['stance'];
+}
+
+const CAPSTONE_SCENARIO_PROFILES: readonly OffenseScenarioProfile[] = Object.freeze([
+  { id: 'opening-burst', kind: 'regular', hitPoints: 180, armour: 20, ward: 0, evasion: 20, accuracy: 20, damage: 5, attackInterval: 4 },
+  { id: 'opening-skirmish', kind: 'regular', hitPoints: 500, armour: 30, ward: 0, evasion: 60, accuracy: 20, damage: 12, attackInterval: 4 },
+  { id: 'sustained-target', kind: 'regular', hitPoints: 3_000, armour: 90, ward: 0, evasion: 90, accuracy: 30, damage: 15, attackInterval: 3 },
+  { id: 'fortified-boss', kind: 'boss', hitPoints: 3_000, armour: 180, ward: 180, evasion: 100, accuracy: 40, damage: 20, attackInterval: 2.5 },
+  { id: 'pressure-fight', kind: 'regular', hitPoints: 2_000, armour: 70, ward: 0, evasion: 80, accuracy: 140, damage: 28, attackInterval: 0.8 },
+  { id: 'elusive-target', kind: 'regular', hitPoints: 2_000, armour: 40, ward: 0, evasion: 120, accuracy: 35, damage: 15, attackInterval: 2 },
+  { id: 'counter-duel', kind: 'regular', hitPoints: 2_000, armour: 60, ward: 0, evasion: 60, accuracy: 0, damage: 15, attackInterval: 0.45 }
+]);
+
+function allocateTreeBuild(skillId: (typeof OFFENSE_COMBAT_SKILL_IDS)[number], nodeNames: readonly string[]) {
+  const progression = createInitialCombatProgression(100);
+  let development = createCombatDevelopmentState();
+  const tree = COMBAT_SKILL_TREES[skillId].tree!;
+  for (const name of nodeNames) {
+    const node = tree.nodes.find(candidate => candidate.name === name);
+    if (!node) throw new Error(`Missing ${skillId} balance node: ${name}`);
+    const result = allocateCombatTreeNode(development, progression, skillId, node.id);
+    if (!result.accepted) throw new Error(`Illegal ${skillId} balance build at ${name}: ${result.reason}`);
+    development = result.state;
+  }
+  return { development, progression };
+}
+
+function capstoneVariantBuild(
+  skillId: (typeof OFFENSE_COMBAT_SKILL_IDS)[number],
+  capstoneId: string
+): readonly string[] {
+  const tree = COMBAT_SKILL_TREES[skillId].tree!;
+  const selected = new Set<string>();
+  const selectRequirements = (nodeId: string): void => {
+    const current = tree.nodes.find(candidate => candidate.id === nodeId);
+    if (!current) throw new Error(`Missing ${skillId} capstone requirement: ${nodeId}`);
+    current.requires.forEach(selectRequirements);
+    selected.add(nodeId);
+  };
+  selectRequirements(capstoneId);
+  tree.rootNodeIds.forEach(nodeId => selected.add(nodeId));
+  tree.nodes
+    .filter(node => node.tier === 2 && !selected.has(node.id))
+    .slice(0, 10 - selected.size)
+    .forEach(node => selected.add(node.id));
+  if (selected.size !== 10) throw new Error(`Could not complete a legal ten-point ${skillId} build for ${capstoneId}`);
+  return [...selected].map(nodeId => tree.nodes.find(candidate => candidate.id === nodeId)!.name);
+}
+
+function offenseTreeScenario(
+  skillId: (typeof OFFENSE_COMBAT_SKILL_IDS)[number],
+  seed: string,
+  nodeNames: readonly string[] = [],
+  profile?: OffenseScenarioProfile
+): SoloCombatInput {
+  const style = TREE_STYLE[skillId];
+  const technique = style === 'gun' ? 'Burst Fire' : style === 'ranged' ? 'Piercing Shot' : style === 'magic' ? 'Arc Bolt' : 'Power Strike';
+  const baseInterval = style === 'ranged' ? 0.7 : style === 'heavy-melee' ? 0.8 : 0.55;
+  const boss = profile ? profile.kind === 'boss' : skillId !== 'Ranged';
+  const stance = profile?.stance ?? (style === 'medium-melee' ? 'Balanced' : 'Aggressive');
+  const state = nodeNames.length ? allocateTreeBuild(skillId, nodeNames) : null;
+  const combatModifiers = state ? resolveCombatModifierSnapshot(state.development, state.progression, {
+    style,
+    technique,
+    stance,
+    boss,
+    enemyWarded: (profile?.ward ?? 100) > 0,
+    enemyHealthRatio: 1,
+    playerHealthRatio: 1,
+    displayedHitChance: 0.90,
+    baseInterval
+  }) : undefined;
+  return {
+    combatSkills: skills(100),
+    equippedStats: { hitPoints: 400, accuracy: 0, evasion: 20, ward: 20, armourPieces: [] },
+    activeWeapon: { id: `tree:${skillId}`, name: skillId, style, damage: 28, accuracy: 10, attackInterval: baseInterval },
+    stance,
+    technique,
+    defensiveAbility: 'none',
+    aura: 'none',
+    enemy: {
+      id: 'tree-balance-dummy', name: 'Tree Balance Dummy', kind: boss ? 'boss' : 'regular', hitPoints: 3_000,
+      damage: profile?.damage ?? 5,
+      armour: profile?.armour ?? 100,
+      ward: profile?.ward ?? 100,
+      evasion: profile?.evasion ?? 100,
+      accuracy: profile?.accuracy ?? 40,
+      attackInterval: profile?.attackInterval ?? 10,
+      damageType: 'physical',
+      ...(profile ? { hitPoints: profile.hitPoints } : {})
+    },
+    stage: 20,
+    seed,
+    combatModifiers
+  };
+}
+
+function offenseTreeBalanceAudit(samples = 11) {
+  return OFFENSE_COMBAT_SKILL_IDS.map(skillId => {
+    const performance = (input: SoloCombatInput): number => {
+      const result = simulateSoloCombat(input);
+      return result.metrics.damage.dealt / Math.max(0.001, result.metrics.durationSeconds);
+    };
+    const encounterThroughput = (input: SoloCombatInput): number => {
+      const result = simulateSoloCombat(input);
+      return result.metrics.damage.dealt
+        / Math.max(0.001, result.metrics.durationSeconds + SOLO_FRONTIER_ENCOUNTER_RECOVERY_SECONDS);
+    };
+    const baseline = median(Array.from({ length: samples }, (_, index) => performance(offenseTreeScenario(skillId, `tree:${skillId}:baseline:${index}`))));
+    const tenPointDamage = median(Array.from({ length: samples }, (_, index) => performance(offenseTreeScenario(skillId, `tree:${skillId}:build:${index}`, TREE_BUILD_NODES[skillId]))));
+    const representativeModifiers = offenseTreeScenario(skillId, `tree:${skillId}:caps`, TREE_BUILD_NODES[skillId]).combatModifiers!.static;
+    const tree = COMBAT_SKILL_TREES[skillId].tree!;
+    const capstones = tree.nodes.filter(node => node.capstone).map(node => {
+      const names = capstoneVariantBuild(skillId, node.id);
+      const profileRatios = CAPSTONE_SCENARIO_PROFILES.map(profile => {
+        const paired = Array.from({ length: samples }, (_, index) => {
+          const seed = `tree:${skillId}:${profile.id}:${index}`;
+          const profileBaseline = encounterThroughput(offenseTreeScenario(skillId, seed, [], profile));
+          const profileDamage = encounterThroughput(offenseTreeScenario(skillId, seed, names, profile));
+          return profileDamage / Math.max(1, profileBaseline);
+        });
+        return { profile: profile.id, ratio: median(paired) };
+      });
+      const representativeRatio = profileRatios.reduce((sum, result) => sum + result.ratio, 0) / profileRatios.length;
+      return {
+        node: node.name,
+        allocatedNodes: names.length,
+        damage: baseline * representativeRatio,
+        improvementPct: (representativeRatio - 1) * 100,
+        profiles: profileRatios.map(result => ({ profile: result.profile, improvementPct: (result.ratio - 1) * 100 }))
+      };
+    });
+    const capstoneDamage = capstones.map(capstone => capstone.damage);
+    const capstonePairs = [0, 2, 4].map(start => {
+      const variants = capstones.slice(start, start + 2);
+      const values = variants.map(variant => variant.damage);
+      const midpoint = values.reduce((sum, value) => sum + value, 0) / values.length;
+      return {
+        branch: tree.branches[start / 2].name,
+        variants: variants.map(variant => variant.node),
+        spreadPct: midpoint ? (Math.max(...values) - Math.min(...values)) / midpoint * 100 : 0
+      };
+    });
+    return {
+      skillId,
+      allocatedNodes: TREE_BUILD_NODES[skillId].length,
+      baselineDamage: baseline,
+      tenPointDamage,
+      improvementPct: baseline ? (tenPointDamage / baseline - 1) * 100 : 0,
+      modifierCaps: {
+        attackSpeedPct: representativeModifiers.attackSpeedPct,
+        techniqueCooldownPct: representativeModifiers.techniqueCooldownPct,
+        criticalChance: representativeModifiers.criticalChance,
+        penetration: Math.max(representativeModifiers.armourPenetration, representativeModifiers.wardPenetration)
+      },
+      capstones,
+      capstonePairs,
+      capstoneSpreadPct: Math.max(...capstonePairs.map(pair => pair.spreadPct)),
+      allCapstoneSpreadPct: median(capstoneDamage) ? (Math.max(...capstoneDamage) - Math.min(...capstoneDamage)) / median(capstoneDamage) * 100 : 0
+    };
+  });
+}
+
 export function measureBuild(build: BalanceBuild, stage: number, samples = 51) {
   const results = Array.from({ length: samples }, (_, index) => simulateSoloCombat(balanceInputForBuild(build, stage, `${build.name}:${stage}:${index}`)));
   const victories = results.filter(result => result.outcome === 'victory');
@@ -198,6 +401,7 @@ export function runSoloFrontierBalanceAudit() {
       farmEightHourMedianKeptItems: median(farmKeptItems),
       ...milestones
     },
+    offenseTrees: offenseTreeBalanceAudit(),
     route,
     starterRoute: Array.from({ length: 12 }, (_, index) => measureBuild(starter, index + 1, 21))
   };

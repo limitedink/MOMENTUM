@@ -29,7 +29,8 @@ export const COMBAT_AFFIX_DEFINITIONS: readonly AffixDefinition[] = [
 
 const DEFAULT_SOURCE_TAGS = ['arena:1', 'arena:2', 'arena:3', 'party:forest'] as const;
 
-type BaseInput = Omit<ItemDefinition, 'affixPool' | 'sourceTags'> & {
+type BaseInput = Omit<ItemDefinition, 'iconId' | 'affixPool' | 'sourceTags'> & {
+  iconId?: string;
   affixPool?: readonly AffixDefinition[];
   sourceTags?: readonly string[];
 };
@@ -37,6 +38,7 @@ type BaseInput = Omit<ItemDefinition, 'affixPool' | 'sourceTags'> & {
 function itemBase(input: BaseInput): ItemDefinition {
   return {
     ...input,
+    iconId: input.iconId || `item:${input.id}`,
     affixPool: input.affixPool || COMBAT_AFFIX_DEFINITIONS,
     sourceTags: input.sourceTags || DEFAULT_SOURCE_TAGS
   };
@@ -85,6 +87,13 @@ function accessoryBase(
 
 /** The v19 paper doll's data-driven item bases. Legacy IDs remain unchanged. */
 export const COMBAT_LOOT_DEFINITIONS: readonly ItemDefinition[] = [
+  // Canonical v21 starter/crafted bases. These IDs replace the old camelCase
+  // ITEMS projection without changing the player's starting build.
+  weaponBase('pulse-sidearm', 'Pulse Sidearm', 'gun', 'light', { damage: 10, attackInterval: 0.25, accuracy: 5, maxHit: 4 }, 'disruptor-pulse', 'Disruptor Pulse', 'Every fifth shot clears nearby hostile projectiles.', 'A dependable frontier sidearm issued to every new Wayfinder.'),
+  weaponBase('iron-blade', 'Iron Blade', 'melee', 'light', { damage: 14, attackInterval: 0.55, accuracy: 3, maxHit: 6, range: 64 }, 'guard-arc', 'Guard Arc', 'Swings destroy hostile projectiles inside the weapon arc.', 'A crafted iron blade balanced for close frontier work.'),
+  weaponBase('frontier-bow', 'Frontier Bow', 'ranged', 'light', { damage: 12, attackInterval: 0.55, accuracy: 5, maxHit: 5, range: 110, projectileDamage: 3 }, 'frontier-string', 'Frontier String', 'Deliberate physical shots reward a steady firing rhythm.', 'A simple bow built to survive repeated frontier deployments.'),
+  armourBase('plated-vest', 'Plated Vest', 'chest', 'medium', { hp: 25, armour: 8 }, 'plated-core', 'Plated Core', 'A reinforced chest plate adds dependable maximum health.', 'A workshop-built medium chest piece.'),
+
   // Three melee weights. `initiates-edge` and `black-star-crescent` are legacy IDs.
   weaponBase('initiates-edge', "Initiate's Edge", 'melee', 'light', { damage: 16, attackInterval: 0.52, accuracy: 4, maxHit: 7, range: 66 }, 'shockbreaker', 'Shockbreaker', 'Successful swings deal +10% damage to bosses currently telegraphing a shockwave.', 'A frontier blade marked by the first gate.'),
   weaponBase('frontier-warhammer', 'Frontier Warhammer', 'melee', 'medium', { damage: 22, attackInterval: 0.7, accuracy: 2, maxHit: 11, range: 58 }, 'earthshaker', 'Earthshaker', 'Heavy hits briefly stagger enemies below half health.'),
@@ -145,7 +154,10 @@ export const LEGACY_ITEM_DEFINITION_IDS = Object.freeze([
   'black-star-crescent'
 ] as const);
 
-export const COMBAT_LOOT_ITEM_IDS = Object.freeze(COMBAT_LOOT_DEFINITIONS.map(item => item.id));
+const STARTER_AND_CRAFTED_ITEM_IDS = new Set(['pulse-sidearm', 'iron-blade', 'frontier-bow', 'plated-vest']);
+export const COMBAT_LOOT_ITEM_IDS = Object.freeze(COMBAT_LOOT_DEFINITIONS
+  .map(item => item.id)
+  .filter(id => !STARTER_AND_CRAFTED_ITEM_IDS.has(id)));
 
 const withUniqueItemIds = (...ids: readonly string[]) => [...new Set(ids)];
 

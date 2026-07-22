@@ -1,4 +1,5 @@
 import type { CombatSkillId } from '../combat-progression';
+import { combatEffectConditionMatches, type CombatModifierContext, type CombatTreeEffectDefinition } from '../combat-development';
 import { SOLO_COMBAT_TIMEOUT_SECONDS, SOLO_FRONTIER_BALANCE, STANCE_MODIFIERS, STARTER_ABILITY_TUNING } from './solo-frontier-definitions';
 import {
   AURA_IDS,
@@ -128,24 +129,46 @@ function proficientArmour(input: SoloCombatInput): number {
 /** Derives stats without observing or mutating any renderer or persistence state. */
 export function deriveSoloPlayerStats(input: SoloCombatInput): DerivedSoloPlayerStats {
   const stage = Math.max(1, Math.floor(finiteNonNegative(input.stage) || 1));
-  const stance = STANCE_MODIFIERS[input.stance] ?? STANCE_MODIFIERS.Balanced;
+  const baseStance = STANCE_MODIFIERS[input.stance] ?? STANCE_MODIFIERS.Balanced;
+  const modifiers = input.combatModifiers?.static;
+  const stanceBonus = finiteNonNegative(modifiers?.stanceBonusPct);
+  const stancePenaltyReduction = clamp(finiteNonNegative(modifiers?.stancePenaltyReductionPct), 0, 1);
+  const adjustStance = (value: number): number => value >= 1
+    ? 1 + (value - 1) * (1 + stanceBonus)
+    : 1 - (1 - value) * (1 - stancePenaltyReduction);
+  const stance = {
+    damage: adjustStance(baseStance.damage),
+    attackInterval: adjustStance(baseStance.attackInterval),
+    armour: adjustStance(baseStance.armour),
+    ward: adjustStance(baseStance.ward)
+  };
   const reflexReduction = Math.min(0.35, 0.002 * skill(input, 'Reflexes'));
   const accuracy = finiteNonNegative(input.equippedStats.accuracy)
     + finiteNonNegative(input.activeWeapon.accuracy)
-    + weaponAccuracySkill(input);
+    + weaponAccuracySkill(input)
+    + finiteNonNegative(modifiers?.accuracyFlat);
   const evasion = finiteNonNegative(input.equippedStats.evasion) + skill(input, 'Evasion');
   const armour = proficientArmour(input) * stance.armour;
   const ward = finiteNonNegative(input.equippedStats.ward) * stance.ward;
   const damage = (finiteNonNegative(input.activeWeapon.damage) + finiteNonNegative(input.equippedStats.damage))
     * weaponMultiplier(input)
     * weaponStyleDamageMultiplier(input.activeWeapon.style)
-    * stance.damage;
+    * stance.damage
+    * (1 + finiteNonNegative(modifiers?.damagePct) + finiteNonNegative(modifiers?.bossDamagePct));
   const attackInterval = Math.max(
     0.05,
-    finiteNonNegative(input.activeWeapon.attackInterval) * (1 - reflexReduction) * stance.attackInterval
+    finiteNonNegative(input.activeWeapon.attackInterval)
+      * (1 - reflexReduction)
+      * stance.attackInterval
+      * (1 - clamp(Number(modifiers?.attackSpeedPct) || 0, -0.30, 0.30))
   );
-  const criticalChance = clamp(0.05 + finiteNonNegative(input.equippedStats.criticalChanceBonus), 0, 1);
-  const criticalMultiplier = Math.max(1, 1.5 + finiteNonNegative(input.equippedStats.criticalMultiplierBonus));
+  const criticalChance = clamp(0.05 + finiteNonNegative(input.equippedStats.criticalChanceBonus) + finiteNonNegative(modifiers?.criticalChance), 0, 0.60);
+  const criticalMultiplier = Math.max(1, 1.5 + finiteNonNegative(input.equippedStats.criticalMultiplierBonus) + finiteNonNegative(modifiers?.criticalMultiplier));
+  const playerHitChance = clamp(
+    Math.max(finiteNonNegative(modifiers?.hitChanceFloor), calculateHitChance(accuracy, input.enemy.evasion) + (Number(modifiers?.hitChanceBonus) || 0)),
+    0.20,
+    0.98
+  );
   return Object.freeze({
     maxHitPoints: round(100 + 2 * skill(input, 'Vitality') + finiteNonNegative(input.equippedStats.hitPoints)),
     damage: round(damage),
@@ -156,7 +179,7 @@ export function deriveSoloPlayerStats(input: SoloCombatInput): DerivedSoloPlayer
     attackInterval: round(attackInterval),
     criticalChance: round(criticalChance),
     criticalMultiplier: round(criticalMultiplier),
-    playerHitChance: round(calculateHitChance(accuracy, input.enemy.evasion)),
+    playerHitChance: round(playerHitChance),
     enemyHitChance: round(calculateHitChance(input.enemy.accuracy, evasion)),
     armourMitigation: round(calculateArmourMitigation(armour, stage)),
     magicalMitigation: round(calculateMagicalMitigation(ward, stage))
@@ -233,6 +256,22 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
   let sequence = 0;
   const events: SoloCombatEvent[] = [];
   const skillEvents: TimedCombatSkillUseEvent[] = [];
+  const modifierEffects = input.combatModifiers?.effects ?? [];
+  const initialModifiers = input.combatModifiers?.static;
+  const effectUses = new Map<string, number>();
+  let actionCount = 0;
+  let techniqueCount = 0;
+  let consecutiveHits = 0;
+  let consecutiveMisses = 0;
+  let afterMiss = false;
+  let afterEnemyMiss = false;
+  let afterDamage = false;
+  let afterDamageCharges = 0;
+  let targetMarked = false;
+  let armourShredPct = 0;
+  let armourShredFlat = 0;
+  interface DotTick { effectId: string; dot: 'bleed' | 'burn'; nextAt: number; tickDamage: number; remaining: number; }
+  const dotTicks: DotTick[] = [];
   const counters = {
     damageDealt: 0,
     physicalDealt: 0,
@@ -260,6 +299,121 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     sequence += 1;
     events.push(event);
     skillEvents.push(event);
+  };
+
+  const modifierContext = (action?: string): CombatModifierContext => {
+    const isTechnique = Boolean(action && action !== BASIC_ATTACK);
+    return ({
+    style: input.activeWeapon.style,
+    technique: isTechnique ? action : undefined,
+    stance: input.stance,
+    boss: input.enemy.kind === 'boss',
+    enemyWarded: input.enemy.ward > 0,
+    enemyHealthRatio: enemyHitPoints / enemyMaxHitPoints,
+    playerHealthRatio: playerHitPoints / derivedStats.maxHitPoints,
+    displayedHitChance: derivedStats.playerHitChance,
+    baseInterval: input.activeWeapon.attackInterval,
+    burning: dotTicks.some(tick => tick.dot === 'burn' && tick.remaining > 0),
+    marked: targetMarked,
+    maximumShred: armourShredPct >= 0.20 || armourShredFlat >= 10,
+    isTechnique
+  });
+  };
+
+  const activeEffects = <TKind extends CombatTreeEffectDefinition['kind']>(
+    kind: TKind,
+    context: CombatModifierContext
+  ): Extract<CombatTreeEffectDefinition, { kind: TKind }>[] => modifierEffects
+    .filter((effect): effect is Extract<CombatTreeEffectDefinition, { kind: TKind }> =>
+      effect.kind === kind && combatEffectConditionMatches(effect.condition, context));
+
+  const statTotal = (statId: Extract<CombatTreeEffectDefinition, { kind: 'stat' }>['stat'], context: CombatModifierContext): number =>
+    activeEffects('stat', context).filter(effect => effect.stat === statId).reduce((sum, effect) => sum + effect.value, 0);
+
+  const triggerSatisfied = (
+    effect: Extract<CombatTreeEffectDefinition, { kind: 'trigger' }>,
+    context: CombatModifierContext,
+    critical = false
+  ): boolean => {
+    if (!combatEffectConditionMatches(effect.condition, context)) return false;
+    const chargedAfterDamage = effect.trigger === 'after-damage' && Boolean(effect.limit && effect.limit > 1);
+    if (!chargedAfterDamage && effect.limit && (effectUses.get(effect.id) || 0) >= effect.limit) return false;
+    if (effect.trigger === 'first-hit') return counters.playerHits < Math.max(1, effect.limit || 1);
+    if (effect.trigger === 'first-technique') return techniqueCount === 1;
+    if (effect.trigger === 'technique') return Boolean(context.isTechnique);
+    if (effect.trigger === 'nth-action') return Boolean(effect.every && actionCount > 0 && actionCount % effect.every === 0);
+    if (effect.trigger === 'nth-hit') return Boolean(effect.every && (counters.playerHits + 1) % effect.every === 0);
+    if (effect.trigger === 'after-miss') return afterMiss;
+    if (effect.trigger === 'after-enemy-miss') return afterEnemyMiss;
+    if (effect.trigger === 'after-damage') return afterDamage || (chargedAfterDamage && afterDamageCharges > 0);
+    if (effect.trigger === 'health-threshold') return Boolean(context.enemyHealthRatio !== undefined && context.enemyHealthRatio < (effect.condition?.enemyHealthBelow ?? 1))
+      || Boolean(context.playerHealthRatio !== undefined && context.playerHealthRatio < (effect.condition?.playerHealthBelow ?? 0));
+    if (effect.trigger === 'critical-hit' || effect.trigger === 'critical-technique') return critical;
+    if (effect.trigger === 'maximum-shred') return Boolean(context.maximumShred);
+    return false;
+  };
+
+  const triggered = (
+    outcome: Extract<CombatTreeEffectDefinition, { kind: 'trigger' }>['outcome'],
+    context: CombatModifierContext,
+    critical = false,
+    consume = false
+  ): Extract<CombatTreeEffectDefinition, { kind: 'trigger' }>[] => {
+    const matches = activeEffects('trigger', context)
+      .filter(effect => effect.outcome === outcome && triggerSatisfied(effect, context, critical));
+    if (consume) matches.forEach(effect => {
+      if (effect.trigger === 'after-damage' && effect.limit && effect.limit > 1) return;
+      effectUses.set(effect.id, (effectUses.get(effect.id) || 0) + 1);
+    });
+    return matches;
+  };
+
+  const specialActive = (specialId: Extract<CombatTreeEffectDefinition, { kind: 'special' }>['special'], context: CombatModifierContext): boolean =>
+    activeEffects('special', context).some(effect => effect.special === specialId);
+
+  const intervalScaleFor = (dynamicAttackSpeed: number): number => {
+    const staticAttackSpeed = clamp(Number(initialModifiers?.attackSpeedPct) || 0, -0.30, 0.30);
+    const totalAttackSpeed = clamp(staticAttackSpeed + dynamicAttackSpeed, -0.30, 0.30);
+    return (1 - totalAttackSpeed) / Math.max(0.01, 1 - staticAttackSpeed);
+  };
+
+  const applySecondaryDamage = (
+    atMs: number,
+    action: string,
+    rawDamage: number,
+    damageType: DamageType,
+    mitigation: number
+  ): number => {
+    const calculatedDamage = rawDamage > 0 ? Math.max(1, Math.round(rawDamage * (1 - mitigation))) : 0;
+    const damage = Math.min(enemyHitPoints, calculatedDamage);
+    enemyHitPoints = Math.max(0, round(enemyHitPoints - damage));
+    counters.damageDealt += damage;
+    if (damageType === 'magical') counters.magicalDealt += damage;
+    else counters.physicalDealt += damage;
+    emit(atMs, { type: 'attack', actor: 'player', action, hit: true, critical: false, damageType, rawDamage: round(rawDamage), damage, targetHitPoints: enemyHitPoints });
+    return damage;
+  };
+
+  const scheduleDots = (atMs: number, context: CombatModifierContext, directDamage: number, critical: boolean): void => {
+    for (const dotType of ['bleed', 'burn'] as const) {
+      const candidates = activeEffects('dot', context).filter(effect => effect.dot === dotType);
+      if (!candidates.length || directDamage <= 0) continue;
+      const effect = candidates.sort((left, right) => right.damagePct - left.damagePct || right.maximumStacks - left.maximumStacks)[0];
+      const criticalScale = critical && specialActive('critical-dot-double', context) ? 2 : effect.criticalMultiplier || 1;
+      const ticks = Math.max(1, Math.round(effect.durationSeconds));
+      const matching = dotTicks.filter(tick => tick.effectId === effect.id);
+      while (matching.length >= effect.maximumStacks) {
+        const oldest = matching.shift();
+        if (oldest) dotTicks.splice(dotTicks.indexOf(oldest), 1);
+      }
+      dotTicks.push({
+        effectId: effect.id,
+        dot: dotType,
+        nextAt: atMs + 1_000,
+        tickDamage: Math.max(1, directDamage * effect.damagePct * criticalScale / ticks),
+        remaining: ticks
+      });
+    }
   };
 
   emit(0, { type: 'encounter-started', stage, playerHitPoints, enemyHitPoints });
@@ -319,24 +473,74 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
   };
 
   let techniqueReadyAt = 0;
+  let nextPlayerIntervalReduction = 0;
   const playerAttack = (atMs: number): void => {
+    nextPlayerIntervalReduction = 0;
     const useTechnique = atMs >= techniqueReadyAt;
     const action = useTechnique ? effectiveTechnique : BASIC_ATTACK;
+    actionCount += 1;
     if (useTechnique) {
-      techniqueReadyAt = atMs + techniqueCooldownMs(effectiveTechnique);
+      techniqueCount += 1;
+      const context = modifierContext(action);
+      const cooldownReduction = clamp(statTotal('techniqueCooldownPct', context), 0, 0.40);
+      const baseCooldownIncrease = Math.max(0, statTotal('baseTechniqueCooldownPct', context));
+      techniqueReadyAt = atMs + techniqueCooldownMs(effectiveTechnique) * (1 + baseCooldownIncrease) * (1 - cooldownReduction);
       emit(atMs, { type: 'ability-used', actor: 'player', ability: effectiveTechnique, effect: 'attack' });
     }
-    const attacks = action === 'Burst Fire' ? STARTER_ABILITY_TUNING['Burst Fire'].projectileCount : 1;
+    const actionContext = modifierContext(action);
+    const baseAttacks = action === 'Burst Fire' ? STARTER_ABILITY_TUNING['Burst Fire'].projectileCount : 1;
+    const projectileEffects = activeEffects('trigger', actionContext)
+      .filter(effect => effect.outcome === 'add-projectile'
+        && triggerSatisfied(effect, actionContext));
+    const extraProjectiles = useTechnique
+      ? projectileEffects.reduce((sum, effect) => sum + Math.max(1, effect.count || 1), 0)
+      : 0;
+    const attacks = baseAttacks + extraProjectiles;
     for (let attackIndex = 0; attackIndex < attacks && enemyHitPoints > 0; attackIndex += 1) {
       counters.playerAttempts += 1;
-      const hit = random() < derivedStats.playerHitChance;
+      const context = modifierContext(action);
+      const currentAccuracy = statTotal('accuracyFlat', context);
+      const initialAccuracy = Number(initialModifiers?.accuracyFlat) || 0;
+      const recoveryAccuracy = triggered('accuracy', context, false, true).reduce((sum, effect) => sum + effect.value, 0);
+      const dynamicHitChance = clamp(
+        Math.max(
+          statTotal('hitChanceFloor', context),
+          derivedStats.playerHitChance
+            + (currentAccuracy - initialAccuracy) * 0.005
+            + recoveryAccuracy * 0.005
+            + statTotal('hitChanceBonus', context)
+            - (Number(initialModifiers?.hitChanceBonus) || 0)
+            + (useTechnique ? statTotal('techniqueHitChanceBonus', context) : 0)
+        ),
+        0.20,
+        0.98
+      );
+      const guaranteedHit = triggered('guarantee-hit', context, false, true).length > 0
+        || specialActive('second-miss-converts', context) && consecutiveMisses >= 1
+        || activeEffects('special', context).some(effect => effect.special === 'miss-conversion-every' && counters.playerAttempts % Math.max(1, effect.value) === 0);
+      const hit = guaranteedHit || random() < dynamicHitChance;
       if (!hit) {
         emit(atMs, { type: 'attack', actor: 'player', action, hit: false, critical: false, damageType: weaponDamageType(input), rawDamage: 0, damage: 0, targetHitPoints: enemyHitPoints });
         emitWeaponSkillUse(atMs, false);
+        consecutiveMisses += 1;
+        afterMiss = true;
+        nextPlayerIntervalReduction = triggered('attack-speed', modifierContext(action), false, true)
+          .reduce((sum, effect) => sum + effect.value, 0);
+        const streakEffect = activeEffects('streak', context).sort((left, right) => right.maxStacks - left.maxStacks || right.damagePerStack - left.damagePerStack)[0];
+        if (specialActive('miss-preserves-streak', context)) {
+          // Deliberately retain the shared Strength hit chain.
+        } else if (!streakEffect || streakEffect.missBehavior === 'reset' || !streakEffect.missBehavior) consecutiveHits = 0;
+        else if (streakEffect.missBehavior === 'remove-one') consecutiveHits = Math.max(0, consecutiveHits - 1);
         continue;
       }
-      counters.playerHits += 1;
-      const critical = random() < derivedStats.criticalChance;
+      const dynamicCriticalChance = clamp(
+        derivedStats.criticalChance + statTotal('criticalChance', context) - (Number(initialModifiers?.criticalChance) || 0),
+        0,
+        0.60
+      );
+      const guaranteeCriticalEffects = triggered('guarantee-critical', context, false, true);
+      const guaranteeCritical = guaranteeCriticalEffects.length > 0;
+      const critical = guaranteeCritical || random() < dynamicCriticalChance;
       let actionMultiplier = 1;
       let armourIgnored = 0;
       if (action === 'Power Strike') actionMultiplier = STARTER_ABILITY_TUNING['Power Strike'].damageMultiplier;
@@ -347,19 +551,104 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       }
       if (action === 'Arc Bolt') actionMultiplier = STARTER_ABILITY_TUNING['Arc Bolt'].damageMultiplier;
       const damageType = action === 'Arc Bolt' ? 'magical' : weaponDamageType(input);
-      const rawDamage = derivedStats.damage * auraDamageMultiplier * actionMultiplier * (critical ? derivedStats.criticalMultiplier : 1);
-      const mitigation = damageType === 'magical'
-        ? calculateMagicalMitigation(input.enemy.ward, stage)
-        : calculateArmourMitigation(input.enemy.armour * (1 - armourIgnored), stage);
+      const initialDamagePct = (Number(initialModifiers?.damagePct) || 0) + (Number(initialModifiers?.bossDamagePct) || 0);
+      const currentDamagePct = statTotal('damagePct', context) + statTotal('bossDamagePct', context);
+      const dynamicDamageRatio = (1 + currentDamagePct) / Math.max(0.01, 1 + initialDamagePct);
+      const triggerDamage = triggered('damage', context, critical, true).reduce((sum, effect) => sum + effect.value, 0);
+      const streakEffect = activeEffects('streak', context).sort((left, right) => right.maxStacks - left.maxStacks || right.damagePerStack - left.damagePerStack)[0];
+      const streakDamage = streakEffect ? Math.min(consecutiveHits, streakEffect.maxStacks) * streakEffect.damagePerStack : 0;
+      const techniqueDamage = useTechnique ? statTotal('techniqueDamagePct', context) : 0;
+      const markDamage = targetMarked
+        ? activeEffects('mark', context).reduce((best, effect) => Math.max(best, effect.damagePct + (input.enemy.kind === 'boss' ? effect.bossDamagePct || 0 : 0)), 0)
+        : 0;
+      const extraProjectileScale = attackIndex >= baseAttacks
+        ? projectileEffects[Math.min(projectileEffects.length - 1, attackIndex - baseAttacks)]?.value || 0.5
+        : 1;
+      const currentCriticalMultiplier = Math.max(
+        1,
+        derivedStats.criticalMultiplier
+          + statTotal('criticalMultiplier', context)
+          - (Number(initialModifiers?.criticalMultiplier) || 0)
+          + guaranteeCriticalEffects.filter(effect => effect.value > 0 && effect.value < 1).reduce((sum, effect) => sum + effect.value, 0)
+      );
+      const rawDamage = derivedStats.damage
+        * auraDamageMultiplier
+        * actionMultiplier
+        * dynamicDamageRatio
+        * (1 + techniqueDamage + triggerDamage + streakDamage + markDamage)
+        * extraProjectileScale
+        * (critical ? currentCriticalMultiplier : 1);
+      const penetration = damageType === 'magical'
+        ? Math.min(60, statTotal('wardPenetration', context) + (critical ? statTotal('criticalWardPenetration', context) : 0))
+        : Math.min(60, statTotal('armourPenetration', context) + (critical ? statTotal('criticalArmourPenetration', context) : 0) + armourShredFlat);
+      const ignoresMitigation = damageType === 'magical'
+        ? specialActive('ignore-ward', context)
+        : specialActive('ignore-armour', context);
+      const mitigation = ignoresMitigation
+        ? 0
+        : damageType === 'magical'
+          ? calculateMagicalMitigation(Math.max(0, input.enemy.ward - penetration), stage)
+          : calculateArmourMitigation(Math.max(0, input.enemy.armour * (1 - armourIgnored) * (1 - armourShredPct) - penetration), stage);
       const calculatedDamage = rawDamage > 0 ? Math.max(1, Math.round(rawDamage * (1 - mitigation))) : 0;
       const damage = Math.min(enemyHitPoints, calculatedDamage);
       enemyHitPoints = Math.max(0, round(enemyHitPoints - damage));
+      counters.playerHits += 1;
       counters.damageDealt += damage;
       if (damageType === 'magical') counters.magicalDealt += damage;
       else counters.physicalDealt += damage;
       emit(atMs, { type: 'attack', actor: 'player', action, hit: true, critical, damageType, rawDamage: round(rawDamage), damage, targetHitPoints: enemyHitPoints });
       emitWeaponSkillUse(atMs, true);
+      consecutiveHits += 1;
+      consecutiveMisses = 0;
+      if (!targetMarked && activeEffects('mark', context).length) targetMarked = true;
+      const shredEffects = activeEffects('shred', context).filter(effect => !effect.techniqueOnly || useTechnique);
+      if (shredEffects.length) {
+        const strongest = shredEffects.sort((left, right) => right.maximum - left.maximum || right.amount - left.amount)[0];
+        if (strongest.amount <= 1) armourShredPct = Math.min(strongest.maximum, armourShredPct + strongest.amount);
+        else armourShredFlat = Math.min(strongest.maximum, armourShredFlat + strongest.amount);
+      }
+      const consumeDotEffects = triggered('consume-dot', context, critical, true);
+      if (critical && consumeDotEffects.length) {
+        const burnValue = dotTicks.filter(tick => tick.dot === 'burn').reduce((sum, tick) => sum + tick.tickDamage * tick.remaining, 0);
+        for (const tick of [...dotTicks]) if (tick.dot === 'burn') dotTicks.splice(dotTicks.indexOf(tick), 1);
+        const consumeMultiplier = Math.max(...consumeDotEffects.map(effect => effect.value));
+        if (burnValue > 0 && enemyHitPoints > 0) applySecondaryDamage(atMs, 'Phoenix Spark', burnValue * consumeMultiplier, 'magical', 0);
+      }
+      scheduleDots(atMs, context, damage, critical);
+      const cullEffect = activeEffects('special', context).find(effect => effect.special === 'cull-once' && !effectUses.has(effect.id));
+      if (cullEffect && enemyHitPoints > 0) {
+        effectUses.set(cullEffect.id, 1);
+        applySecondaryDamage(atMs, 'Cull the Weak', Math.min(derivedStats.damage, enemyMaxHitPoints * 0.10), damageType, 0);
+      }
+      if (useTechnique && specialActive('consume-exploit-stacks', context) && context.maximumShred) armourShredFlat = 0;
+      const repeats = triggered('repeat', context, critical, true);
+      if (repeats.length && enemyHitPoints > 0) {
+        const repeatScale = repeats.reduce((sum, effect) => sum + effect.value, 0);
+        applySecondaryDamage(atMs, `${action} · Repeat`, rawDamage * repeatScale, damageType, mitigation);
+      }
+      const cooldownEffects = triggered('reduce-technique-cooldown', context, critical, true);
+      cooldownEffects.forEach(effect => {
+        const remaining = Math.max(0, techniqueReadyAt - atMs);
+        techniqueReadyAt = atMs + (effect.value > 1 ? Math.max(0, remaining - effect.value * 1_000) : remaining * (1 - effect.value));
+      });
+      afterMiss = false;
+      afterEnemyMiss = false;
+      afterDamage = false;
+      afterDamageCharges = Math.max(0, afterDamageCharges - 1);
     }
+  };
+
+  const timeoutMs = SOLO_COMBAT_TIMEOUT_SECONDS * 1_000;
+  const playerIntervalMs = Math.max(50, Math.round(derivedStats.attackInterval * 1_000));
+  const enemyIntervalMs = Math.max(50, Math.round(finiteNonNegative(input.enemy.attackInterval) * 1_000));
+  let nextPlayerAt = 0;
+  let nextEnemyAt = enemyIntervalMs;
+  let durationMs = 0;
+  let termination: SoloCombatTermination | null = null;
+  const accelerateNextPlayerAttack = (atMs: number, context: CombatModifierContext): void => {
+    const dynamicAttackSpeed = triggered('attack-speed', context, false, true).reduce((sum, effect) => sum + effect.value, 0);
+    if (dynamicAttackSpeed <= 0) return;
+    nextPlayerAt = Math.min(nextPlayerAt, atMs + Math.max(50, Math.round(playerIntervalMs * intervalScaleFor(dynamicAttackSpeed))));
   };
 
   const enemyAttack = (atMs: number): void => {
@@ -369,6 +658,8 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       emit(atMs, { type: 'attack', actor: 'enemy', action: 'Basic Attack', hit: false, critical: false, damageType: input.enemy.damageType, rawDamage: 0, damage: 0, targetHitPoints: playerHitPoints });
       emitSkillUse(atMs, 'Evasion', 1);
       emitSkillUse(atMs, 'Reflexes', 0.5);
+      afterEnemyMiss = true;
+      accelerateNextPlayerAttack(atMs, modifierContext());
       return;
     }
     counters.enemyHits += 1;
@@ -383,6 +674,20 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     const damage = Math.min(playerHitPoints, postMitigation - absorbed);
     playerHitPoints = Math.max(0, round(playerHitPoints - damage));
     counters.damageTaken += damage;
+    if (damage > 0) {
+      afterDamage = true;
+      const context = modifierContext(effectiveTechnique);
+      afterDamageCharges = Math.max(
+        afterDamageCharges,
+        ...activeEffects('trigger', context)
+          .filter(effect => effect.trigger === 'after-damage' && effect.limit && effect.limit > 1)
+          .map(effect => effect.limit || 0)
+      );
+      accelerateNextPlayerAttack(atMs, context);
+      const streakEffect = activeEffects('streak', context).sort((left, right) => right.maxStacks - left.maxStacks || right.damagePerStack - left.damagePerStack)[0];
+      if (streakEffect?.resetOnDamage) consecutiveHits = 0;
+      if (triggered('ready-technique', context, false, true).length) techniqueReadyAt = atMs;
+    }
     emit(atMs, { type: 'attack', actor: 'enemy', action: 'Basic Attack', hit: true, critical: false, damageType: input.enemy.damageType, rawDamage, damage, targetHitPoints: playerHitPoints });
     if (absorbed > 0) emit(atMs, { type: 'barrier', ability: 'Arcane Barrier', granted: 0, absorbed, remaining: barrier });
     if (input.enemy.damageType === 'physical') {
@@ -397,25 +702,32 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     if (damage > 0 && playerHitPoints > 0) emitSkillUse(atMs, 'Vitality', damage);
   };
 
-  const timeoutMs = SOLO_COMBAT_TIMEOUT_SECONDS * 1_000;
-  const playerIntervalMs = Math.max(50, Math.round(derivedStats.attackInterval * 1_000));
-  const enemyIntervalMs = Math.max(50, Math.round(finiteNonNegative(input.enemy.attackInterval) * 1_000));
-  let nextPlayerAt = 0;
-  let nextEnemyAt = enemyIntervalMs;
-  let durationMs = 0;
-  let termination: SoloCombatTermination | null = null;
-
   while (!termination) {
-    const nextAt = Math.min(nextPlayerAt, nextEnemyAt);
+    const nextDotAt = dotTicks.length ? Math.min(...dotTicks.map(tick => tick.nextAt)) : Number.POSITIVE_INFINITY;
+    const nextAt = Math.min(nextPlayerAt, nextEnemyAt, nextDotAt);
     if (nextAt > timeoutMs) {
       durationMs = timeoutMs;
       termination = 'timeout';
       break;
     }
     durationMs = nextAt;
+    if (nextDotAt === nextAt) {
+      const due = dotTicks.filter(tick => tick.nextAt === nextAt);
+      due.forEach(tick => {
+        if (enemyHitPoints <= 0) return;
+        applySecondaryDamage(nextAt, tick.dot === 'burn' ? 'Burn' : 'Bleed', tick.tickDamage, tick.dot === 'burn' ? 'magical' : 'physical', 0);
+        tick.remaining -= 1;
+        tick.nextAt += 1_000;
+        if (tick.remaining <= 0) dotTicks.splice(dotTicks.indexOf(tick), 1);
+      });
+      if (enemyHitPoints <= 0) {
+        termination = 'enemy-defeated';
+        break;
+      }
+    }
     if (nextPlayerAt === nextAt) {
       playerAttack(nextAt);
-      nextPlayerAt += playerIntervalMs;
+      nextPlayerAt += Math.max(50, Math.round(playerIntervalMs * intervalScaleFor(nextPlayerIntervalReduction)));
       if (enemyHitPoints <= 0) {
         termination = 'enemy-defeated';
         break;

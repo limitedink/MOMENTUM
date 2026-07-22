@@ -5,6 +5,7 @@ import {
   advanceSoloFrontier,
   catchUpSoloFrontier,
   createInitialSoloFrontierState,
+  migrateMomentumSaveToV21,
   migrateMomentumSaveToV20,
   setSoloFrontierOrder
 } from '../src/game/solo-frontier';
@@ -53,6 +54,21 @@ describe('Solo Frontier deterministic acceptance harness', () => {
     expect(sustain.medianDamageTaken).toBeLessThan(medium.medianDamageTaken);
     expect(audit.builds.find(build => build.build === 'intentionally-poor')!.winRate).toBe(0);
     expect(audit.milestoneBuilds.every(build => build.winRate >= 0.8)).toBe(true);
+
+    expect(audit.offenseTrees).toHaveLength(8);
+    audit.offenseTrees.forEach(tree => {
+      expect(tree.allocatedNodes).toBe(10);
+      expect(tree.improvementPct).toBeGreaterThanOrEqual(12);
+      expect(tree.improvementPct).toBeLessThanOrEqual(30);
+      expect(tree.capstones).toHaveLength(6);
+      expect(tree.capstones.every(capstone => capstone.allocatedNodes === 10)).toBe(true);
+      expect(tree.capstonePairs).toHaveLength(3);
+      expect(tree.capstoneSpreadPct).toBeLessThanOrEqual(15);
+      expect(tree.modifierCaps.attackSpeedPct).toBeLessThanOrEqual(0.30);
+      expect(tree.modifierCaps.techniqueCooldownPct).toBeLessThanOrEqual(0.40);
+      expect(tree.modifierCaps.criticalChance).toBeLessThanOrEqual(0.60);
+      expect(tree.modifierCaps.penetration).toBeLessThanOrEqual(60);
+    });
   });
 });
 
@@ -79,6 +95,7 @@ describe('Solo Frontier complete save migration chain', () => {
   };
   const v18 = migrateV17SaveToV18(REPRESENTATIVE_V17_SAVE_FIXTURE);
   const v19 = migrateV18SaveToV19(v18);
+  const v20 = migrateMomentumSaveToV20(v19);
 
   it.each([
     ['v1', v1],
@@ -102,6 +119,32 @@ describe('Solo Frontier complete save migration chain', () => {
     expect(migrated.soloFrontier.lootCache.filters.globalMinimumRarity).toBe('uncommon');
     expect(migrated.soloFrontier.lootCache.favoriteIds).toContain('v14-edge');
     expect(migrated.soloFrontier.highestClearedStage).toBe(10);
+  });
+
+  it.each([
+    ['v1', v1],
+    ['v14', v14],
+    ['v17', REPRESENTATIVE_V17_SAVE_FIXTURE],
+    ['v18', v18],
+    ['v19', v19],
+    ['v20', v20]
+  ] as const)('migrates representative %s data through the single v21 entry point idempotently', (_label, source) => {
+    const migrated = migrateMomentumSaveToV21(source);
+    expect(migrated.version).toBe(21);
+    expect(migrated.soloFrontier.version).toBe(21);
+    expect(migrated.soloFrontier.lootCache.capacity).toBe(35);
+    expect(Object.keys(migrated.soloFrontier.combatProgression)).toHaveLength(17);
+    expect(Object.keys(migrated.soloFrontier.combatDevelopment.trees)).toHaveLength(17);
+    expect(migrateMomentumSaveToV21(JSON.parse(JSON.stringify(migrated)))).toEqual(migrated);
+  });
+
+  it('preserves v14 loot and filters without retaining root loot projections in v21', () => {
+    const migrated = migrateMomentumSaveToV21(v14);
+    expect(migrated.soloFrontier.lootCache.items.map(item => item.instanceId)).toContain('v14-edge');
+    expect(migrated.soloFrontier.lootCache.filters.globalMinimumRarity).toBe('uncommon');
+    expect(migrated.soloFrontier.lootCache.favoriteIds).toContain('v14-edge');
+    expect('lootInventory' in migrated).toBe(false);
+    expect('lootCache' in migrated).toBe(false);
   });
 });
 

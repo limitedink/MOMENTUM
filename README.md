@@ -228,7 +228,7 @@ npm test
 npm run build
 ```
 
-The balance command writes its deterministic report to `artifacts/solo-frontier/balance-report.json`. See [Solo Frontier design and audit notes](docs/solo-frontier.md) for the loop, skill meanings, v20 migration chain, browser evidence, debug controls, measured acceptance results, and explicitly deferred work.
+The balance command writes its deterministic report to `artifacts/solo-frontier/balance-report.json`. See [Momentum v21 — Wayfinder Arsenal](docs/solo-frontier.md) for the solo decision loop, canonical Arsenal, Combat Matrix and Drill, Offense trees, Gold economy, v21 migration guarantees, deterministic acceptance results, and deferred scope.
 
 Run the backend checks:
 

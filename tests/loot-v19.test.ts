@@ -46,14 +46,16 @@ function equip(loadout: ReturnType<typeof createEquipmentLoadout>, instance: Ite
 
 describe('v19 ARPG paper doll and loot rules', () => {
   it('authors the requested data-driven base matrix while preserving old IDs', () => {
-    expect(COMBAT_LOOT_DEFINITIONS).toHaveLength(40);
-    expect(new Set(COMBAT_LOOT_DEFINITIONS.map(definition => definition.id)).size).toBe(40);
-    expect(COMBAT_LOOT_DEFINITIONS.filter(definition => definition.slot === 'melee')).toHaveLength(3);
-    expect(COMBAT_LOOT_DEFINITIONS.filter(definition => definition.slot === 'gun')).toHaveLength(3);
-    expect(COMBAT_LOOT_DEFINITIONS.filter(definition => definition.slot === 'ranged')).toHaveLength(3);
+    expect(COMBAT_LOOT_DEFINITIONS).toHaveLength(44);
+    expect(new Set(COMBAT_LOOT_DEFINITIONS.map(definition => definition.id)).size).toBe(44);
+    expect(COMBAT_LOOT_DEFINITIONS.filter(definition => definition.slot === 'melee')).toHaveLength(4);
+    expect(COMBAT_LOOT_DEFINITIONS.filter(definition => definition.slot === 'gun')).toHaveLength(4);
+    expect(COMBAT_LOOT_DEFINITIONS.filter(definition => definition.slot === 'ranged')).toHaveLength(4);
+    // Ember Focus already existed canonically; v21 maps the legacy projection
+    // to it instead of adding a duplicate fourth magic base.
     expect(COMBAT_LOOT_DEFINITIONS.filter(definition => definition.slot === 'magic')).toHaveLength(3);
     for (const slot of ['helm', 'chest', 'gloves', 'pants', 'boots', 'cloak']) {
-      expect(COMBAT_LOOT_DEFINITIONS.filter(definition => definition.slot === slot)).toHaveLength(3);
+      expect(COMBAT_LOOT_DEFINITIONS.filter(definition => definition.slot === slot)).toHaveLength(slot === 'chest' ? 4 : 3);
       expect(new Set(COMBAT_LOOT_DEFINITIONS.filter(definition => definition.slot === slot).map(definition => definition.weight))).toEqual(new Set(['light', 'medium', 'heavy']));
     }
     expect(COMBAT_LOOT_DEFINITIONS.filter(definition => definition.slot === 'belt')).toHaveLength(2);
@@ -62,6 +64,10 @@ describe('v19 ARPG paper doll and loot rules', () => {
     expect(COMBAT_LOOT_DEFINITIONS.filter(definition => definition.slot === 'trinket')).toHaveLength(3);
     expect(getItemDefinition('initiates-edge')).toBeTruthy();
     expect(getItemDefinition('apex-aegis')?.slot).toBe('chest');
+    expect(getItemDefinition('pulse-sidearm')?.slot).toBe('gun');
+    expect(getItemDefinition('iron-blade')?.slot).toBe('melee');
+    expect(getItemDefinition('frontier-bow')?.slot).toBe('ranged');
+    expect(getItemDefinition('plated-vest')?.slot).toBe('chest');
   });
 
   it('keeps dual rings and trinkets equipped and excludes inactive weapons from combat', () => {
@@ -76,6 +82,7 @@ describe('v19 ARPG paper doll and loot rules', () => {
     for (const [instance, slot] of [[melee, 'melee'], [gun, 'gun'], [chest, 'chest'], [ring1, 'ring1'], [ring2, 'ring2'], [trinket1, 'trinket1'], [trinket2, 'trinket2']] as const) {
       loadout = equip(loadout, instance, slot);
     }
+    loadout = { ...loadout, activeWeaponSlot: 'melee' };
 
     const snapshot = calculateEquippedStats(loadout, [melee, gun, chest, ring1, ring2, trinket1, trinket2]);
     expect(snapshot.stats.damage).toBeCloseTo(16 * 1.135 + 2 * 1.135, 6);

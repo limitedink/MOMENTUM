@@ -163,6 +163,2080 @@
     "stage20Hours": 60.699621666666665,
     "stage30Hours": 276.479775
   },
+  "offenseTrees": [
+    {
+      "skillId": "Strength",
+      "allocatedNodes": 10,
+      "baselineDamage": 84.17508417508418,
+      "tenPointDamage": 104.8951048951049,
+      "improvementPct": 24.615384615384617,
+      "modifierCaps": {
+        "attackSpeedPct": 0,
+        "techniqueCooldownPct": 0,
+        "criticalChance": 0,
+        "penetration": 35
+      },
+      "capstones": [
+        {
+          "node": "Titan’s Impact",
+          "allocatedNodes": 10,
+          "damage": 98.2341930765656,
+          "improvementPct": 16.702221374959937,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 7.652874404979881
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 15.285640761708708
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 20.794198073950774
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 24.257604710013947
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 17.751374357155502
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 13.11754684838158
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 18.0563104685292
+            }
+          ]
+        },
+        {
+          "node": "Colossus",
+          "allocatedNodes": 10,
+          "damage": 103.97668295807249,
+          "improvementPct": 23.524299354190113,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 7.652874404979881
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 22.571819425444595
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 34.23266996126622
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 35.06146743060577
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 18.681763040841105
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 19.652515980986717
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 26.81698523520657
+            }
+          ]
+        },
+        {
+          "node": "Unbroken Chain",
+          "allocatedNodes": 10,
+          "damage": 94.87304346402232,
+          "improvementPct": 12.709175635258507,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": -0.742741390952073
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 8.817099829973296
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 21.00975023373848
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 23.91548433193833
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 10.93475900091887
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 11.22962060033521
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 13.80025684085744
+            }
+          ]
+        },
+        {
+          "node": "Avalanche",
+          "allocatedNodes": 10,
+          "damage": 96.00602632708858,
+          "improvementPct": 14.05515927658123,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 7.652874404979881
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 15.285640761708708
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 16.136919315403443
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 19.923736892278356
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 15.387957250847162
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 8.834617275856417
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 15.164369034994696
+            }
+          ]
+        },
+        {
+          "node": "Cull the Weak",
+          "allocatedNodes": 10,
+          "damage": 95.39193105053842,
+          "improvementPct": 13.325614088039629,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": -0.742741390952073
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 15.285640761708708
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 16.744244559064025
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 19.923736892278356
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 15.387957250847162
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 11.51609150833659
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 15.164369034994696
+            }
+          ]
+        },
+        {
+          "node": "Kingslayer",
+          "allocatedNodes": 10,
+          "damage": 95.31580895211279,
+          "improvementPct": 13.235181035109989,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": -0.742741390952073
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 8.817099829973296
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 13.447432762836197
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 46.34440359230907
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 10.93475900091887
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 4.059628048339259
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 9.785685402345322
+            }
+          ]
+        }
+      ],
+      "capstonePairs": [
+        {
+          "branch": "Power",
+          "variants": [
+            "Titan’s Impact",
+            "Colossus"
+          ],
+          "spreadPct": 5.6797042712215084
+        },
+        {
+          "branch": "Momentum",
+          "variants": [
+            "Unbroken Chain",
+            "Avalanche"
+          ],
+          "spreadPct": 1.1871211068936407
+        },
+        {
+          "branch": "Execution",
+          "variants": [
+            "Cull the Weak",
+            "Kingslayer"
+          ],
+          "spreadPct": 0.0798311577962909
+        }
+      ],
+      "capstoneSpreadPct": 5.6797042712215084,
+      "allCapstoneSpreadPct": 9.482362558194469
+    },
+    {
+      "skillId": "Melee Accuracy",
+      "allocatedNodes": 10,
+      "baselineDamage": 84.17508417508418,
+      "tenPointDamage": 104.8951048951049,
+      "improvementPct": 24.615384615384617,
+      "modifierCaps": {
+        "attackSpeedPct": 0,
+        "techniqueCooldownPct": 0,
+        "criticalChance": 0.06,
+        "penetration": 0
+      },
+      "capstones": [
+        {
+          "node": "Perfect Contact",
+          "allocatedNodes": 10,
+          "damage": 92.38833015598236,
+          "improvementPct": 9.757336225307034,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 0
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 5.164319248826299
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 11.48491879350344
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 17.137293086660186
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 14.473684210526304
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 13.70716510903427
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 6.3339731285988465
+            }
+          ]
+        },
+        {
+          "node": "Needle Threader",
+          "allocatedNodes": 10,
+          "damage": 92.07917985573525,
+          "improvementPct": 9.390065668613467,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 0
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 5.164319248826299
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 15.201005025125625
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 14.22885572139303
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 12.406015037593976
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 10.459587955626004
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 8.270676691729317
+            }
+          ]
+        },
+        {
+          "node": "Snap Recovery",
+          "allocatedNodes": 10,
+          "damage": 92.91882407757743,
+          "improvementPct": 10.38756300416197,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 0
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 5.164319248826299
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 15.725905841754972
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 16.492404813572705
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 12.38235836870274
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 16.613979627678233
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 6.3339731285988465
+            }
+          ]
+        },
+        {
+          "node": "No Wasted Motion",
+          "allocatedNodes": 10,
+          "damage": 92.66606970980425,
+          "improvementPct": 10.08729081524744,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 0
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 5.164319248826299
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 11.94209891435467
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 16.513317191283285
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 12.471655328798192
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 18.185671894870726
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 6.3339731285988465
+            }
+          ]
+        },
+        {
+          "node": "Inevitable",
+          "allocatedNodes": 10,
+          "damage": 95.97281386693233,
+          "improvementPct": 14.015702873915604,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 0
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 10.8910891089109
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 12.26765799256504
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 18.40551181102361
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 12.406015037593976
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 28.360957642725594
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 15.778688524590168
+            }
+          ]
+        },
+        {
+          "node": "Perfect Exploit",
+          "allocatedNodes": 10,
+          "damage": 96.01384378252231,
+          "improvementPct": 14.06444641363651,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 0
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 5.164319248826299
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 21.51589242053791
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 22.892819979188374
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 15.884476534296033
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 19.469026548672552
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 13.524590163934413
+            }
+          ]
+        }
+      ],
+      "capstonePairs": [
+        {
+          "branch": "Precision",
+          "variants": [
+            "Perfect Contact",
+            "Needle Threader"
+          ],
+          "spreadPct": 0.3351813012789882
+        },
+        {
+          "branch": "Recovery",
+          "variants": [
+            "Snap Recovery",
+            "No Wasted Motion"
+          ],
+          "spreadPct": 0.2723867903416219
+        },
+        {
+          "branch": "Exploitation",
+          "variants": [
+            "Inevitable",
+            "Perfect Exploit"
+          ],
+          "spreadPct": 0.042742465640402655
+        }
+      ],
+      "capstoneSpreadPct": 0.3351813012789882,
+      "allCapstoneSpreadPct": 4.234517565032934
+    },
+    {
+      "skillId": "Light Melee Weapon Proficiency",
+      "allocatedNodes": 10,
+      "baselineDamage": 108.22510822510823,
+      "tenPointDamage": 128.33126577405142,
+      "improvementPct": 18.578089575223512,
+      "modifierCaps": {
+        "attackSpeedPct": 0.03,
+        "techniqueCooldownPct": 0.1,
+        "criticalChance": 0.03,
+        "penetration": 0
+      },
+      "capstones": [
+        {
+          "node": "Thousand Cuts",
+          "allocatedNodes": 10,
+          "damage": 131.62622714898356,
+          "improvementPct": 21.62263388566079,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 7.898658718330842
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 13.625730994152052
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 29.00232018561486
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 28.543062794738148
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 24.70992694456382
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 24.70992694456382
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 22.86881061766206
+            }
+          ]
+        },
+        {
+          "node": "Lightning Edge",
+          "allocatedNodes": 10,
+          "damage": 126.85115872805532,
+          "improvementPct": 17.210470664723122,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 7.898658718330842
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 7.824639289678137
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 22.91345857714815
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 22.72475795297373
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 19.004111466423023
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 22.29245680573113
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 17.8152118427769
+            }
+          ]
+        },
+        {
+          "node": "Surgical Grace",
+          "allocatedNodes": 10,
+          "damage": 123.14319517838622,
+          "improvementPct": 13.784312344828864,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 7.898658718330842
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 7.824639289678137
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 17.0839936608558
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 17.475192943770644
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 17.728194726166336
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 13.191094619666055
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 15.288412455334344
+            }
+          ]
+        },
+        {
+          "node": "First Blood",
+          "allocatedNodes": 10,
+          "damage": 129.50688547784236,
+          "improvementPct": 19.66436218152634,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 15.839999999999987
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 20.086526576019793
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 18.190100212572126
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 20.036388446668152
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 19.504053409632817
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 26.1782547830145
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 17.8152118427769
+            }
+          ]
+        },
+        {
+          "node": "Perfect Tempo",
+          "allocatedNodes": 10,
+          "damage": 147.17564554622967,
+          "improvementPct": 35.99029648471621,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 9.34491221446101
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 19.845797995373935
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 48.42496576012518
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 51.13295568143952
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 41.11353558105162
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 40.24641941334666
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 41.82348874721558
+            }
+          ]
+        },
+        {
+          "node": "Ghost Riposte",
+          "allocatedNodes": 10,
+          "damage": 128.16630158157227,
+          "improvementPct": 18.425662661372776,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 7.898658718330842
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 7.824639289678137
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 18.984655566438114
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 21.754094469499165
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 14.424755355726004
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 19.33879600246293
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 38.75403922747422
+            }
+          ]
+        }
+      ],
+      "capstonePairs": [
+        {
+          "branch": "Flurry",
+          "variants": [
+            "Thousand Cuts",
+            "Lightning Edge"
+          ],
+          "spreadPct": 3.694766878522826
+        },
+        {
+          "branch": "Finesse",
+          "variants": [
+            "Surgical Grace",
+            "First Blood"
+          ],
+          "spreadPct": 5.037552557218433
+        },
+        {
+          "branch": "Duelist",
+          "variants": [
+            "Perfect Tempo",
+            "Ghost Riposte"
+          ],
+          "spreadPct": 13.80780819119731
+        }
+      ],
+      "capstoneSpreadPct": 13.80780819119731,
+      "allCapstoneSpreadPct": 18.556890067405117
+    },
+    {
+      "skillId": "Medium Melee Weapon Proficiency",
+      "allocatedNodes": 10,
+      "baselineDamage": 81.16883116883116,
+      "tenPointDamage": 103.30578512396694,
+      "improvementPct": 27.272727272727295,
+      "modifierCaps": {
+        "attackSpeedPct": 0,
+        "techniqueCooldownPct": 0.4,
+        "criticalChance": 0,
+        "penetration": 0
+      },
+      "capstones": [
+        {
+          "node": "Master-at-Arms",
+          "allocatedNodes": 10,
+          "damage": 97.41575069675883,
+          "improvementPct": 20.016204858406894,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 0
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 10.8910891089109
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 24.160206718346245
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 25.03862395715315
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 32.898062342038735
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 23.689430433550584
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 23.43602144884871
+            }
+          ]
+        },
+        {
+          "node": "Perfect Balance",
+          "allocatedNodes": 10,
+          "damage": 89.32807758142975,
+          "improvementPct": 10.052191580321468,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 0
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 5.164319248826299
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 12.065878983172219
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 13.174695298897277
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 18.275393280248608
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 10.66301016292952
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 11.022044088176353
+            }
+          ]
+        },
+        {
+          "node": "Reprisal",
+          "allocatedNodes": 10,
+          "damage": 91.7186564085768,
+          "improvementPct": 12.997384695366643,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 0
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 5.164319248826299
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 15.0876332883932
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 14.995131450827671
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 23.07059065651369
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 16.885329698415386
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 15.778688524590168
+            }
+          ]
+        },
+        {
+          "node": "Turn the Tide",
+          "allocatedNodes": 10,
+          "damage": 90.44902462626081,
+          "improvementPct": 11.433198339553318,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 0
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 5.164319248826299
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 12.142389167940571
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 14.391865467344566
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 23.34524059676404
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 11.762120990186009
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 13.226452905811637
+            }
+          ]
+        },
+        {
+          "node": "Relentless Force",
+          "allocatedNodes": 10,
+          "damage": 95.54033906393595,
+          "improvementPct": 17.70569772676909,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 0
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 10.8910891089109
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 21.23039806996385
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 23.778166478032723
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 30.279470476990976
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 21.14957129247379
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 16.6111886610115
+            }
+          ]
+        },
+        {
+          "node": "Earthshaker",
+          "allocatedNodes": 10,
+          "damage": 95.89721597387329,
+          "improvementPct": 18.145370079811897,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 8.088235294117641
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 10.8910891089109
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 20.494746641840656
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 22.392918913419457
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 29.052765416401783
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 17.060447990181025
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 19.03738719381178
+            }
+          ]
+        }
+      ],
+      "capstonePairs": [
+        {
+          "branch": "Balance",
+          "variants": [
+            "Master-at-Arms",
+            "Perfect Balance"
+          ],
+          "spreadPct": 8.661783567252392
+        },
+        {
+          "branch": "Counterforce",
+          "variants": [
+            "Reprisal",
+            "Turn the Tide"
+          ],
+          "spreadPct": 1.3939155124593081
+        },
+        {
+          "branch": "Technique",
+          "variants": [
+            "Relentless Force",
+            "Earthshaker"
+          ],
+          "spreadPct": 0.3728389759959664
+        }
+      ],
+      "capstoneSpreadPct": 8.661783567252392,
+      "allCapstoneSpreadPct": 8.465191975001032
+    },
+    {
+      "skillId": "Heavy Melee Weapon Proficiency",
+      "allocatedNodes": 10,
+      "baselineDamage": 74.4047619047619,
+      "tenPointDamage": 94.6969696969697,
+      "improvementPct": 27.272727272727295,
+      "modifierCaps": {
+        "attackSpeedPct": 0,
+        "techniqueCooldownPct": 0,
+        "criticalChance": 0,
+        "penetration": 48
+      },
+      "capstones": [
+        {
+          "node": "Seismic Blow",
+          "allocatedNodes": 10,
+          "damage": 110.5967998351753,
+          "improvementPct": 48.64209897847562,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 10.329985652797703
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 23.65826944140197
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 57.23370429252781
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 69.06001644286106
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 53.90734674777726
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 77.49181094992979
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 48.81355932203388
+            }
+          ]
+        },
+        {
+          "node": "Cataclysm",
+          "allocatedNodes": 10,
+          "damage": 96.46033060825741,
+          "improvementPct": 29.642684337497972,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 23.039999999999992
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 34.244946492271126
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 26.005297375391258
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 25.78699340245052
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 29.988640666414224
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 40.89360090874668
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 27.539311517212074
+            }
+          ]
+        },
+        {
+          "node": "Ruinous Force",
+          "allocatedNodes": 10,
+          "damage": 95.73862210324693,
+          "improvementPct": 28.672708106763878,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 10.329985652797703
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 6.81173131504258
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 35.39456662354461
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 42.15266831794642
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 33.63176333203579
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 41.78900648685562
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 30.599235019124514
+            }
+          ]
+        },
+        {
+          "node": "Irresistible Power",
+          "allocatedNodes": 10,
+          "damage": 93.76855359112658,
+          "improvementPct": 26.024936026474133,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 10.329985652797703
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 14.619289340101528
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 29.9926488605734
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 38.41576031192284
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 27.262400605831118
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 37.8018900945047
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 23.75257731958762
+            }
+          ]
+        },
+        {
+          "node": "Dreadnought",
+          "allocatedNodes": 10,
+          "damage": 93.15929617572687,
+          "improvementPct": 25.20609406017691,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 10.329985652797703
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 6.81173131504258
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 23.857988165680478
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 25.11141251695408
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 42.83892902677435
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 37.8018900945047
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 29.69072164948452
+            }
+          ]
+        },
+        {
+          "node": "Worldbreaker",
+          "allocatedNodes": 10,
+          "damage": 99.45290549653144,
+          "improvementPct": 33.66470498733827,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 23.039999999999992
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 18.096234309623437
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 36.34362797302095
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 44.13163096319248
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 33.107607660564994
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 46.15313225058002
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 34.780701754385944
+            }
+          ]
+        }
+      ],
+      "capstonePairs": [
+        {
+          "branch": "Impact",
+          "variants": [
+            "Seismic Blow",
+            "Cataclysm"
+          ],
+          "spreadPct": 13.654655791513473
+        },
+        {
+          "branch": "Breaker",
+          "variants": [
+            "Ruinous Force",
+            "Irresistible Power"
+          ],
+          "spreadPct": 2.0791492511054726
+        },
+        {
+          "branch": "Juggernaut",
+          "variants": [
+            "Dreadnought",
+            "Worldbreaker"
+          ],
+          "spreadPct": 6.535005847151414
+        }
+      ],
+      "capstoneSpreadPct": 13.654655791513473,
+      "allCapstoneSpreadPct": 18.077383261586828
+    },
+    {
+      "skillId": "Marksmanship",
+      "allocatedNodes": 10,
+      "baselineDamage": 55.297500552975,
+      "tenPointDamage": 71.02272727272727,
+      "improvementPct": 28.437500000000004,
+      "modifierCaps": {
+        "attackSpeedPct": 0.03,
+        "techniqueCooldownPct": 0.1,
+        "criticalChance": 0,
+        "penetration": 8
+      },
+      "capstones": [
+        {
+          "node": "Bullet Storm",
+          "allocatedNodes": 10,
+          "damage": 64.89273523199869,
+          "improvementPct": 17.352022393546427,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 1.7305315203955507
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 11.66272655634355
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 25.79285059578367
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 20.440707743692688
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 20.690177428759647
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 25.856125028729025
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 15.29103788112105
+            }
+          ]
+        },
+        {
+          "node": "Lead Tempest",
+          "allocatedNodes": 10,
+          "damage": 66.2138031402228,
+          "improvementPct": 19.741041598778896,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 7.86369593709042
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 11.815208503679496
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 27.1957870979876
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 24.10453802563044
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 22.812288030714377
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 25.90155304027377
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 18.494220556076215
+            }
+          ]
+        },
+        {
+          "node": "Deadeye",
+          "allocatedNodes": 10,
+          "damage": 65.97696594710837,
+          "improvementPct": 19.31274521875079,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 7.86369593709042
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 11.979609175870864
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 26.077318673523653
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 23.615600364837185
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 22.66243246389157
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 25.088048837755327
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 17.902511078286576
+            }
+          ]
+        },
+        {
+          "node": "One Shot, One Mark",
+          "allocatedNodes": 10,
+          "damage": 63.83472720416653,
+          "improvementPct": 15.438720676014771,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 7.86369593709042
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 11.66272655634355
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 21.80404076524227
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 16.84732821573196
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 17.96733212341197
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 18.566703417861063
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 13.35921771642219
+            }
+          ]
+        },
+        {
+          "node": "Tungsten Core",
+          "allocatedNodes": 10,
+          "damage": 66.84164548027881,
+          "improvementPct": 20.87643168653621,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 1.7305315203955507
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 11.66272655634355
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 31.330143540669873
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 25.859445747530764
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 27.78825066492463
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 27.54205372834546
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 20.22187004754359
+            }
+          ]
+        },
+        {
+          "node": "Execution Magazine",
+          "allocatedNodes": 10,
+          "damage": 67.73689148986139,
+          "improvementPct": 22.495394570265347,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 7.86369593709042
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 11.979609175870864
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 31.330143540669873
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 29.371798147512607
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 27.250588845862133
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 29.978637550439124
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 19.69328879441239
+            }
+          ]
+        }
+      ],
+      "capstonePairs": [
+        {
+          "branch": "Rapid Fire",
+          "variants": [
+            "Bullet Storm",
+            "Lead Tempest"
+          ],
+          "spreadPct": 2.015258620395416
+        },
+        {
+          "branch": "Deadeye",
+          "variants": [
+            "Deadeye",
+            "One Shot, One Mark"
+          ],
+          "spreadPct": 3.300532780888076
+        },
+        {
+          "branch": "Munitions",
+          "variants": [
+            "Tungsten Core",
+            "Execution Magazine"
+          ],
+          "spreadPct": 1.3304439619241997
+        }
+      ],
+      "capstoneSpreadPct": 3.300532780888076,
+      "allCapstoneSpreadPct": 5.8932791965311795
+    },
+    {
+      "skillId": "Ranged",
+      "allocatedNodes": 10,
+      "baselineDamage": 74.4047619047619,
+      "tenPointDamage": 95.08113590263692,
+      "improvementPct": 27.789046653144034,
+      "modifierCaps": {
+        "attackSpeedPct": 0.08,
+        "techniqueCooldownPct": 0,
+        "criticalChance": 0,
+        "penetration": 10
+      },
+      "capstones": [
+        {
+          "node": "Perfect Release",
+          "allocatedNodes": 10,
+          "damage": 106.6166430077824,
+          "improvementPct": 43.292768202459555,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 20.16
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 29.844738355376666
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 52.004073616061675
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 58.39254513686662
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 46.52529802779761
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 46.05291646819383
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 50.06980581292042
+            }
+          ]
+        },
+        {
+          "node": "Endless Volley",
+          "allocatedNodes": 10,
+          "damage": 93.7046100640477,
+          "improvementPct": 25.93899592608011,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 1.3495276653171517
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 9.505334626576122
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 34.49503943017045
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 38.275371161277214
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 34.3812978637646
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 32.703808624488516
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 30.862592110966645
+            }
+          ]
+        },
+        {
+          "node": "Apex Hunter",
+          "allocatedNodes": 10,
+          "damage": 89.6596085171774,
+          "improvementPct": 20.502513847086433,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 0.5018400802944134
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 7.230203015552661
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 21.439030692813454
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 52.63389905223717
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 23.79395657096881
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 17.69497661789108
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 20.22369089984746
+            }
+          ]
+        },
+        {
+          "node": "Heartseeker",
+          "allocatedNodes": 10,
+          "damage": 87.07927235501846,
+          "improvementPct": 17.03454204514483,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 0.5018400802944134
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 7.230203015552661
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 24.333170633667358
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 28.413147281071804
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 23.333025062424852
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 18.46024164091038
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 16.970166602092227
+            }
+          ]
+        },
+        {
+          "node": "Storm Piercer",
+          "allocatedNodes": 10,
+          "damage": 86.4499446179795,
+          "improvementPct": 16.188725566564454,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 0.5018400802944134
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 7.230203015552661
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 19.75763066991336
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 25.248706725029855
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 23.79395657096881
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 17.377660927826312
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 19.411080976365746
+            }
+          ]
+        },
+        {
+          "node": "Needle Storm",
+          "allocatedNodes": 10,
+          "damage": 87.41390980930714,
+          "improvementPct": 17.48429478370881,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 0.5018400802944134
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 7.230203015552661
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 23.168316831683168
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 27.522096921670226
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 23.333025062424852
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 18.32692742482478
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 22.307654149511393
+            }
+          ]
+        }
+      ],
+      "capstonePairs": [
+        {
+          "branch": "Draw",
+          "variants": [
+            "Perfect Release",
+            "Endless Volley"
+          ],
+          "spreadPct": 12.891326053261833
+        },
+        {
+          "branch": "Hunt",
+          "variants": [
+            "Apex Hunter",
+            "Heartseeker"
+          ],
+          "spreadPct": 2.9199417235473457
+        },
+        {
+          "branch": "Pierce",
+          "variants": [
+            "Storm Piercer",
+            "Needle Storm"
+          ],
+          "spreadPct": 1.1088736005571471
+        }
+      ],
+      "capstoneSpreadPct": 12.891326053261833,
+      "allCapstoneSpreadPct": 22.492512206250908
+    },
+    {
+      "skillId": "Offensive Magic",
+      "allocatedNodes": 10,
+      "baselineDamage": 79.74481658692186,
+      "tenPointDamage": 101.46103896103895,
+      "improvementPct": 27.23214285714284,
+      "modifierCaps": {
+        "attackSpeedPct": 0.03,
+        "techniqueCooldownPct": 0,
+        "criticalChance": 0,
+        "penetration": 0
+      },
+      "capstones": [
+        {
+          "node": "Conflagration",
+          "allocatedNodes": 10,
+          "damage": 92.14911061878615,
+          "improvementPct": 15.55498471595782,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 7.281553398058271
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 6.09514370664026
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 14.95417939461261
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 26.754297269969673
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 17.926663648709805
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 19.908224496999626
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 15.964831096714494
+            }
+          ]
+        },
+        {
+          "node": "Phoenix Spark",
+          "allocatedNodes": 10,
+          "damage": 87.59495436586275,
+          "improvementPct": 9.844072774791869,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 7.281553398058271
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 1.2771996215704906
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 8.434989586432607
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 18.162351567062494
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 10.558100791336944
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 14.474140923290534
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 8.720173535791798
+            }
+          ]
+        },
+        {
+          "node": "Spellstorm",
+          "allocatedNodes": 10,
+          "damage": 91.17338333816177,
+          "improvementPct": 14.331422706054852,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 8.030726256983245
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 3.4799420009666626
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 16.10515183562471
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 25.45550847457627
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 14.868309260832646
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 17.137931034482754
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 15.242390078917701
+            }
+          ]
+        },
+        {
+          "node": "Arcane Echo",
+          "allocatedNodes": 10,
+          "damage": 89.08470975425824,
+          "improvementPct": 11.712226031839833,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 7.281553398058271
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 1.2771996215704906
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 10.630240735731666
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 21.570198277588617
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 12.813429664258402
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 15.187439923101586
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 13.225520602569807
+            }
+          ]
+        },
+        {
+          "node": "Null Script",
+          "allocatedNodes": 10,
+          "damage": 89.80517602690915,
+          "improvementPct": 12.615690737744067,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 7.281553398058271
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 1.2771996215704906
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 8.216833095577748
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 37.781833798582774
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 10.558100791336944
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 14.474140923290534
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 8.720173535791798
+            }
+          ]
+        },
+        {
+          "node": "Oblivion",
+          "allocatedNodes": 10,
+          "damage": 92.4906592457603,
+          "improvementPct": 15.983286694183407,
+          "profiles": [
+            {
+              "profile": "opening-burst",
+              "improvementPct": 7.281553398058271
+            },
+            {
+              "profile": "opening-skirmish",
+              "improvementPct": 6.09514370664026
+            },
+            {
+              "profile": "sustained-target",
+              "improvementPct": 17.904880323282548
+            },
+            {
+              "profile": "fortified-boss",
+              "improvementPct": 26.431993334721927
+            },
+            {
+              "profile": "pressure-fight",
+              "improvementPct": 15.418697385910507
+            },
+            {
+              "profile": "elusive-target",
+              "improvementPct": 23.0649080180493
+            },
+            {
+              "profile": "counter-duel",
+              "improvementPct": 15.685830692621083
+            }
+          ]
+        }
+      ],
+      "capstonePairs": [
+        {
+          "branch": "Embercraft",
+          "variants": [
+            "Conflagration",
+            "Phoenix Spark"
+          ],
+          "spreadPct": 5.0673787235337695
+        },
+        {
+          "branch": "Channeling",
+          "variants": [
+            "Spellstorm",
+            "Arcane Echo"
+          ],
+          "spreadPct": 2.3174255846949916
+        },
+        {
+          "branch": "Voidcraft",
+          "variants": [
+            "Null Script",
+            "Oblivion"
+          ],
+          "spreadPct": 2.9462913563925675
+        }
+      ],
+      "capstoneSpreadPct": 5.0673787235337695,
+      "allCapstoneSpreadPct": 5.369664589213935
+    }
+  ],
   "route": [
     {
       "stage": 1,

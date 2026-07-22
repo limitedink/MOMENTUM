@@ -98,11 +98,19 @@ export interface SkillTreeNode {
   effectIds?: readonly string[];
 }
 
-export interface SkillTreeNodeIcon {
-  sheet: 'skill' | 'resource' | 'loadout';
-  key: string;
-  fallback: string;
-}
+export type SkillTreeNodeIcon =
+  | {
+    sheet: 'skill' | 'resource' | 'loadout';
+    key: string;
+    fallback: string;
+    assetId?: never;
+  }
+  | {
+    assetId: string;
+    fallback: string;
+    sheet?: never;
+    key?: never;
+  };
 
 export interface SkillTreeNodePosition {
   x: number;

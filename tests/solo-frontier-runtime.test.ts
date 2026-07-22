@@ -25,6 +25,7 @@ import {
   type SoloFrontierRuntimeState
 } from '../src/game/solo-frontier';
 import type { SoloCombatInput } from '../src/game/solo-frontier';
+import { selectCombatDrill } from '../src/game/combat-development';
 
 const STRONG_ENCOUNTER_MS = SOLO_FRONTIER_ENCOUNTER_RECOVERY_SECONDS * 1_000;
 
@@ -199,6 +200,62 @@ describe('Solo Frontier v20 orders and deterministic progression', () => {
 });
 
 describe('Solo Frontier v20 progression, catch-up, and migration contracts', () => {
+  it('awards Gold from successful simulated time, pays zero on defeat, and grants each boss first-clear reward once', () => {
+    const farm = setSoloFrontierOrder(createInitialSoloFrontierState({
+      highestClearedStage: 1,
+      firstClearStages: [1],
+      farmStage: 1,
+      lastUpdatedAt: 1_000
+    }), 'farm', 1);
+    const successful = advanceSoloFrontier(farm, STRONG_ENCOUNTER_MS * 20, strongOptions());
+    const successfulGold = successful.state.frontierExchange.ledger.earned + successful.state.frontierExchange.goldFraction;
+    expect(successful.events).toHaveLength(20);
+    expect(successfulGold).toBeCloseTo((1 + 0.1 * 1) * successful.events.reduce((sum, event) => sum + event.durationMs, 0) / 60_000, 8);
+
+    const defeated = advanceSoloFrontier(setSoloFrontierOrder(seededState(2), 'push'), 10_000, {
+      combatInput: combatInput({
+        activeWeapon: { id: 'empty', name: 'Empty', style: 'magic', damage: 0, accuracy: 0, attackInterval: 1 },
+        enemy: { id: 'lethal', name: 'Lethal', kind: 'regular', hitPoints: 1_000_000, damage: 1_000, armour: 0, ward: 0, evasion: 0, accuracy: 1_000, attackInterval: 0.05, damageType: 'physical' }
+      }),
+      useConfiguredEnemy: true,
+      maxEncounters: 1
+    });
+    expect(defeated.state.frontierExchange.ledger.earned).toBe(0);
+    expect(defeated.state.frontierExchange.goldFraction).toBe(0);
+
+    for (const [stage, reward] of [[10, 250], [20, 750], [30, 2_000]] as const) {
+      const bossState = setSoloFrontierOrder(seededState(stage - 1), 'push');
+      const first = advanceSoloFrontier(bossState, STRONG_ENCOUNTER_MS, strongOptions());
+      expect(first.state.frontierExchange.ledger.earnedBySource['boss-first-clear']).toBe(reward);
+      expect(first.debrief.goldBySource['boss-first-clear']).toBe(reward);
+      const repeat = advanceSoloFrontier(setSoloFrontierOrder(first.state, 'farm', stage), STRONG_ENCOUNTER_MS, strongOptions());
+      expect(repeat.state.frontierExchange.ledger.earnedBySource['boss-first-clear']).toBe(reward);
+    }
+  });
+
+  it('runs the independent Drill while paused, produces no combat rewards, and obeys both offline caps', async () => {
+    const base = createInitialSoloFrontierState({ lastUpdatedAt: 1_000 });
+    const selected = selectCombatDrill(base.combatDevelopment, base.combatProgression, 'Strength');
+    const paused = { ...base, combatDevelopment: selected.state };
+    const partial = advanceSoloFrontier(paused, 5_500);
+    expect(partial.events).toEqual([]);
+    expect(partial.state.lootCache.items).toEqual([]);
+    expect(partial.state.frontierExchange.ledger.earned).toBe(0);
+    expect(partial.state.combatDevelopment.drill.fractionalXp).toBeCloseTo(0.55, 8);
+
+    const standard = await catchUpSoloFrontier(paused, 9 * 60 * 60);
+    expect(standard.capped).toBe(true);
+    expect(standard.elapsedMs).toBe(8 * 60 * 60 * 1_000);
+    expect(standard.state.combatDevelopment.drill.totalXp).toBe(2_880);
+    expect(standard.events).toEqual([]);
+    expect(standard.state.frontierExchange.ledger.earned).toBe(0);
+
+    const extended = await catchUpSoloFrontier(paused, 13 * 60 * 60, { offlineCapSeconds: 12 * 60 * 60 });
+    expect(extended.capped).toBe(true);
+    expect(extended.elapsedMs).toBe(12 * 60 * 60 * 1_000);
+    expect(extended.state.combatDevelopment.drill.totalXp).toBe(4_320);
+  });
+
   it('applies all 17 exact event paths and gives no-use XP', () => {
     const events = COMBAT_SKILL_IDS.map(skillId => ({ type: 'combat-skill-used' as const, skillId, amount: 1 }));
     const result = applyCombatEncounterProgression(createInitialCombatProgression(), events, { outcome: 'victory', stage: 1 });
@@ -219,7 +276,16 @@ describe('Solo Frontier v20 progression, catch-up, and migration contracts', () 
   });
 
   it('keeps online and yielded offline catch-up byte-equivalent', async () => {
-    const initial = setSoloFrontierOrder(createInitialSoloFrontierState({ lastUpdatedAt: 1_000 }), 'push');
+    const base = createInitialSoloFrontierState({ lastUpdatedAt: 1_000 });
+    const selected = selectCombatDrill(base.combatDevelopment, base.combatProgression, 'Reflexes');
+    const initial = setSoloFrontierOrder({
+      ...base,
+      combatDevelopment: selected.state,
+      frontierExchange: {
+        ...base.frontierExchange,
+        activeContract: { id: 'determinism-contract', category: 'ring', startedAt: 1_000, successfulMs: 0, requiredMs: 8 * 60 * 60 * 1_000, itemLevel: 1 }
+      }
+    }, 'push');
     const elapsedMs = STRONG_ENCOUNTER_MS * 4;
     const online = advanceSoloFrontier(initial, elapsedMs, strongOptions()).state;
     const offline = await catchUpSoloFrontier(initial, elapsedMs / 1_000, { ...strongOptions(), batchEncounters: 2 });
