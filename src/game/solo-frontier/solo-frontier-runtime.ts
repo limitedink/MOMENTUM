@@ -891,8 +891,8 @@ export function createSoloFrontierRuntime(
       state = setSoloFrontierFarmStage(state, farmStage);
       return state;
     },
-    advance(elapsedMs: number): SoloFrontierAdvanceResult {
-      const result = advanceSoloFrontier(state, elapsedMs, runtimeOptions);
+    advance(elapsedMs: number, advanceOptions: SoloFrontierSimulationOptions = {}): SoloFrontierAdvanceResult {
+      const result = advanceSoloFrontier(state, elapsedMs, { ...runtimeOptions, ...advanceOptions });
       state = result.state;
       return result;
     },

@@ -111,6 +111,26 @@ describe('Solo Frontier v20 orders and deterministic progression', () => {
     expect(result.debrief.deaths).toBe(1);
   });
 
+  it('records one forced-defeat encounter and preserves its original wall fallback report', () => {
+    let initial = setSoloFrontierOrder(seededState(2), 'push');
+    initial = setSoloFrontierFallback(initial, 1);
+    const result = advanceSoloFrontier(initial, 61_000, {
+      combatInput: combatInput({
+        activeWeapon: { id: 'empty', name: 'Empty', style: 'magic', damage: 0, accuracy: 0, attackInterval: 1 },
+        enemy: { id: 'lethal', name: 'Lethal', kind: 'regular', hitPoints: 1_000_000, damage: 1_000, armour: 0, ward: 0, evasion: 0, accuracy: 1_000, attackInterval: 0.05, damageType: 'physical' }
+      }),
+      useConfiguredEnemy: true,
+      seed: 'forced-defeat-test',
+      maxEncounters: 1
+    });
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]).toMatchObject({ stage: 3, outcome: 'defeat', orderBefore: 'push' });
+    expect(result.state.order).toBe('farm');
+    expect(result.state.wall).toMatchObject({ stage: 3, fallbackStage: 1, termination: 'player-defeated' });
+    expect(result.debrief.wall).toEqual(result.state.wall);
+    expect(result.debrief.deaths).toBe(1);
+  });
+
   it('recovers to highest cleared when the configured fallback is invalid', () => {
     let initial = setSoloFrontierOrder(seededState(2), 'push');
     initial = setSoloFrontierFallback(initial, 30);

@@ -14,10 +14,12 @@ import {
 } from './solo-frontier-runtime';
 import { soloFrontierStage } from './solo-frontier-definitions';
 import { deriveSoloPlayerStats, simulateSoloCombat } from './solo-combat-engine';
+import { normalizeSoloCombatControls } from './solo-frontier-controls';
 
 export * from './solo-frontier-types';
 export * from './solo-frontier-definitions';
 export * from './solo-combat-engine';
+export * from './solo-frontier-controls';
 export * from './solo-frontier-runtime';
 
 export const MomentumSoloFrontier = Object.freeze({
@@ -35,6 +37,7 @@ export const MomentumSoloFrontier = Object.freeze({
   deriveSoloPlayerStats,
   arenaTierUnlockForSoloStage,
   simulateSoloCombat,
+  normalizeSoloCombatControls,
   stage: soloFrontierStage
 });
 

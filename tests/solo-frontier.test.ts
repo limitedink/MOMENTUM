@@ -275,16 +275,16 @@ describe('weapon styles, starter abilities, and stances', () => {
     expect(guarded.armour).toBeCloseTo(balanced.armour * STANCE_MODIFIERS.Guarded.armour, 5);
   });
 
-  it('falls back to Basic Attack and warns for an incompatible weapon technique', () => {
+  it('selects the compatible technique and warns for an incompatible weapon technique', () => {
     const result = simulateSoloCombat(combatInput({
       activeWeapon: weapon('magic'),
       technique: 'Burst Fire',
       defensiveAbility: 'none',
       aura: 'none'
     }));
-    expect(result.effectiveTechnique).toBe('Basic Attack');
-    expect(result.warnings).toEqual(['Weapon technique "Burst Fire" is incompatible with magic; Basic Attack used instead.']);
-    expect(result.events.some(event => event.type === 'attack' && event.actor === 'player' && event.action === 'Basic Attack')).toBe(true);
+    expect(result.effectiveTechnique).toBe('Arc Bolt');
+    expect(result.warnings).toEqual(['Weapon technique "Burst Fire" is incompatible with magic; Arc Bolt used instead.']);
+    expect(result.events.some(event => event.type === 'attack' && event.actor === 'player' && event.action === 'Arc Bolt')).toBe(true);
   });
 });
 

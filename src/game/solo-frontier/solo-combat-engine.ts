@@ -20,12 +20,25 @@ import {
 
 const BASIC_ATTACK = 'Basic Attack' as const;
 
-const TECHNIQUE_STYLES = Object.freeze({
+export const TECHNIQUE_STYLES = Object.freeze({
   'Power Strike': Object.freeze(['light-melee', 'medium-melee', 'heavy-melee'] as const),
   'Burst Fire': Object.freeze(['gun'] as const),
   'Piercing Shot': Object.freeze(['ranged'] as const),
   'Arc Bolt': Object.freeze(['magic'] as const)
 }) satisfies Readonly<Record<TechniqueId, readonly WeaponStyle[]>>;
+
+export const TECHNIQUE_BY_WEAPON_STYLE: Readonly<Record<WeaponStyle, TechniqueId>> = Object.freeze({
+  'light-melee': 'Power Strike',
+  'medium-melee': 'Power Strike',
+  'heavy-melee': 'Power Strike',
+  gun: 'Burst Fire',
+  ranged: 'Piercing Shot',
+  magic: 'Arc Bolt'
+});
+
+export function compatibleTechniqueForWeaponStyle(style: WeaponStyle): TechniqueId {
+  return TECHNIQUE_BY_WEAPON_STYLE[style];
+}
 
 type WithoutSequence<T> = T extends unknown ? Omit<T, 'sequence' | 'atMs'> : never;
 type UnsequencedCombatEvent = WithoutSequence<SoloCombatEvent>;
@@ -172,21 +185,21 @@ function seededRandom(seed: string): () => number {
   };
 }
 
-function resolveTechnique(input: SoloCombatInput, warnings: string[]): TechniqueId | typeof BASIC_ATTACK {
+function resolveTechnique(input: SoloCombatInput, warnings: string[]): TechniqueId {
+  const compatibleTechnique = compatibleTechniqueForWeaponStyle(input.activeWeapon.style);
   const technique = TECHNIQUE_IDS.find(candidate => candidate === input.technique);
   if (!technique) {
-    warnings.push(`Unknown weapon technique "${input.technique}"; Basic Attack used instead.`);
-    return BASIC_ATTACK;
+    warnings.push(`Unknown weapon technique "${input.technique}"; ${compatibleTechnique} used instead.`);
+    return compatibleTechnique;
   }
   if (!(TECHNIQUE_STYLES[technique] as readonly WeaponStyle[]).includes(input.activeWeapon.style)) {
-    warnings.push(`Weapon technique "${technique}" is incompatible with ${input.activeWeapon.style}; Basic Attack used instead.`);
-    return BASIC_ATTACK;
+    warnings.push(`Weapon technique "${technique}" is incompatible with ${input.activeWeapon.style}; ${compatibleTechnique} used instead.`);
+    return compatibleTechnique;
   }
   return technique;
 }
 
-function techniqueCooldownMs(technique: TechniqueId | typeof BASIC_ATTACK): number {
-  if (technique === BASIC_ATTACK) return Number.POSITIVE_INFINITY;
+function techniqueCooldownMs(technique: TechniqueId): number {
   return STARTER_ABILITY_TUNING[technique].cooldownSeconds * 1_000;
 }
 
@@ -307,7 +320,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
 
   let techniqueReadyAt = 0;
   const playerAttack = (atMs: number): void => {
-    const useTechnique = effectiveTechnique !== BASIC_ATTACK && atMs >= techniqueReadyAt;
+    const useTechnique = atMs >= techniqueReadyAt;
     const action = useTechnique ? effectiveTechnique : BASIC_ATTACK;
     if (useTechnique) {
       techniqueReadyAt = atMs + techniqueCooldownMs(effectiveTechnique);

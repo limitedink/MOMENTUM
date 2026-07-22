@@ -125,6 +125,37 @@ describe('v19 ARPG paper doll and loot rules', () => {
     expect(salvageCachedItem(favoriteFull, 'cache-0').accepted).toBe(false);
   });
 
+  it('keeps equipped items outside the 35-slot cache contract, including QA-style filling', () => {
+    const equipped = item('initiates-edge', 'equipped-weapon');
+    const loadout = equip(createEquipmentLoadout({ activeWeaponSlot: 'melee' }), equipped, 'melee');
+    const cacheAt = (unequippedCount: number) => createLootCache({
+      items: [equipped, ...Array.from({ length: unequippedCount }, (_, index) => item('initiates-edge', `unequipped-${unequippedCount}-${index}`))],
+      equipment: loadout
+    });
+
+    const at34 = cacheAt(34);
+    expect(countUnequippedItems(at34)).toBe(34);
+    const full = insertLoot(at34, item('vanguard-repeater', 'equipped-contract-35'));
+    expect(full.accepted).toBe(true);
+    expect(countUnequippedItems(full.cache)).toBe(35);
+    expect(insertLoot(full.cache, item('frontier-warhammer', 'equipped-contract-36')).accepted).toBe(false);
+
+    const grandfathered = cacheAt(36);
+    expect(countUnequippedItems(grandfathered)).toBe(36);
+    expect(grandfathered.grandfatheredOverflow).toBe(true);
+
+    let cache = cacheAt(33);
+    expect(countUnequippedItems(cache)).toBe(33);
+
+    for (let index = 33; countUnequippedItems(cache) < 35; index += 1) {
+      cache = insertLoot(cache, item('vanguard-repeater', `qa-fill-${index}`)).cache;
+    }
+    expect(countUnequippedItems(cache)).toBe(35);
+    expect(cache.items).toHaveLength(36);
+    expect(cache.grandfatheredOverflow).toBe(false);
+    expect(insertLoot(cache, item('frontier-warhammer', 'qa-overflow')).accepted).toBe(false);
+  });
+
   it('applies global and per-slot minimums before insertion, with global as the floor', () => {
     const rareRing = item('frontier-ring', 'rare-ring', { rarity: 'rare' });
     const rareChest = item('frontier-mail', 'rare-chest', { rarity: 'rare' });

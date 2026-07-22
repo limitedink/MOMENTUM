@@ -77,7 +77,7 @@ export interface SoloCombatInput {
   equippedStats: EquippedStatSnapshot;
   activeWeapon: ActiveWeaponSnapshot;
   stance: SoloCombatStance;
-  /** Unknown or incompatible technique names are accepted so the engine can provide a safe fallback. */
+  /** Unknown or incompatible technique names are accepted so the engine can select the style-compatible technique. */
   technique: TechniqueId | string;
   defensiveAbility: DefensiveAbilityId | 'none' | string;
   aura: AuraId | 'none' | string;
@@ -167,7 +167,7 @@ export interface SoloCombatResult {
   outcome: SoloCombatOutcome;
   termination: SoloCombatTermination;
   timedOut: boolean;
-  effectiveTechnique: TechniqueId | 'Basic Attack';
+  effectiveTechnique: TechniqueId;
   playerHitPointsRemaining: number;
   enemyHitPointsRemaining: number;
   enemyHealthRemovedPercent: number;

@@ -675,6 +675,43 @@ let soloDeskCacheSort = 'power';
 let soloDeskCacheFavouritesOnly = false;
 if (soloBattleCanvas && SOLO_BATTLE_DESK_RENDERER) soloDeskRenderer = SOLO_BATTLE_DESK_RENDERER.create(soloBattleCanvas);
 
+const SOLO_TECHNIQUE_BY_WEAPON_STYLE = Object.freeze({
+  'light-melee':'Power Strike', 'medium-melee':'Power Strike', 'heavy-melee':'Power Strike',
+  gun:'Burst Fire', ranged:'Piercing Shot', magic:'Arc Bolt'
+});
+
+function soloDeskCompatibleTechnique(style) {
+  return SOLO_TECHNIQUE_BY_WEAPON_STYLE[style] || 'Power Strike';
+}
+
+function soloDeskUnequippedCount(cache) {
+  return Number(LOOT_FRAMEWORK?.countUnequippedItems?.(cache) || 0);
+}
+
+function syncSoloDeskCombatControls(style) {
+  const controls = SOLO_FRONTIER_FRAMEWORK.normalizeSoloCombatControls({
+    stance: soloDeskStance,
+    technique: soloDeskTechnique,
+    defensive: soloDeskDefensiveAbility,
+    aura: soloDeskAura
+  }, style);
+  soloDeskStance = controls.stance;
+  soloDeskTechnique = controls.technique;
+  soloDeskDefensiveAbility = controls.defensive;
+  soloDeskAura = controls.aura;
+  const compatibleTechnique = controls.technique;
+  if (soloStanceSelect) soloStanceSelect.value = controls.stance;
+  if (soloTechniqueSelect) {
+    soloTechniqueSelect.querySelectorAll('option').forEach(option => {
+      option.disabled = option.value !== compatibleTechnique;
+    });
+    soloTechniqueSelect.value = compatibleTechnique;
+  }
+  if (soloDefensiveSelect) soloDefensiveSelect.value = controls.defensive;
+  if (soloAuraSelect) soloAuraSelect.value = controls.aura;
+  return compatibleTechnique;
+}
+
 const FRONTIER_DIRECTIVES = [
   { id:'echoProtocol', tierId:1, name:'Echo Protocol', description:'Every shockwave is followed by a delayed echo.' },
   { id:'seismicPursuit', tierId:1, name:'Seismic Pursuit', description:'After each shockwave, the Initiate telegraphs a locked charge.' },
@@ -1453,7 +1490,7 @@ function soloFrontierCombatInput(stage, seed, runtimeState = null) {
   const style = activeSlot === 'melee'
     ? definition?.weight === 'light' ? 'light-melee' : definition?.weight === 'heavy' ? 'heavy-melee' : 'medium-melee'
     : activeSlot;
-  const technique = soloDeskTechnique || (style === 'magic' ? 'Arc Bolt' : style === 'gun' ? 'Burst Fire' : style === 'ranged' ? 'Piercing Shot' : 'Power Strike');
+  const technique = soloDeskCompatibleTechnique(style);
   const equippedSnapshot = LOOT_FRAMEWORK?.calculateEquippedStats?.(cache?.equipment, cache?.items || []) || { stats:{}, armourPieces:[] };
   const activeCached = equippedSnapshot.activeWeaponSlot && cache?.equipment?.[equippedSnapshot.activeWeaponSlot]
     ? cache.items?.find(instance => instance.instanceId === cache.equipment[equippedSnapshot.activeWeaponSlot])
@@ -1483,7 +1520,7 @@ function soloFrontierCombatInput(stage, seed, runtimeState = null) {
       damageType: style === 'magic' ? 'magical' : 'physical'
     },
     stance: soloDeskStance,
-    technique: isForcedDefeat ? 'Basic Attack' : technique,
+    technique,
     defensiveAbility: isForcedDefeat ? 'none' : soloDeskDefensiveAbility,
     aura: isForcedDefeat ? 'none' : soloDeskAura,
     enemy: SOLO_FRONTIER_FRAMEWORK.stage(stage).enemy,
@@ -1634,10 +1671,12 @@ function renderSoloCacheInspector(state) {
 
 function renderSoloCache(state) {
   if (!soloCacheList) return;
-  const count = state.lootCache.items.length;
-  const equippedCount = soloDeskEquippedIds(state.lootCache).length;
-  soloCacheCount.textContent = String(Math.min(35, Math.max(count - equippedCount, 0)));
-  soloCacheSummary.textContent = state.lootCache.grandfatheredOverflow ? 'Grandfathered overflow · salvage to clear' : count >= 35 ? 'FULL · new drops become Salvage' : `${count} retained · ${state.lootCache.capacity - Math.max(0, count - equippedCount)} open slots`;
+  const count = soloDeskUnequippedCount(state.lootCache);
+  const capacity = Number(state.lootCache.capacity) || 35;
+  soloCacheCount.textContent = String(count);
+  soloCacheSummary.textContent = state.lootCache.grandfatheredOverflow
+    ? 'Grandfathered overflow · salvage to clear'
+    : count >= capacity ? 'FULL · new drops become Salvage' : `${count} retained · ${Math.max(0, capacity - count)} open slots`;
   soloCacheRarityFilter.value = soloDeskCacheRarity;
   soloCacheSlotFilter.value = soloDeskCacheSlot;
   soloCacheSort.value = soloDeskCacheSort;
@@ -1707,7 +1746,7 @@ function soloDeskCacheAction(action, instanceId, affixId) {
     const result = LOOT_FRAMEWORK.equipItem(state.lootCache.equipment, instance, requestedSlot);
     if (!result.accepted) { showToast(result.reason); return; }
     let nextLoadout = result.loadout;
-    if (inspection?.definition.kind === 'weapon' && !nextLoadout.activeWeaponSlot) nextLoadout = LOOT_FRAMEWORK.setActiveWeaponSlot(nextLoadout, result.slot);
+    if (inspection?.definition.kind === 'weapon') nextLoadout = LOOT_FRAMEWORK.setActiveWeaponSlot(nextLoadout, result.slot);
     soloDeskCacheMutation({ ...state.lootCache, equipment:nextLoadout });
     soloDeskSelectedItemId = instanceId;
     showToast(`${inspection.definition.name} equipped for Solo Frontier`);
@@ -1734,6 +1773,7 @@ function renderSoloFrontierDesk() {
   const activeStage = Math.max(1, Math.min(30, soloDeskCurrentStage(state)));
   const stageDefinition = SOLO_FRONTIER_FRAMEWORK.stage(activeStage);
   const activeInput = soloFrontierCombatInput(activeStage, `${state.seed}:encounter:${state.encounterSequence}:stage:${activeStage}:victory:${state.currentStageVictories}`);
+  syncSoloDeskCombatControls(activeInput.activeWeapon.style);
   const preview = SOLO_FRONTIER_FRAMEWORK.simulateSoloCombat(activeInput);
   const elapsed = state.encounterElapsedMs;
   let currentEvent = null;
@@ -3416,16 +3456,20 @@ window.MomentumSoloFrontierRuntime = Object.freeze({
   farm(stage) { const next = soloFrontierRuntime.setOrder('farm', stage); soloDeskDebriefSnapshot = null; soloDebriefPanel.hidden = true; syncSoloFrontierProjection(); saveGame(); renderSoloFrontierDesk(); return next; },
   setFallback(stage) { const next = soloFrontierRuntime.setFallbackStage(stage); syncSoloFrontierProjection(); saveGame(); renderSoloFrontierDesk(); return next; },
   setFarmStage(stage) { const next = soloFrontierRuntime.setFarmStage(stage); syncSoloFrontierProjection(); saveGame(); renderSoloFrontierDesk(); return next; },
-  advance(elapsedMs) { const result = soloFrontierRuntime.advance(elapsedMs); handleSoloFrontierAdvance(result); syncSoloFrontierProjection(); saveGame(); renderSoloFrontierDesk(); return result; },
+  advance(elapsedMs, options) { const result = soloFrontierRuntime.advance(elapsedMs, options); handleSoloFrontierAdvance(result); syncSoloFrontierProjection(); saveGame(); renderSoloFrontierDesk(); return result; },
   catchUp(seconds, options) { return soloFrontierRuntime.catchUp(seconds, options).then(result => { handleSoloFrontierAdvance(result); syncSoloFrontierProjection(); saveGame(); renderSoloFrontierDesk(); return result; }) }
 });
 function soloDeskDebugFillCache(count = 35) {
   let cache = soloDeskState().lootCache;
   const target = Math.max(0, Math.min(35, Math.floor(Number(count) || 35)));
-  for (let index = cache.items.length; index < target; index += 1) {
-    const resolution = LOOT_FRAMEWORK.rollLoot({ sourceType:'soloFrontier', sourceId:'solo-frontier', sourceTier:1, playerLevel:1, runId:`debug-cache-${index}`, itemChance:1, minimumRarity:'rare', now:Date.now() + index }, () => .15 + (index % 5) * .1);
-    if (!resolution.item) continue;
-    cache = LOOT_FRAMEWORK.insertLoot(cache, resolution.item).cache;
+  let index = 0;
+  let attempts = 0;
+  while (soloDeskUnequippedCount(cache) < target && attempts < target + 100) {
+    const instanceSeed = `${Date.now()}-${index}`;
+    const resolution = LOOT_FRAMEWORK.rollLoot({ sourceType:'soloFrontier', sourceId:'solo-frontier', sourceTier:1, playerLevel:1, runId:`debug-cache-${instanceSeed}`, itemChance:1, minimumRarity:'rare', now:Date.now() + index }, () => .15 + (index % 5) * .1);
+    if (resolution.item) cache = LOOT_FRAMEWORK.insertLoot(cache, resolution.item).cache;
+    index += 1;
+    attempts += 1;
   }
   soloDeskCacheMutation(cache);
   // QA-only seeding keeps the cache route self-contained so reforge can be
@@ -3435,7 +3479,7 @@ function soloDeskDebugFillCache(count = 35) {
   const crafting = skills.find(skill => skill.id === 'Crafting');
   if (smithing) smithing.qty = Math.max(smithing.qty, 10);
   if (crafting) crafting.qty = Math.max(crafting.qty, 10);
-  return cache.items.length;
+  return soloDeskUnequippedCount(cache);
 }
 function soloDeskDebugSeedProgress(stage = 2) {
   if (!soloFrontierRuntime) return false;
@@ -3468,11 +3512,11 @@ function soloDeskDebugSeedProgress(stage = 2) {
 window.MomentumSoloFrontierDebug = Object.freeze({
   forceDefeat() {
     soloDeskForceDefeat = true;
-    if (soloDeskState().order === 'paused') window.MomentumSoloFrontierRuntime.push();
+    if (soloDeskState().order !== 'push') window.MomentumSoloFrontierRuntime.push();
     // The debug route should expose the fallback/debrief path immediately. The
     // combat engine still owns the outcome; this only supplies enough elapsed
     // time for its deterministic timeout when the test flag removes player DPS.
-    const result = soloFrontierRuntime.advance(61_000);
+    const result = soloFrontierRuntime.advance(61_000, { maxEncounters: 1 });
     handleSoloFrontierAdvance(result);
     syncSoloFrontierProjection();
     saveGame();
