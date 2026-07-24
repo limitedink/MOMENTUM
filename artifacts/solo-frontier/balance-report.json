@@ -147,12 +147,12 @@
     {
       "build": "apex-checkpoint",
       "stage": 30,
-      "winRate": 0.5490196078431373,
-      "medianClearSeconds": 35.552,
-      "medianHealthRemaining": 82.03,
-      "medianDamageTaken": 628,
+      "winRate": 1,
+      "medianClearSeconds": 34.848,
+      "medianHealthRemaining": 338.03,
+      "medianDamageTaken": 348,
       "medianMitigation": 0.310131,
-      "medianEnemyHitRate": 0.333333
+      "medianEnemyHitRate": 0.217391
     }
   ],
   "pacing": {
@@ -161,7 +161,7 @@
     "farmEightHourMedianKeptItems": 16,
     "stage10Hours": 2.4609638888888887,
     "stage20Hours": 60.43628833333334,
-    "stage30Hours": 276.2164416666667
+    "stage30Hours": 275.4340238888889
   },
   "offenseTrees": [
     {
@@ -2851,6 +2851,2484 @@
       ]
     }
   ],
+  "defenseTrees": [
+    {
+      "skillId": "Light Armour Proficiency",
+      "build": "light-defense",
+      "expectedProfile": "skirmisher",
+      "selectedCapstone": "No Clean Hit",
+      "allocatedNodes": 10,
+      "representativeProfile": "skirmisher",
+      "improvementPct": 14.42000000000001,
+      "rawSurvivalImprovementPct": 69.83234847725164,
+      "representative": {
+        "profile": "skirmisher",
+        "winRate": 0.9090909090909091,
+        "survivalScore": 1.3408951563458,
+        "medianDamageTaken": 359,
+        "medianThroughput": 94.99807061547367,
+        "medianHealthRemaining": 133.44,
+        "medianNaturalMisses": 25,
+        "medianConvertedMisses": 0,
+        "medianGlancingPrevented": 72.1,
+        "medianGuardPrevented": 0,
+        "medianArmourPrevented": 59.18,
+        "medianWardPrevented": 0,
+        "medianDefenseReduction": 0,
+        "medianBarrierAbsorption": 0,
+        "medianRetaliationDamage": 0,
+        "medianDefensePrevented": 59.18,
+        "improvementPct": 69.83234847725164,
+        "focusScore": 1.1442,
+        "baselineFocusScore": 1,
+        "focusImprovementPct": 14.42000000000001,
+        "baselineScore": 0.7895404899999999,
+        "baselineWinRate": 0.45454545454545453
+      },
+      "modifierCaps": {
+        "armour": 0,
+        "ward": 0,
+        "evasion": 8,
+        "enemyHitChanceReduction": 0,
+        "physicalReduction": 0,
+        "magicalReduction": 0,
+        "penetrationResistance": 0,
+        "barrierStrength": 0,
+        "barrierCooldown": 0
+      },
+      "portfolioResults": [
+        {
+          "profile": "standard",
+          "winRate": 0.9090909090909091,
+          "survivalScore": 1.391988555078684,
+          "medianDamageTaken": 308,
+          "medianThroughput": 95.29223921037352,
+          "medianHealthRemaining": 153.44,
+          "medianNaturalMisses": 18,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 51.5,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 52.5,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 52.5,
+          "improvementPct": 61.50347361541586,
+          "focusScore": 1.02625,
+          "baselineFocusScore": 1.0375,
+          "focusImprovementPct": -1.0843373493975905,
+          "baselineScore": 0.8618938799999999,
+          "baselineWinRate": 0.36363636363636365
+        },
+        {
+          "profile": "skirmisher",
+          "winRate": 0.9090909090909091,
+          "survivalScore": 1.3408951563458,
+          "medianDamageTaken": 359,
+          "medianThroughput": 94.99807061547367,
+          "medianHealthRemaining": 133.44,
+          "medianNaturalMisses": 25,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 72.1,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 59.18,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 59.18,
+          "improvementPct": 69.83234847725164,
+          "focusScore": 1.1442,
+          "baselineFocusScore": 1,
+          "focusImprovementPct": 14.42000000000001,
+          "baselineScore": 0.7895404899999999,
+          "baselineWinRate": 0.45454545454545453
+        },
+        {
+          "profile": "breaker",
+          "winRate": 0.8181818181818182,
+          "survivalScore": 1.3689965256488863,
+          "medianDamageTaken": 336,
+          "medianThroughput": 95.29828109201213,
+          "medianHealthRemaining": 144.44,
+          "medianNaturalMisses": 13,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 72.1,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 46.13,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 46.13,
+          "improvementPct": 12.136938143466992,
+          "focusScore": 1,
+          "baselineFocusScore": 1,
+          "focusImprovementPct": 0,
+          "baselineScore": 1.2208256693235233,
+          "baselineWinRate": 0.5454545454545454
+        },
+        {
+          "profile": "arcanist",
+          "winRate": 0.8181818181818182,
+          "survivalScore": 1.42008992438177,
+          "medianDamageTaken": 303,
+          "medianThroughput": 94.56020741309776,
+          "medianHealthRemaining": 164.44,
+          "medianNaturalMisses": 19,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 51.5,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 0,
+          "medianWardPrevented": 6,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 6,
+          "improvementPct": 12.782015906508693,
+          "focusScore": 1.0066,
+          "baselineFocusScore": 1.0088,
+          "focusImprovementPct": -0.2180808881839802,
+          "baselineScore": 1.2591457183731862,
+          "baselineWinRate": 0.8181818181818182
+        },
+        {
+          "profile": "spellblade",
+          "winRate": 1,
+          "survivalScore": 1.3715511955855304,
+          "medianDamageTaken": 360,
+          "medianThroughput": 95.96082634963945,
+          "medianHealthRemaining": 145.44,
+          "medianNaturalMisses": 19,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 46.35,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 27.4,
+          "medianWardPrevented": 3.4,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 28.654999999999998,
+          "improvementPct": 3.4690101757631986,
+          "focusScore": 1,
+          "baselineFocusScore": 1,
+          "focusImprovementPct": 0,
+          "baselineScore": 1.325567136725935,
+          "baselineWinRate": 0.6363636363636364
+        }
+      ],
+      "capstones": [
+        {
+          "node": "Windborne",
+          "allocatedNodes": 10,
+          "survivalScore": 1.3408951563458,
+          "focusScore": 1,
+          "intendedImprovementPct": 69.83234847725164,
+          "intendedFocusImprovementPct": 0,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.021561414265277
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.3408951563458
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.545268751277335
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.2591457183731862
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.6244635193133048
+            }
+          ]
+        },
+        {
+          "node": "Flow State",
+          "allocatedNodes": 10,
+          "survivalScore": 1.2591457183731862,
+          "focusScore": 1,
+          "intendedImprovementPct": 10.418006554673354,
+          "intendedFocusImprovementPct": 0,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.422644594318414
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 0.87179487
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 0.99720741
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.2591457183731862
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.2949110974862048
+            }
+          ]
+        },
+        {
+          "node": "No Clean Hit",
+          "allocatedNodes": 10,
+          "survivalScore": 1.4149805845084815,
+          "focusScore": 1.0721,
+          "intendedImprovementPct": 79.21570868499495,
+          "intendedFocusImprovementPct": 7.210000000000008,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.407316574698549
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.4149805845084815
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.545268751277335
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.1620682607807071
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.4865113427345187
+            }
+          ]
+        },
+        {
+          "node": "Phantom Reprisal",
+          "allocatedNodes": 10,
+          "survivalScore": 1.2949110974862048,
+          "focusScore": 1,
+          "intendedImprovementPct": 117.0727136610627,
+          "intendedFocusImprovementPct": 0,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.2949110974862048
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.7138769670958514
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.1084201921111791
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.6065808297567954
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 0.9796902799999999
+            }
+          ]
+        },
+        {
+          "node": "Last Horizon",
+          "allocatedNodes": 10,
+          "survivalScore": 1.3408951563458,
+          "focusScore": 1.05047,
+          "intendedImprovementPct": 69.83234847725164,
+          "intendedFocusImprovementPct": 5.046999999999997,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.3587778459023094
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.3408951563458
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.432863274064991
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.2565910484365421
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.3230124667892909
+            }
+          ]
+        },
+        {
+          "node": "Live Wire",
+          "allocatedNodes": 10,
+          "survivalScore": 1.1237482117310444,
+          "focusScore": 1,
+          "intendedImprovementPct": 22.218650243004,
+          "intendedFocusImprovementPct": 0,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.3741058655221745
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 0.96496573
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 0.89261234
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.6781115879828326
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.1237482117310444
+            }
+          ]
+        }
+      ],
+      "capstonePairs": [
+        {
+          "branch": "Fleet",
+          "variants": [
+            "Windborne",
+            "Flow State"
+          ],
+          "spreadPct": 0
+        },
+        {
+          "branch": "Deflection",
+          "variants": [
+            "No Clean Hit",
+            "Phantom Reprisal"
+          ],
+          "spreadPct": 6.959123594421124
+        },
+        {
+          "branch": "Escape",
+          "variants": [
+            "Last Horizon",
+            "Live Wire"
+          ],
+          "spreadPct": 4.922773803079296
+        }
+      ],
+      "capstoneSpreadPct": 6.959123594421124
+    },
+    {
+      "skillId": "Medium Armour Proficiency",
+      "build": "medium-defense",
+      "expectedProfile": "spellblade",
+      "selectedCapstone": "Aegis Mail",
+      "allocatedNodes": 10,
+      "representativeProfile": "spellblade",
+      "improvementPct": 9.40000000000001,
+      "rawSurvivalImprovementPct": -0.7341335388907355,
+      "representative": {
+        "profile": "spellblade",
+        "winRate": 0.6363636363636364,
+        "survivalScore": 1.0894990230243942,
+        "medianDamageTaken": 566,
+        "medianThroughput": 106.45945945945945,
+        "medianHealthRemaining": 44.43,
+        "medianNaturalMisses": 13,
+        "medianConvertedMisses": 0,
+        "medianGlancingPrevented": 0,
+        "medianGuardPrevented": 0,
+        "medianArmourPrevented": 108.5,
+        "medianWardPrevented": 11.1,
+        "medianDefenseReduction": 47,
+        "medianBarrierAbsorption": 0,
+        "medianRetaliationDamage": 0,
+        "medianDefensePrevented": 151.9,
+        "improvementPct": -0.7341335388907355,
+        "focusScore": 1.094,
+        "baselineFocusScore": 1,
+        "focusImprovementPct": 9.40000000000001,
+        "baselineScore": 1.09755655379409,
+        "baselineWinRate": 0.5454545454545454
+      },
+      "modifierCaps": {
+        "armour": 0.15,
+        "ward": 0.6,
+        "evasion": 0,
+        "enemyHitChanceReduction": 0,
+        "physicalReduction": 0,
+        "magicalReduction": 0.05,
+        "penetrationResistance": 0,
+        "barrierStrength": 0,
+        "barrierCooldown": 0
+      },
+      "portfolioResults": [
+        {
+          "profile": "standard",
+          "winRate": 0.6363636363636364,
+          "survivalScore": 1.1398585903349918,
+          "medianDamageTaken": 541,
+          "medianThroughput": 107.32026143790848,
+          "medianHealthRemaining": 69.43,
+          "medianNaturalMisses": 12,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 168,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 12,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 180,
+          "improvementPct": 19.444080863425416,
+          "focusScore": 1.084,
+          "baselineFocusScore": 1.088,
+          "focusImprovementPct": -0.3676470588235281,
+          "baselineScore": 0.9543031200000001,
+          "baselineWinRate": 0.45454545454545453
+        },
+        {
+          "profile": "skirmisher",
+          "winRate": 0.36363636363636365,
+          "survivalScore": 0.9619192700000001,
+          "medianDamageTaken": 572.43,
+          "medianThroughput": 105.40169375143054,
+          "medianHealthRemaining": 0,
+          "medianNaturalMisses": 15,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 188.1,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 8,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 196.1,
+          "improvementPct": -2.9208295713679555,
+          "focusScore": 1,
+          "baselineFocusScore": 1,
+          "focusImprovementPct": 0,
+          "baselineScore": 0.99086062,
+          "baselineWinRate": 0.45454545454545453
+        },
+        {
+          "profile": "breaker",
+          "winRate": 1,
+          "survivalScore": 1.6333823499788491,
+          "medianDamageTaken": 220,
+          "medianThroughput": 107.38822246455834,
+          "medianHealthRemaining": 314.43,
+          "medianNaturalMisses": 12,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 56.4,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 12,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 68.4,
+          "improvementPct": 46.137764481130404,
+          "focusScore": 1,
+          "baselineFocusScore": 1,
+          "focusImprovementPct": 0,
+          "baselineScore": 1.1177003807183288,
+          "baselineWinRate": 0.6363636363636364
+        },
+        {
+          "profile": "arcanist",
+          "winRate": 0.5454545454545454,
+          "survivalScore": 1.00489494994259,
+          "medianDamageTaken": 534.43,
+          "medianThroughput": 105.03448275862068,
+          "medianHealthRemaining": 2.43,
+          "medianNaturalMisses": 12,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 0,
+          "medianWardPrevented": 28,
+          "medianDefenseReduction": 85,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 113,
+          "improvementPct": 30.63634336190035,
+          "focusScore": 1.0308,
+          "baselineFocusScore": 1.0132,
+          "focusImprovementPct": 1.7370706671930414,
+          "baselineScore": 0.7692307700000001,
+          "baselineWinRate": 0.09090909090909091
+        },
+        {
+          "profile": "spellblade",
+          "winRate": 0.6363636363636364,
+          "survivalScore": 1.0894990230243942,
+          "medianDamageTaken": 566,
+          "medianThroughput": 106.45945945945945,
+          "medianHealthRemaining": 44.43,
+          "medianNaturalMisses": 13,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 108.5,
+          "medianWardPrevented": 11.1,
+          "medianDefenseReduction": 47,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 151.9,
+          "improvementPct": -0.7341335388907355,
+          "focusScore": 1.094,
+          "baselineFocusScore": 1,
+          "focusImprovementPct": 9.40000000000001,
+          "baselineScore": 1.09755655379409,
+          "baselineWinRate": 0.5454545454545454
+        }
+      ],
+      "capstones": [
+        {
+          "node": "Masterwork Mail",
+          "allocatedNodes": 10,
+          "survivalScore": 1.1277722941804484,
+          "focusScore": 1.078,
+          "intendedImprovementPct": 2.7530007708402193,
+          "intendedFocusImprovementPct": 7.800000000000011,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.502447474971295
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.1177003807183288
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.1982756884152852
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 0.99898451
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.1277722941804484
+            }
+          ]
+        },
+        {
+          "node": "Aegis Mail",
+          "allocatedNodes": 10,
+          "survivalScore": 1.2325201941864916,
+          "focusScore": 1.076,
+          "intendedImprovementPct": 12.296736776419625,
+          "intendedFocusImprovementPct": 7.6000000000000085,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.1398585903349918
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.2486352557258829
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.2546784038031547
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.1076284672562093
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.2325201941864916
+            }
+          ]
+        },
+        {
+          "node": "Learned Resistance",
+          "allocatedNodes": 10,
+          "survivalScore": 1.091513405716818,
+          "focusScore": 1.046,
+          "intendedImprovementPct": -2.7530007708402304,
+          "intendedFocusImprovementPct": 4.6000000000000085,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.2365489595713393
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.091513405716818
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.4118002538122192
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 0.9606499100000001
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.0673408134077311
+            }
+          ]
+        },
+        {
+          "node": "Perfect Adaptation",
+          "allocatedNodes": 10,
+          "survivalScore": 1.0371250730213726,
+          "focusScore": 1.094,
+          "intendedImprovementPct": -13.352730051811479,
+          "intendedFocusImprovementPct": 9.400000000000006,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.3151098845758717
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.0371250730213726
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.5004330922788711
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 0.71261742
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 0.95100279
+            }
+          ]
+        },
+        {
+          "node": "Always Prepared",
+          "allocatedNodes": 10,
+          "survivalScore": 1.1378442076425679,
+          "focusScore": 1.036,
+          "intendedImprovementPct": -0.9176669236134138,
+          "intendedFocusImprovementPct": 3.6000000000000085,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.4581310557379692
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.1378442076425679
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.1741030961061982
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 0.7501904
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.0874846403319702
+            }
+          ]
+        },
+        {
+          "node": "Decisive Response",
+          "allocatedNodes": 10,
+          "survivalScore": 1.0008661845577422,
+          "focusScore": 1.036,
+          "intendedImprovementPct": -8.809602466688704,
+          "intendedFocusImprovementPct": 3.6000000000000085,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 0.8662097
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.2828797614970893
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 0.7420665099999999
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.1761174787986222
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.0008661845577422
+            }
+          ]
+        }
+      ],
+      "capstonePairs": [
+        {
+          "branch": "Balance",
+          "variants": [
+            "Masterwork Mail",
+            "Aegis Mail"
+          ],
+          "spreadPct": 0.18570102135561764
+        },
+        {
+          "branch": "Adaptation",
+          "variants": [
+            "Learned Resistance",
+            "Perfect Adaptation"
+          ],
+          "spreadPct": 4.485981308411219
+        },
+        {
+          "branch": "Readiness",
+          "variants": [
+            "Always Prepared",
+            "Decisive Response"
+          ],
+          "spreadPct": 0
+        }
+      ],
+      "capstoneSpreadPct": 4.485981308411219
+    },
+    {
+      "skillId": "Heavy Armour Proficiency",
+      "build": "heavy-defense",
+      "expectedProfile": "standard",
+      "selectedCapstone": "Iron Rhythm",
+      "allocatedNodes": 10,
+      "representativeProfile": "standard",
+      "improvementPct": 8.092220279720275,
+      "rawSurvivalImprovementPct": 26.82323488212677,
+      "representative": {
+        "profile": "standard",
+        "winRate": 1,
+        "survivalScore": 1.4231058642543015,
+        "medianDamageTaken": 458,
+        "medianThroughput": 97.13454330242652,
+        "medianHealthRemaining": 253.03,
+        "medianNaturalMisses": 12,
+        "medianConvertedMisses": 0,
+        "medianGlancingPrevented": 0,
+        "medianGuardPrevented": 231.75,
+        "medianArmourPrevented": 241.4,
+        "medianWardPrevented": 0,
+        "medianDefenseReduction": 0,
+        "medianBarrierAbsorption": 0,
+        "medianRetaliationDamage": 0,
+        "medianDefensePrevented": 241.4,
+        "improvementPct": 26.82323488212677,
+        "focusScore": 1.236575,
+        "baselineFocusScore": 1.1440000000000001,
+        "focusImprovementPct": 8.092220279720275,
+        "baselineScore": 1.1221176195174156,
+        "baselineWinRate": 0.8181818181818182
+      },
+      "modifierCaps": {
+        "armour": 0.18,
+        "ward": 0,
+        "evasion": 0,
+        "enemyHitChanceReduction": 0,
+        "physicalReduction": 0,
+        "magicalReduction": 0,
+        "penetrationResistance": 0.1,
+        "barrierStrength": 0,
+        "barrierCooldown": 0
+      },
+      "portfolioResults": [
+        {
+          "profile": "standard",
+          "winRate": 1,
+          "survivalScore": 1.4231058642543015,
+          "medianDamageTaken": 458,
+          "medianThroughput": 97.13454330242652,
+          "medianHealthRemaining": 253.03,
+          "medianNaturalMisses": 12,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 231.75,
+          "medianArmourPrevented": 241.4,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 241.4,
+          "improvementPct": 26.82323488212677,
+          "focusScore": 1.236575,
+          "baselineFocusScore": 1.1440000000000001,
+          "focusImprovementPct": 8.092220279720275,
+          "baselineScore": 1.1221176195174156,
+          "baselineWinRate": 0.8181818181818182
+        },
+        {
+          "profile": "skirmisher",
+          "winRate": 1,
+          "survivalScore": 1.4682541009648344,
+          "medianDamageTaken": 432,
+          "medianThroughput": 98.8506324031319,
+          "medianHealthRemaining": 280.03,
+          "medianNaturalMisses": 18,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 205.485,
+          "medianArmourPrevented": 224.11,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 224.11,
+          "improvementPct": 23.65997239669886,
+          "focusScore": 1,
+          "baselineFocusScore": 1,
+          "focusImprovementPct": 0,
+          "baselineScore": 1.1873317392104075,
+          "baselineWinRate": 0.9090909090909091
+        },
+        {
+          "profile": "breaker",
+          "winRate": 1,
+          "survivalScore": 1.6839623430262696,
+          "medianDamageTaken": 295,
+          "medianThroughput": 97.13454330242652,
+          "medianHealthRemaining": 409.03,
+          "medianNaturalMisses": 12,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 122.57,
+          "medianArmourPrevented": 130.39,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 130.39,
+          "improvementPct": 35.7113980001617,
+          "focusScore": 1,
+          "baselineFocusScore": 1,
+          "focusImprovementPct": 0,
+          "baselineScore": 1.2408407604969651,
+          "baselineWinRate": 1
+        },
+        {
+          "profile": "arcanist",
+          "winRate": 0.45454545454545453,
+          "survivalScore": 0.95151054,
+          "medianDamageTaken": 674.03,
+          "medianThroughput": 97.09844559585491,
+          "medianHealthRemaining": 0,
+          "medianNaturalMisses": 13,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 0,
+          "medianWardPrevented": 35,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 35,
+          "improvementPct": 16.361379490391226,
+          "focusScore": 1.0385,
+          "baselineFocusScore": 1.0385,
+          "focusImprovementPct": 0,
+          "baselineScore": 0.81772023,
+          "baselineWinRate": 0.45454545454545453
+        },
+        {
+          "profile": "spellblade",
+          "winRate": 0.7272727272727273,
+          "survivalScore": 1.2090697791080716,
+          "medianDamageTaken": 555,
+          "medianThroughput": 97.98507462686567,
+          "medianHealthRemaining": 125.03,
+          "medianNaturalMisses": 15,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 92.7,
+          "medianArmourPrevented": 111.45,
+          "medianWardPrevented": 18.8,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 125.55,
+          "improvementPct": -3.5997120230381596,
+          "focusScore": 1,
+          "baselineFocusScore": 1,
+          "focusImprovementPct": 0,
+          "baselineScore": 1.2542180158186045,
+          "baselineWinRate": 0.8181818181818182
+        }
+      ],
+      "capstones": [
+        {
+          "node": "Walking Fortress",
+          "allocatedNodes": 10,
+          "survivalScore": 1.4231058642543015,
+          "focusScore": 1.1759249999999999,
+          "intendedImprovementPct": 26.82323488212677,
+          "intendedFocusImprovementPct": 4.248670212765944,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.4231058642543015
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.3779576275437688
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.5518619467250807
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 0.87001777
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.4565490025584
+            }
+          ]
+        },
+        {
+          "node": "Unbreachable",
+          "allocatedNodes": 10,
+          "survivalScore": 1.2960219386987275,
+          "focusScore": 1.1345,
+          "intendedImprovementPct": 27.866360683098378,
+          "intendedFocusImprovementPct": 0.5762411347517684,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.4348109626607362
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.1405113455846696
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.6605521462134005
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 0.79436405
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.2960219386987275
+            }
+          ]
+        },
+        {
+          "node": "Siegeproof",
+          "allocatedNodes": 10,
+          "survivalScore": 1.1488721301606943,
+          "focusScore": 1.209875,
+          "intendedImprovementPct": 0.4470539147021002,
+          "intendedFocusImprovementPct": 7.258421985815588,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.1271340902630302
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.327792920087621
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.2910054679531127
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 0.6994161
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.1488721301606943
+            }
+          ]
+        },
+        {
+          "node": "Iron Rhythm",
+          "allocatedNodes": 10,
+          "survivalScore": 1.2993662525291374,
+          "focusScore": 1.150075,
+          "intendedImprovementPct": 45.301463356480774,
+          "intendedFocusImprovementPct": 1.9570035460992727,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.630453321739712
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.3662525291373342
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.2993662525291374
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 0.63214014
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.0886744812133171
+            }
+          ]
+        },
+        {
+          "node": "Bastion’s Reply",
+          "allocatedNodes": 10,
+          "survivalScore": 1.2425129174121698,
+          "focusScore": 1.156875,
+          "intendedImprovementPct": 9.686168151879105,
+          "intendedFocusImprovementPct": 2.5598404255319167,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.2308078190057354
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.3227764493420062
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.5635670451315151
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 0.97740543
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.2425129174121698
+            }
+          ]
+        },
+        {
+          "node": "Wall of Thorns",
+          "allocatedNodes": 10,
+          "survivalScore": 1.2826446833770881,
+          "focusScore": 1.1714,
+          "intendedImprovementPct": 14.305725270467606,
+          "intendedFocusImprovementPct": 3.847517730496449,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.2826446833770881
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.3461866461548753
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.4281223349999164
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 0.8248286400000001
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 0.9883219099999999
+            }
+          ]
+        }
+      ],
+      "capstonePairs": [
+        {
+          "branch": "Plate",
+          "variants": [
+            "Walking Fortress",
+            "Unbreachable"
+          ],
+          "spreadPct": 3.585920339331493
+        },
+        {
+          "branch": "Brace",
+          "variants": [
+            "Siegeproof",
+            "Iron Rhythm"
+          ],
+          "spreadPct": 5.067903981016554
+        },
+        {
+          "branch": "Reprisal",
+          "variants": [
+            "Bastion’s Reply",
+            "Wall of Thorns"
+          ],
+          "spreadPct": 1.2477048458622715
+        }
+      ],
+      "capstoneSpreadPct": 5.067903981016554
+    },
+    {
+      "skillId": "Evasion",
+      "build": "evasion-defense",
+      "expectedProfile": "breaker",
+      "selectedCapstone": "Vanishing Point",
+      "allocatedNodes": 10,
+      "representativeProfile": "breaker",
+      "improvementPct": 10.000000000000009,
+      "rawSurvivalImprovementPct": -7.366054121113441,
+      "representative": {
+        "profile": "breaker",
+        "winRate": 0.8181818181818182,
+        "survivalScore": 1.2208256693235233,
+        "medianDamageTaken": 381,
+        "medianThroughput": 107.38822246455834,
+        "medianHealthRemaining": 86.44,
+        "medianNaturalMisses": 11,
+        "medianConvertedMisses": 1,
+        "medianGlancingPrevented": 0,
+        "medianGuardPrevented": 0,
+        "medianArmourPrevented": 51.6,
+        "medianWardPrevented": 0,
+        "medianDefenseReduction": 0,
+        "medianBarrierAbsorption": 0,
+        "medianRetaliationDamage": 0,
+        "medianDefensePrevented": 51.6,
+        "improvementPct": -7.366054121113441,
+        "focusScore": 1.1,
+        "baselineFocusScore": 1,
+        "focusImprovementPct": 10.000000000000009,
+        "baselineScore": 1.3179031269160024,
+        "baselineWinRate": 0.7272727272727273
+      },
+      "modifierCaps": {
+        "armour": 0,
+        "ward": 0,
+        "evasion": 10,
+        "enemyHitChanceReduction": 0,
+        "physicalReduction": 0,
+        "magicalReduction": 0,
+        "penetrationResistance": 0,
+        "barrierStrength": 0,
+        "barrierCooldown": 0
+      },
+      "portfolioResults": [
+        {
+          "profile": "standard",
+          "winRate": 0.9090909090909091,
+          "survivalScore": 1.422644594318414,
+          "medianDamageTaken": 264,
+          "medianThroughput": 113.31990794016109,
+          "medianHealthRemaining": 165.44,
+          "medianNaturalMisses": 14,
+          "medianConvertedMisses": 1,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 45,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 45,
+          "improvementPct": 44.204761902139445,
+          "focusScore": 1.0225,
+          "baselineFocusScore": 1.0375,
+          "focusImprovementPct": -1.4457831325301318,
+          "baselineScore": 0.98654481,
+          "baselineWinRate": 0.45454545454545453
+        },
+        {
+          "profile": "skirmisher",
+          "winRate": 1,
+          "survivalScore": 1.6219088493766605,
+          "medianDamageTaken": 186,
+          "medianThroughput": 124.80988593155894,
+          "medianHealthRemaining": 243.44,
+          "medianNaturalMisses": 19,
+          "medianConvertedMisses": 1,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 30.3,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 30.3,
+          "improvementPct": 37.15865883166263,
+          "focusScore": 1,
+          "baselineFocusScore": 1,
+          "focusImprovementPct": 0,
+          "baselineScore": 1.1825056202738606,
+          "baselineWinRate": 0.7272727272727273
+        },
+        {
+          "profile": "breaker",
+          "winRate": 0.8181818181818182,
+          "survivalScore": 1.2208256693235233,
+          "medianDamageTaken": 381,
+          "medianThroughput": 107.38822246455834,
+          "medianHealthRemaining": 86.44,
+          "medianNaturalMisses": 11,
+          "medianConvertedMisses": 1,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 51.6,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 51.6,
+          "improvementPct": -7.366054121113441,
+          "focusScore": 1.1,
+          "baselineFocusScore": 1,
+          "focusImprovementPct": 10.000000000000009,
+          "baselineScore": 1.3179031269160024,
+          "baselineWinRate": 0.7272727272727273
+        },
+        {
+          "profile": "arcanist",
+          "winRate": 0.9090909090909091,
+          "survivalScore": 1.2591457183731862,
+          "medianDamageTaken": 404,
+          "medianThroughput": 113.31990794016109,
+          "medianHealthRemaining": 101.44,
+          "medianNaturalMisses": 14,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 0,
+          "medianWardPrevented": 8,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 8,
+          "improvementPct": 41.62692648797819,
+          "focusScore": 1.0088,
+          "baselineFocusScore": 1.011,
+          "focusImprovementPct": -0.21760633036597143,
+          "baselineScore": 0.88905814,
+          "baselineWinRate": 0.45454545454545453
+        },
+        {
+          "profile": "spellblade",
+          "winRate": 0.9090909090909091,
+          "survivalScore": 1.2949110974862048,
+          "medianDamageTaken": 340,
+          "medianThroughput": 114.37282229965157,
+          "medianHealthRemaining": 115.44,
+          "medianNaturalMisses": 16,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 27.4,
+          "medianWardPrevented": 3.4,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 27.4,
+          "improvementPct": 31.970369780803853,
+          "focusScore": 1,
+          "baselineFocusScore": 1,
+          "focusImprovementPct": 0,
+          "baselineScore": 0.98121351,
+          "baselineWinRate": 0.45454545454545453
+        }
+      ],
+      "capstones": [
+        {
+          "node": "Blur",
+          "allocatedNodes": 10,
+          "survivalScore": 1.391988555078684,
+          "focusScore": 1.1,
+          "intendedImprovementPct": 0,
+          "intendedFocusImprovementPct": 10.000000000000014,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.391988555078684
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.4992846924177397
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.3179031269160024
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.42008992438177
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.1901696300837932
+            }
+          ]
+        },
+        {
+          "node": "Untouchable Rhythm",
+          "allocatedNodes": 10,
+          "survivalScore": 1.4609646433680767,
+          "focusScore": 1.1,
+          "intendedImprovementPct": 24.618128246879124,
+          "intendedFocusImprovementPct": 10.000000000000014,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.422644594318414
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.7189863069691396
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.642346208869814
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.42008992438177
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.4609646433680767
+            }
+          ]
+        },
+        {
+          "node": "Out of Reach",
+          "allocatedNodes": 10,
+          "survivalScore": 1.4992846924177397,
+          "focusScore": 1,
+          "intendedImprovementPct": 0,
+          "intendedFocusImprovementPct": 0,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.6474555487431024
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.4992846924177397
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.3179031269160024
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.5171673819742488
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.4533006335581442
+            }
+          ]
+        },
+        {
+          "node": "Perfect Opening",
+          "allocatedNodes": 10,
+          "survivalScore": 1.4149805845084815,
+          "focusScore": 1.1,
+          "intendedImprovementPct": 7.366054121113441,
+          "intendedFocusImprovementPct": 10.000000000000014,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.391988555078684
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.4992846924177397
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.4149805845084815
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.42008992438177
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.2872470876762723
+            }
+          ]
+        },
+        {
+          "node": "Not Today",
+          "allocatedNodes": 10,
+          "survivalScore": 1.5580421009605558,
+          "focusScore": 1.2,
+          "intendedImprovementPct": 9.886020004652263,
+          "intendedFocusImprovementPct": 20,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.7445330063355815
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.6576742284896793
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.448191293684856
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.5171673819742488
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.5580421009605558
+            }
+          ]
+        },
+        {
+          "node": "Vanishing Point",
+          "allocatedNodes": 10,
+          "survivalScore": 1.4022072348252606,
+          "focusScore": 1.1,
+          "intendedImprovementPct": 0,
+          "intendedFocusImprovementPct": 10.000000000000014,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.6474555487431024
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.4022072348252606
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.3179031269160024
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.2591457183731862
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.4967300224810955
+            }
+          ]
+        }
+      ],
+      "capstonePairs": [
+        {
+          "branch": "Footwork",
+          "variants": [
+            "Blur",
+            "Untouchable Rhythm"
+          ],
+          "spreadPct": 0
+        },
+        {
+          "branch": "Flow",
+          "variants": [
+            "Out of Reach",
+            "Perfect Opening"
+          ],
+          "spreadPct": 9.52380952380953
+        },
+        {
+          "branch": "Escape",
+          "variants": [
+            "Not Today",
+            "Vanishing Point"
+          ],
+          "spreadPct": 8.695652173913032
+        }
+      ],
+      "capstoneSpreadPct": 9.52380952380953
+    },
+    {
+      "skillId": "Warding",
+      "build": "warding-defense",
+      "expectedProfile": "arcanist",
+      "selectedCapstone": "Impenetrable Dome",
+      "allocatedNodes": 10,
+      "representativeProfile": "arcanist",
+      "improvementPct": 8.725382932166292,
+      "rawSurvivalImprovementPct": 48.98378279156614,
+      "representative": {
+        "profile": "arcanist",
+        "winRate": 0.5454545454545454,
+        "survivalScore": 1.0552545172531878,
+        "medianDamageTaken": 469,
+        "medianThroughput": 107.38822246455834,
+        "medianHealthRemaining": 27.43,
+        "medianNaturalMisses": 11,
+        "medianConvertedMisses": 0,
+        "medianGlancingPrevented": 0,
+        "medianGuardPrevented": 0,
+        "medianArmourPrevented": 0,
+        "medianWardPrevented": 21,
+        "medianDefenseReduction": 0,
+        "medianBarrierAbsorption": 154,
+        "medianRetaliationDamage": 0,
+        "medianDefensePrevented": 175,
+        "improvementPct": 48.98378279156614,
+        "focusScore": 1.1925,
+        "baselineFocusScore": 1.0968,
+        "focusImprovementPct": 8.725382932166292,
+        "baselineScore": 0.7083016000000001,
+        "baselineWinRate": 0.2727272727272727
+      },
+      "modifierCaps": {
+        "armour": 0,
+        "ward": 0.2,
+        "evasion": 0,
+        "enemyHitChanceReduction": 0,
+        "physicalReduction": 0,
+        "magicalReduction": 0,
+        "penetrationResistance": 0.1,
+        "barrierStrength": 1,
+        "barrierCooldown": 0.05
+      },
+      "portfolioResults": [
+        {
+          "profile": "standard",
+          "winRate": 0.9090909090909091,
+          "survivalScore": 1.4863324134319038,
+          "medianDamageTaken": 255,
+          "medianThroughput": 107.38822246455834,
+          "medianHealthRemaining": 241.43,
+          "medianNaturalMisses": 13,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 132,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 231,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 341,
+          "improvementPct": 36.676175304708636,
+          "focusScore": 1.066,
+          "baselineFocusScore": 1.077,
+          "focusImprovementPct": -1.021355617455888,
+          "baselineScore": 1.0874846403319702,
+          "baselineWinRate": 0.6363636363636364
+        },
+        {
+          "profile": "skirmisher",
+          "winRate": 0.6363636363636364,
+          "survivalScore": 1.1620167999516549,
+          "medianDamageTaken": 416,
+          "medianThroughput": 106.45945945945945,
+          "medianHealthRemaining": 80.43,
+          "medianNaturalMisses": 16,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 166.1,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 211,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 377.1,
+          "improvementPct": 3.7779296945274154,
+          "focusScore": 1,
+          "baselineFocusScore": 1,
+          "focusImprovementPct": 0,
+          "baselineScore": 1.1197147634107527,
+          "baselineWinRate": 0.7272727272727273
+        },
+        {
+          "profile": "breaker",
+          "winRate": 0.9090909090909091,
+          "survivalScore": 1.351368773039502,
+          "medianDamageTaken": 322,
+          "medianThroughput": 108.33333333333333,
+          "medianHealthRemaining": 174.43,
+          "medianNaturalMisses": 10,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 100.8,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 154,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 254.8,
+          "improvementPct": 13.15656310090072,
+          "focusScore": 1,
+          "baselineFocusScore": 1,
+          "focusImprovementPct": 0,
+          "baselineScore": 1.1942469230304373,
+          "baselineWinRate": 0.8181818181818182
+        },
+        {
+          "profile": "arcanist",
+          "winRate": 0.5454545454545454,
+          "survivalScore": 1.0552545172531878,
+          "medianDamageTaken": 469,
+          "medianThroughput": 107.38822246455834,
+          "medianHealthRemaining": 27.43,
+          "medianNaturalMisses": 11,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 0,
+          "medianWardPrevented": 21,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 154,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 175,
+          "improvementPct": 48.98378279156614,
+          "focusScore": 1.1925,
+          "baselineFocusScore": 1.0968,
+          "focusImprovementPct": 8.725382932166292,
+          "baselineScore": 0.7083016000000001,
+          "baselineWinRate": 0.2727272727272727
+        },
+        {
+          "profile": "spellblade",
+          "winRate": 0.8181818181818182,
+          "survivalScore": 1.1861893922607418,
+          "medianDamageTaken": 404,
+          "medianThroughput": 107.38822246455834,
+          "medianHealthRemaining": 92.43,
+          "medianNaturalMisses": 13,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 59.1,
+          "medianWardPrevented": 8.1,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 231,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 303.6,
+          "improvementPct": 16.407701735658108,
+          "focusScore": 1,
+          "baselineFocusScore": 1,
+          "focusImprovementPct": 0,
+          "baselineScore": 1.0189956287895574,
+          "baselineWinRate": 0.5454545454545454
+        }
+      ],
+      "capstones": [
+        {
+          "node": "Grand Aegis",
+          "allocatedNodes": 10,
+          "survivalScore": 1.1720887134137743,
+          "focusScore": 1.198,
+          "intendedImprovementPct": 74.86383516058174,
+          "intendedFocusImprovementPct": 9.226841721371244,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.1720887134137743
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 0.9027672
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.4903611788167517
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.2385633422637632
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.0814414922546987
+            }
+          ]
+        },
+        {
+          "node": "Null Mantle",
+          "allocatedNodes": 10,
+          "survivalScore": 1.073383961485003,
+          "focusScore": 1.1947,
+          "intendedImprovementPct": 47.5618018921697,
+          "intendedFocusImprovementPct": 8.925966447848282,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.2305058114940677
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 0.89464331
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.35539753842435
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.0451826037910683
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.073383961485003
+            }
+          ]
+        },
+        {
+          "node": "Impenetrable Dome",
+          "allocatedNodes": 10,
+          "survivalScore": 1.2566927864955784,
+          "focusScore": 1.1925,
+          "intendedImprovementPct": -19.498208107958547,
+          "intendedFocusImprovementPct": 8.725382932166298,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.4863324134319038
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.0874846403319702
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.506476240356143
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 0.57019548
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.2566927864955784
+            }
+          ]
+        },
+        {
+          "node": "Endless Ward",
+          "allocatedNodes": 10,
+          "survivalScore": 1.155973651874383,
+          "focusScore": 1.1914,
+          "intendedImprovementPct": 56.093687288548445,
+          "intendedFocusImprovementPct": 8.625091174325306,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.6615837076727837
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.155973651874383
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.35539753842435
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.1056140845637854
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 0.8283828400000001
+            }
+          ]
+        },
+        {
+          "node": "Spellbreaker",
+          "allocatedNodes": 10,
+          "survivalScore": 1.1660455653365027,
+          "focusScore": 1.1375,
+          "intendedImprovementPct": 22.903225123309024,
+          "intendedFocusImprovementPct": 3.7107950401167074,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.5568358076667406
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.1660455653365027
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.8650363596075983
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 0.8705255099999999
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 0.78471693
+            }
+          ]
+        },
+        {
+          "node": "Aegis Afterglow",
+          "allocatedNodes": 10,
+          "survivalScore": 1.1720887134137743,
+          "focusScore": 1.1914,
+          "intendedImprovementPct": 69.74470392275447,
+          "intendedFocusImprovementPct": 8.625091174325306,
+          "profiles": [
+            {
+              "profile": "standard",
+              "survivalScore": 1.1720887134137743
+            },
+            {
+              "profile": "skirmisher",
+              "survivalScore": 1.1660455653365027
+            },
+            {
+              "profile": "breaker",
+              "survivalScore": 1.6253248192091534
+            },
+            {
+              "profile": "arcanist",
+              "survivalScore": 1.2023044538001328
+            },
+            {
+              "profile": "spellblade",
+              "survivalScore": 1.1438873557198397
+            }
+          ]
+        }
+      ],
+      "capstonePairs": [
+        {
+          "branch": "Runework",
+          "variants": [
+            "Grand Aegis",
+            "Null Mantle"
+          ],
+          "spreadPct": 0.27583901032305413
+        },
+        {
+          "branch": "Barrier",
+          "variants": [
+            "Impenetrable Dome",
+            "Endless Ward"
+          ],
+          "spreadPct": 0.09228575024119125
+        },
+        {
+          "branch": "Spellbreak",
+          "variants": [
+            "Spellbreaker",
+            "Aegis Afterglow"
+          ],
+          "spreadPct": 4.628794709948908
+        }
+      ],
+      "capstoneSpreadPct": 4.628794709948908
+    }
+  ],
+  "threatPortfolios": [
+    {
+      "profile": "standard",
+      "label": "steady physical",
+      "expectedBuild": "heavy-defense",
+      "prePenetrationDps": 64.375,
+      "standardDps": 64.375,
+      "standardRatio": 1,
+      "measurements": [
+        {
+          "build": "light-defense",
+          "profile": "standard",
+          "winRate": 0.9090909090909091,
+          "survivalScore": 1.391988555078684,
+          "medianDamageTaken": 308,
+          "medianThroughput": 95.29223921037352,
+          "medianHealthRemaining": 153.44,
+          "medianNaturalMisses": 18,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 51.5,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 52.5,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 52.5,
+          "focusScore": 1.02625
+        },
+        {
+          "build": "medium-defense",
+          "profile": "standard",
+          "winRate": 0.6363636363636364,
+          "survivalScore": 1.1398585903349918,
+          "medianDamageTaken": 541,
+          "medianThroughput": 107.32026143790848,
+          "medianHealthRemaining": 69.43,
+          "medianNaturalMisses": 12,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 168,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 12,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 180,
+          "focusScore": 1.084
+        },
+        {
+          "build": "heavy-defense",
+          "profile": "standard",
+          "winRate": 1,
+          "survivalScore": 1.4231058642543015,
+          "medianDamageTaken": 458,
+          "medianThroughput": 97.13454330242652,
+          "medianHealthRemaining": 253.03,
+          "medianNaturalMisses": 12,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 231.75,
+          "medianArmourPrevented": 241.4,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 241.4,
+          "focusScore": 1.236575
+        },
+        {
+          "build": "evasion-defense",
+          "profile": "standard",
+          "winRate": 0.9090909090909091,
+          "survivalScore": 1.422644594318414,
+          "medianDamageTaken": 264,
+          "medianThroughput": 113.31990794016109,
+          "medianHealthRemaining": 165.44,
+          "medianNaturalMisses": 14,
+          "medianConvertedMisses": 1,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 45,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 45,
+          "focusScore": 1.0225
+        },
+        {
+          "build": "warding-defense",
+          "profile": "standard",
+          "winRate": 0.9090909090909091,
+          "survivalScore": 1.4863324134319038,
+          "medianDamageTaken": 255,
+          "medianThroughput": 107.38822246455834,
+          "medianHealthRemaining": 241.43,
+          "medianNaturalMisses": 13,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 132,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 231,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 341,
+          "focusScore": 1.066
+        }
+      ],
+      "bestBuild": "heavy-defense",
+      "rawSurvivalLeader": "warding-defense",
+      "expectedScore": 1.236575,
+      "expectedImprovementPct": 8.092220279720275
+    },
+    {
+      "profile": "skirmisher",
+      "label": "rapid physical",
+      "expectedBuild": "light-defense",
+      "prePenetrationDps": 62.58680555555556,
+      "standardDps": 64.375,
+      "standardRatio": 0.9722222222222222,
+      "measurements": [
+        {
+          "build": "light-defense",
+          "profile": "skirmisher",
+          "winRate": 0.9090909090909091,
+          "survivalScore": 1.3408951563458,
+          "medianDamageTaken": 359,
+          "medianThroughput": 94.99807061547367,
+          "medianHealthRemaining": 133.44,
+          "medianNaturalMisses": 25,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 72.1,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 59.18,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 59.18,
+          "focusScore": 1.1442
+        },
+        {
+          "build": "medium-defense",
+          "profile": "skirmisher",
+          "winRate": 0.36363636363636365,
+          "survivalScore": 0.9619192700000001,
+          "medianDamageTaken": 572.43,
+          "medianThroughput": 105.40169375143054,
+          "medianHealthRemaining": 0,
+          "medianNaturalMisses": 15,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 188.1,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 8,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 196.1,
+          "focusScore": 1
+        },
+        {
+          "build": "heavy-defense",
+          "profile": "skirmisher",
+          "winRate": 1,
+          "survivalScore": 1.4682541009648344,
+          "medianDamageTaken": 432,
+          "medianThroughput": 98.8506324031319,
+          "medianHealthRemaining": 280.03,
+          "medianNaturalMisses": 18,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 205.485,
+          "medianArmourPrevented": 224.11,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 224.11,
+          "focusScore": 1
+        },
+        {
+          "build": "evasion-defense",
+          "profile": "skirmisher",
+          "winRate": 1,
+          "survivalScore": 1.6219088493766605,
+          "medianDamageTaken": 186,
+          "medianThroughput": 124.80988593155894,
+          "medianHealthRemaining": 243.44,
+          "medianNaturalMisses": 19,
+          "medianConvertedMisses": 1,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 30.3,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 30.3,
+          "focusScore": 1
+        },
+        {
+          "build": "warding-defense",
+          "profile": "skirmisher",
+          "winRate": 0.6363636363636364,
+          "survivalScore": 1.1620167999516549,
+          "medianDamageTaken": 416,
+          "medianThroughput": 106.45945945945945,
+          "medianHealthRemaining": 80.43,
+          "medianNaturalMisses": 16,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 166.1,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 211,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 377.1,
+          "focusScore": 1
+        }
+      ],
+      "bestBuild": "light-defense",
+      "rawSurvivalLeader": "evasion-defense",
+      "expectedScore": 1.1442,
+      "expectedImprovementPct": 14.42000000000001
+    },
+    {
+      "profile": "breaker",
+      "label": "heavy penetrating physical",
+      "expectedBuild": "evasion-defense",
+      "prePenetrationDps": 66.75925925925925,
+      "standardDps": 64.375,
+      "standardRatio": 1.037037037037037,
+      "measurements": [
+        {
+          "build": "light-defense",
+          "profile": "breaker",
+          "winRate": 0.8181818181818182,
+          "survivalScore": 1.3689965256488863,
+          "medianDamageTaken": 336,
+          "medianThroughput": 95.29828109201213,
+          "medianHealthRemaining": 144.44,
+          "medianNaturalMisses": 13,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 72.1,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 46.13,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 46.13,
+          "focusScore": 1
+        },
+        {
+          "build": "medium-defense",
+          "profile": "breaker",
+          "winRate": 1,
+          "survivalScore": 1.6333823499788491,
+          "medianDamageTaken": 220,
+          "medianThroughput": 107.38822246455834,
+          "medianHealthRemaining": 314.43,
+          "medianNaturalMisses": 12,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 56.4,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 12,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 68.4,
+          "focusScore": 1
+        },
+        {
+          "build": "heavy-defense",
+          "profile": "breaker",
+          "winRate": 1,
+          "survivalScore": 1.6839623430262696,
+          "medianDamageTaken": 295,
+          "medianThroughput": 97.13454330242652,
+          "medianHealthRemaining": 409.03,
+          "medianNaturalMisses": 12,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 122.57,
+          "medianArmourPrevented": 130.39,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 130.39,
+          "focusScore": 1
+        },
+        {
+          "build": "evasion-defense",
+          "profile": "breaker",
+          "winRate": 0.8181818181818182,
+          "survivalScore": 1.2208256693235233,
+          "medianDamageTaken": 381,
+          "medianThroughput": 107.38822246455834,
+          "medianHealthRemaining": 86.44,
+          "medianNaturalMisses": 11,
+          "medianConvertedMisses": 1,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 51.6,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 51.6,
+          "focusScore": 1.1
+        },
+        {
+          "build": "warding-defense",
+          "profile": "breaker",
+          "winRate": 0.9090909090909091,
+          "survivalScore": 1.351368773039502,
+          "medianDamageTaken": 322,
+          "medianThroughput": 108.33333333333333,
+          "medianHealthRemaining": 174.43,
+          "medianNaturalMisses": 10,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 100.8,
+          "medianWardPrevented": 0,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 154,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 254.8,
+          "focusScore": 1
+        }
+      ],
+      "bestBuild": "evasion-defense",
+      "rawSurvivalLeader": "heavy-defense",
+      "expectedScore": 1.1,
+      "expectedImprovementPct": 10.000000000000009
+    },
+    {
+      "profile": "arcanist",
+      "label": "penetrating magical",
+      "expectedBuild": "warding-defense",
+      "prePenetrationDps": 64.375,
+      "standardDps": 64.375,
+      "standardRatio": 1,
+      "measurements": [
+        {
+          "build": "light-defense",
+          "profile": "arcanist",
+          "winRate": 0.8181818181818182,
+          "survivalScore": 1.42008992438177,
+          "medianDamageTaken": 303,
+          "medianThroughput": 94.56020741309776,
+          "medianHealthRemaining": 164.44,
+          "medianNaturalMisses": 19,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 51.5,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 0,
+          "medianWardPrevented": 6,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 6,
+          "focusScore": 1.0066
+        },
+        {
+          "build": "medium-defense",
+          "profile": "arcanist",
+          "winRate": 0.5454545454545454,
+          "survivalScore": 1.00489494994259,
+          "medianDamageTaken": 534.43,
+          "medianThroughput": 105.03448275862068,
+          "medianHealthRemaining": 2.43,
+          "medianNaturalMisses": 12,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 0,
+          "medianWardPrevented": 28,
+          "medianDefenseReduction": 85,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 113,
+          "focusScore": 1.0308
+        },
+        {
+          "build": "heavy-defense",
+          "profile": "arcanist",
+          "winRate": 0.45454545454545453,
+          "survivalScore": 0.95151054,
+          "medianDamageTaken": 674.03,
+          "medianThroughput": 97.09844559585491,
+          "medianHealthRemaining": 0,
+          "medianNaturalMisses": 13,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 0,
+          "medianWardPrevented": 35,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 35,
+          "focusScore": 1.0385
+        },
+        {
+          "build": "evasion-defense",
+          "profile": "arcanist",
+          "winRate": 0.9090909090909091,
+          "survivalScore": 1.2591457183731862,
+          "medianDamageTaken": 404,
+          "medianThroughput": 113.31990794016109,
+          "medianHealthRemaining": 101.44,
+          "medianNaturalMisses": 14,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 0,
+          "medianWardPrevented": 8,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 8,
+          "focusScore": 1.0088
+        },
+        {
+          "build": "warding-defense",
+          "profile": "arcanist",
+          "winRate": 0.5454545454545454,
+          "survivalScore": 1.0552545172531878,
+          "medianDamageTaken": 469,
+          "medianThroughput": 107.38822246455834,
+          "medianHealthRemaining": 27.43,
+          "medianNaturalMisses": 11,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 0,
+          "medianWardPrevented": 21,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 154,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 175,
+          "focusScore": 1.1925
+        }
+      ],
+      "bestBuild": "warding-defense",
+      "rawSurvivalLeader": "light-defense",
+      "expectedScore": 1.1925,
+      "expectedImprovementPct": 8.725382932166292
+    },
+    {
+      "profile": "spellblade",
+      "label": "alternating mixed",
+      "expectedBuild": "medium-defense",
+      "prePenetrationDps": 62.97554347826086,
+      "standardDps": 64.375,
+      "standardRatio": 0.9782608695652173,
+      "measurements": [
+        {
+          "build": "light-defense",
+          "profile": "spellblade",
+          "winRate": 1,
+          "survivalScore": 1.3715511955855304,
+          "medianDamageTaken": 360,
+          "medianThroughput": 95.96082634963945,
+          "medianHealthRemaining": 145.44,
+          "medianNaturalMisses": 19,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 46.35,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 27.4,
+          "medianWardPrevented": 3.4,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 28.654999999999998,
+          "focusScore": 1
+        },
+        {
+          "build": "medium-defense",
+          "profile": "spellblade",
+          "winRate": 0.6363636363636364,
+          "survivalScore": 1.0894990230243942,
+          "medianDamageTaken": 566,
+          "medianThroughput": 106.45945945945945,
+          "medianHealthRemaining": 44.43,
+          "medianNaturalMisses": 13,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 108.5,
+          "medianWardPrevented": 11.1,
+          "medianDefenseReduction": 47,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 151.9,
+          "focusScore": 1.094
+        },
+        {
+          "build": "heavy-defense",
+          "profile": "spellblade",
+          "winRate": 0.7272727272727273,
+          "survivalScore": 1.2090697791080716,
+          "medianDamageTaken": 555,
+          "medianThroughput": 97.98507462686567,
+          "medianHealthRemaining": 125.03,
+          "medianNaturalMisses": 15,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 92.7,
+          "medianArmourPrevented": 111.45,
+          "medianWardPrevented": 18.8,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 125.55,
+          "focusScore": 1
+        },
+        {
+          "build": "evasion-defense",
+          "profile": "spellblade",
+          "winRate": 0.9090909090909091,
+          "survivalScore": 1.2949110974862048,
+          "medianDamageTaken": 340,
+          "medianThroughput": 114.37282229965157,
+          "medianHealthRemaining": 115.44,
+          "medianNaturalMisses": 16,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 27.4,
+          "medianWardPrevented": 3.4,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 0,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 27.4,
+          "focusScore": 1
+        },
+        {
+          "build": "warding-defense",
+          "profile": "spellblade",
+          "winRate": 0.8181818181818182,
+          "survivalScore": 1.1861893922607418,
+          "medianDamageTaken": 404,
+          "medianThroughput": 107.38822246455834,
+          "medianHealthRemaining": 92.43,
+          "medianNaturalMisses": 13,
+          "medianConvertedMisses": 0,
+          "medianGlancingPrevented": 0,
+          "medianGuardPrevented": 0,
+          "medianArmourPrevented": 59.1,
+          "medianWardPrevented": 8.1,
+          "medianDefenseReduction": 0,
+          "medianBarrierAbsorption": 231,
+          "medianRetaliationDamage": 0,
+          "medianDefensePrevented": 303.6,
+          "focusScore": 1
+        }
+      ],
+      "bestBuild": "medium-defense",
+      "rawSurvivalLeader": "light-defense",
+      "expectedScore": 1.094,
+      "expectedImprovementPct": 9.40000000000001
+    }
+  ],
+  "counterPressure": {
+    "measurements": [
+      {
+        "profile": "standard",
+        "throughputIncreasePct": 1.7512437810945247,
+        "counterThroughput": 97.98507462686567,
+        "baselineThroughput": 96.29865049872872,
+        "retaliationDamage": 52
+      },
+      {
+        "profile": "breaker",
+        "throughputIncreasePct": 2.477227931548698,
+        "counterThroughput": 98.8506324031319,
+        "baselineThroughput": 96.46107178968654,
+        "retaliationDamage": 26
+      }
+    ],
+    "maxThroughputIncreasePct": 2.477227931548698
+  },
+  "authoredCombatTrees": {
+    "total": 17,
+    "nodes": 357,
+    "allTreesHaveTwentyOneNodes": true
+  },
   "route": [
     {
       "stage": 1,
@@ -3045,22 +5523,22 @@
       "stage": 28,
       "build": "apex-checkpoint",
       "encounters": 8000,
-      "medianEncounterSeconds": 13.096,
-      "cumulativeHours": 244.75628833333334
+      "medianEncounterSeconds": 12.744,
+      "cumulativeHours": 243.9740661111111
     },
     {
       "stage": 29,
       "build": "apex-checkpoint",
       "encounters": 8000,
       "medianEncounterSeconds": 14.152,
-      "cumulativeHours": 276.20517722222223
+      "cumulativeHours": 275.422955
     },
     {
       "stage": 30,
       "build": "apex-checkpoint",
       "encounters": 1,
-      "medianEncounterSeconds": 40.552,
-      "cumulativeHours": 276.2164416666667
+      "medianEncounterSeconds": 39.848,
+      "cumulativeHours": 275.4340238888889
     }
   ],
   "starterRoute": [

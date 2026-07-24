@@ -1,4 +1,4 @@
-# Momentum v21.1 — Wayfinder Resolve
+# Momentum v21.2 — Wayfinder Bulwark
 
 ## Player loop
 
@@ -6,7 +6,7 @@ Wayfinder Arsenal adds the decision layer between idle sessions:
 
 **Combat → loot, Gold, and XP → inspect gear → allocate points → buy, respec, or contract → choose Push or Farm → idle again.**
 
-Solo Frontier remains a persistent solo order. **Push** attempts the next uncleared stage, **Farm** repeats a cleared stage, and **Pause** stops encounters without stopping Production or the independent Combat Drill. A loss records the original wall diagnosis and changes the order to the configured cleared fallback. Stages 10, 20, and 30 remain the Initiate, Vanguard, and Apex gates and unlock the matching Arena tiers.
+Solo Frontier remains a persistent solo order. **Push** attempts the next uncleared stage, **Farm** repeats a cleared stage, and **Pause** stops encounters without stopping Production or the independent Combat Drill. A loss records the original wall diagnosis and changes the order to the configured cleared fallback. The v21.2 decision is defensive preparation: inspect the threat, choose armour weight and a defensive loadout, allocate the relevant tree, then decide whether to Push or Farm.
 
 ## Canonical equipment and Arsenal UI
 
@@ -26,7 +26,7 @@ One Combat Drill may run beside Production and combat. It awards exactly **0.1 X
 
 Arena's existing compatible tree is presented as **Arena Discipline**. Every one of the 17 combat skills has an independent persisted tree state and earns one point at levels 10, 20, …, 100, for ten points total. Existing high-level saves receive earned points without automatic allocation.
 
-The eight Offense trees were authored in v21.0. v21.1 authors all four Sustain trees: **Support Magic, Reflexes, Healing, and Vitality**. Each authored tree has exactly 21 nodes: three seven-node branches, each formed by one root followed by two independent three-node paths. Every node costs one point. The six capstones share one exclusive group, so lower paths may be mixed but only one capstone may be owned in a skill tree. A full-tree respec costs:
+The eight Offense trees, four Sustain trees (**Support Magic, Reflexes, Healing, and Vitality**), and five Defense trees (**Light Armour Proficiency, Medium Armour Proficiency, Heavy Armour Proficiency, Evasion, and Warding**) are authored. All 17 trees have exactly 21 nodes: three seven-node branches, each formed by one root followed by two independent three-node paths. Every node costs one point. The six capstones share one exclusive group, so lower paths may be mixed but only one capstone may be owned in a skill tree. A full-tree respec costs:
 
 `100 + 50 × allocated nodes` Gold
 
@@ -59,7 +59,32 @@ Recovery events resolve before attacks at the same timestamp so online, offline,
 
 The tree panel now treats node selection and point spending as separate actions. Selecting a node shows the current and projected live build profile; **Allocate 1 point** confirms the irreversible spend. The profile uses the current weapon, stance, aura, defensive ability, stage, and equipment. It warns when Support Magic or Healing effects are inactive under the current Battle Desk configuration.
 
-Solo Frontier implements the complete deterministic Sustain contract. Arena reuses the universal subset its real-time model can represent: maximum HP and baseline stats through the shared build, Battle Focus amplification, Mend output/threshold/cooldown, incoming-damage reduction, regeneration, and the once-per-run fatal guard. Arena Discipline remains separate and save-compatible.
+Solo Frontier implements the complete deterministic Sustain and Defense contracts. Arena reuses only the representable Defense subset: matching armour, ward, physical/magical reduction, defensive cooldown, and Arcane Barrier strength/cooldown. Arena does not fake Solo attack-cycle conversions, adaptation, retaliation, or Defense-generated skill-use events. Arena Discipline remains separate and save-compatible.
+
+## Frontier threats and Defense resolution
+
+Every authored stage threat is deterministic and consumes exactly one existing enemy hit roll per scheduled attack. A custom/test enemy without threat metadata retains the legacy single physical attack.
+
+| Profile | Cadence | Ordered attack cycle |
+| --- | ---: | --- |
+| Standard | ×1.00 | Physical ×1.00 |
+| Skirmisher | ×0.72 | Physical ×0.70, +10 accuracy, Rapid |
+| Breaker | ×1.35 | Physical ×1.40, −8 accuracy, 20% armour penetration, Heavy |
+| Arcanist | ×1.00 | Magical ×1.00, +2 accuracy, 10% ward penetration, Arcane |
+| Spellblade | ×0.92 | Physical ×0.90, then Magical ×0.90, both +2 accuracy |
+| Initiate | ×1.00 | Physical ×0.80, Physical ×0.80, Heavy Physical ×1.40 with 10% penetration |
+| Vanguard | ×0.95 | Physical ×0.85, Magical ×0.85, Heavy Physical ×1.15 with 15% penetration |
+| Apex | ×0.95 | Physical ×0.80, Magical ×0.80, Heavy Physical ×1.10 with 20% penetration, Magical ×1.10 with 20% penetration |
+
+Stages assign these profiles as follows: 1–3 Standard; 4 Skirmisher; 5 Breaker; 6 Standard; 7 Arcanist; 8 Spellblade; 9 Breaker; 10 Initiate; 11 Skirmisher; 12 Breaker; 13 Arcanist; 14 Spellblade; 15 Skirmisher; 16 Standard; 17 Arcanist; 18 Breaker; 19 Spellblade; 20 Vanguard; 21 Skirmisher; 22 Breaker; 23 Arcanist; 24 Spellblade; 25 Skirmisher; 26 Breaker; 27 Arcanist; 28 Spellblade; 29 Breaker; 30 Apex.
+
+Incoming attacks resolve in this order: natural hit roll, tree hit conversion, glance/guard, penetration, armour or ward mitigation, Defense reduction, Sustain reduction, Arcane Barrier, then HP and counters. Converted misses do not grant Evasion XP; glances remain hits; retaliation cannot crit, recurse, trigger another effect, or award XP.
+
+Defense caps are **+50% matching armour**, **+60% ward**, **+30 Evasion**, **10 percentage points enemy hit reduction**, **20% physical or magical reduction**, **50% glance/guard reduction**, **50% penetration resistance**, **+100% Barrier strength**, **40% Mend/Barrier cooldown reduction**, **30% triggered attack speed**, and **35% triggered attack damage**. Periodic hit conversion cannot be better than one in five would-be hits. Existing armour and magical mitigation caps remain 75% and 60%.
+
+Only helm, chest, gloves, pants, boots, and cloak count toward armour commitment. Light, Medium, and Heavy tree effects are inactive until the matching set reaches **2 pieces** for roots/first-path nodes, **4 pieces** for second-path nodes, and **6 pieces** for capstones. Allocation is allowed before the gear is equipped. The paper doll shows the three counts and active breakpoints; requisitions, contracts, and inventory filters can target Light, Medium, or Heavy weight. Old contracts normalize to Any weight.
+
+Threat Intel shows the selected stage’s profile, ordered cycle, cadence, damage types, penetration, current hit chance, and current physical/magical mitigation. The Survival Report records natural and converted misses, glances, armour/ward/Defense prevention, penetration resisted, Barrier absorption and breaks, retaliation, and Defense proc counts. Both surfaces consume simulation data rather than maintaining duplicate formulas.
 
 ## Gold and Frontier Exchange
 
@@ -88,7 +113,7 @@ Rare gear costs `400 + 30 × item level`; Epic gear costs `700 + 35 × item leve
 
 ## Saves and migration
 
-The Momentum and Solo Frontier save version remains **v21**. v21.1 adds no migration boundary: all 17 tree-state slots already existed in v21.0, so newly authored Sustain nodes are available immediately while existing allocations and unspent points remain untouched. `migrateMomentumSaveToV21` remains the single idempotent entry point for v1–v21 and runs the prior combat split, paper-doll, loot, and Solo migrations before canonicalization.
+The Momentum and Solo Frontier save version remains **v21**. v21.2 adds no migration boundary: all 17 tree-state slots, Defense telemetry fields, and optional armour-weight contract fields normalize in place, while existing allocations and unspent points remain untouched. `migrateMomentumSaveToV21` remains the single idempotent entry point for v1–v21 and runs the prior combat split, paper-doll, loot, Solo, and Defense normalizers before canonicalization.
 
 The v21 boundary preserves generated instance IDs, rarity, item level, affixes, favourites, equipped positions, active weapon, `foodId`, 35-slot grandfathered overflow, and legacy refinements. Pulse Sidearm, Iron Blade, Frontier Bow, Ember Focus, and Plated Vest map to canonical definitions. Each legacy refinement rank becomes `enhancementRank` and retains +2 damage per rank. Overlapping legacy projections deduplicate by instance ID and root-level combat loot projections are removed from the resulting save. Only the non-combat tool remains in the root `equipment` object.
 
@@ -96,7 +121,7 @@ Representative v1, v14, v17, v18, v19, and v20 fixtures migrate through v21 twic
 
 ## Deterministic verification
 
-`npm run balance:solo` writes `artifacts/solo-frontier/balance-report.json`. The accepted route remains approximately 2.46 hours to stage 10, 2.53 days to stage 20, and 11.52 days to stage 30, with a 5.03-minute median first loot comparison and 16 median item rolls during an eight-hour stage-15 farm. The report records Offense and Sustain ten-point builds, every authored capstone variant, representative pressure profiles, and modifier-cap observations. Sustain representative builds must improve the paired survival/encounter score by 5–30%; every capstone build must remain legal and improve its representative portfolio.
+`npm run balance:solo` writes `artifacts/solo-frontier/balance-report.json`. The accepted route remains approximately **2.46 hours** to stage 10, **60.44 hours** to stage 20, and **275.43 hours** to stage 30, with a **5.03-minute** median first-loot comparison and **16** median item rolls during an eight-hour stage-15 farm. The current deterministic checkpoint win rates are **100% at stage 20** and **100% at stage 30**. The report records all 17 authored trees and 357 nodes, legal ten-point Defense builds, five threat-fit portfolios, raw survival telemetry, and modifier-cap observations. Focused Defense improvements are 8–28%, profile DPS ratios remain within 8% of Standard, sibling capstone spreads remain below 20% inside each branch portfolio, and counter-pressure raises throughput by at most **2.48%**. Raw HP/survival leaders remain visible as diagnostics; the release gate’s threat-fit score weights the prevention mechanic that each profile is intended to test.
 
 Release checks are:
 
@@ -110,8 +135,8 @@ git diff --check
 
 Automated contracts cover the 35-cell responsive grid, exact slot filtering, keyboard movement, shared rarity renderer, all 78 asset mappings, historical migration, online/offline replay, Drill caps, Gold and boss rewards, store rollback protection, atomic purchases, contract reward holding, tree topology, every Offense and Sustain root/capstone, save-stable Survival Report aggregation, Arena’s universal Sustain subset, and equipped Common-through-Chase rarity presentation.
 
-## Roadmap and scope
+## Release scope
 
-v21.2 authors the five Defense trees: Light, Medium, and Heavy Armour Proficiency, Evasion, and Warding. Their point pools, save state, cards, and tree interfaces already exist; no second foundational tree rewrite is planned.
+v21.2 completes the 17-tree combat progression and adds deterministic threat preparation, armour breakpoints, weight targeting, Threat Intel, and the expanded Defense Report. No save-version bump is required.
 
 Multiplayer/backend expansion, desktop battle overlays, companions, matchmaking, monetization, and additional regions remain outside Wayfinder Arsenal. No human playtest gate is part of this release workflow.

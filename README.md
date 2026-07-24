@@ -228,7 +228,7 @@ npm test
 npm run build
 ```
 
-The balance command writes its deterministic report to `artifacts/solo-frontier/balance-report.json`. See [Momentum v21.1 — Wayfinder Resolve](docs/solo-frontier.md) for the solo decision loop, canonical Arsenal, Combat Matrix and Drill, authored Offense/Sustain trees, Survival Report, Gold economy, v21 migration guarantees, deterministic acceptance results, and deferred scope.
+The balance command writes its deterministic report to `artifacts/solo-frontier/balance-report.json`. See [Momentum v21.2 — Wayfinder Bulwark](docs/solo-frontier.md) for the solo decision loop, canonical Arsenal, 17-tree Combat Matrix, threat profiles, armour breakpoints, Defense Report, Gold economy, v21 migration guarantees, deterministic acceptance results, and release scope.
 
 Run the backend checks:
 

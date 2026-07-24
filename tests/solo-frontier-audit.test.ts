@@ -19,7 +19,7 @@ import { REPRESENTATIVE_V17_SAVE_FIXTURE } from './fixtures/combat-save-fixtures
 const median = (values: readonly number[]) => [...values].sort((left, right) => left - right)[Math.floor(values.length / 2)];
 
 describe('Solo Frontier deterministic acceptance harness', () => {
-  it('meets pacing, style, armour, sustain, poor-build, and loot targets', { timeout: 30_000 }, () => {
+  it('meets pacing, style, armour, sustain, Defense, poor-build, and loot targets', { timeout: 45_000 }, () => {
     const audit = runSoloFrontierBalanceAudit();
     const firstWall = audit.starterRoute.find(measurement => measurement.winRate < 0.8)!;
     const wallArrival = audit.route[firstWall.stage - 2].cumulativeHours * 60;
@@ -54,6 +54,34 @@ describe('Solo Frontier deterministic acceptance harness', () => {
     expect(sustain.medianDamageTaken).toBeLessThan(medium.medianDamageTaken);
     expect(audit.builds.find(build => build.build === 'intentionally-poor')!.winRate).toBe(0);
     expect(audit.milestoneBuilds.every(build => build.winRate >= 0.8)).toBe(true);
+    expect(audit.milestoneBuilds.find(build => build.stage === 20)!.winRate).toBeGreaterThanOrEqual(0.90);
+    expect(audit.milestoneBuilds.find(build => build.stage === 30)!.winRate).toBeGreaterThanOrEqual(0.75);
+
+    expect(audit.authoredCombatTrees).toEqual({ total: 17, nodes: 357, allTreesHaveTwentyOneNodes: true });
+    expect(audit.defenseTrees).toHaveLength(5);
+    audit.defenseTrees.forEach(tree => {
+      expect(tree.allocatedNodes).toBe(10);
+      expect(tree.improvementPct).toBeGreaterThanOrEqual(8);
+      expect(tree.improvementPct).toBeLessThanOrEqual(28);
+      expect(tree.capstones).toHaveLength(6);
+      expect(tree.capstones.every(capstone => capstone.allocatedNodes === 10)).toBe(true);
+      expect(tree.capstonePairs).toHaveLength(3);
+      expect(tree.capstoneSpreadPct).toBeLessThanOrEqual(20);
+      expect(tree.modifierCaps.armour).toBeLessThanOrEqual(0.50);
+      expect(tree.modifierCaps.ward).toBeLessThanOrEqual(0.60);
+      expect(tree.modifierCaps.evasion).toBeLessThanOrEqual(30);
+      expect(tree.modifierCaps.enemyHitChanceReduction).toBeLessThanOrEqual(0.10);
+      expect(tree.modifierCaps.physicalReduction).toBeLessThanOrEqual(0.20);
+      expect(tree.modifierCaps.magicalReduction).toBeLessThanOrEqual(0.20);
+      expect(tree.modifierCaps.penetrationResistance).toBeLessThanOrEqual(0.50);
+      expect(tree.modifierCaps.barrierStrength).toBeLessThanOrEqual(1);
+      expect(tree.modifierCaps.barrierCooldown).toBeLessThanOrEqual(0.40);
+    });
+    expect(audit.threatPortfolios).toHaveLength(5);
+    expect(audit.threatPortfolios.every(portfolio => portfolio.standardRatio >= 0.92 && portfolio.standardRatio <= 1.08)).toBe(true);
+    expect(audit.threatPortfolios.every(portfolio => portfolio.bestBuild === portfolio.expectedBuild)).toBe(true);
+    expect(new Set(audit.threatPortfolios.map(portfolio => portfolio.bestBuild)).size).toBe(5);
+    expect(audit.counterPressure.maxThroughputIncreasePct).toBeLessThanOrEqual(15);
 
     expect(audit.offenseTrees).toHaveLength(8);
     audit.offenseTrees.forEach(tree => {
