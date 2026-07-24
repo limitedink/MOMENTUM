@@ -15,7 +15,7 @@ import {
   setSoloFrontierOrder
 } from './solo-frontier-runtime';
 import { soloFrontierStage } from './solo-frontier-definitions';
-import { deriveSoloPlayerStats, simulateSoloCombat } from './solo-combat-engine';
+import { calculateArmourMitigation, calculateHitChance, calculateMagicalMitigation, deriveSoloPlayerStats, simulateSoloCombat } from './solo-combat-engine';
 import { normalizeSoloCombatControls } from './solo-frontier-controls';
 
 export * from './solo-frontier-types';
@@ -39,6 +39,9 @@ export const MomentumSoloFrontier = Object.freeze({
   setSoloFrontierFarmStage,
   setSoloFrontierOrder,
   deriveSoloPlayerStats,
+  calculateHitChance,
+  calculateArmourMitigation,
+  calculateMagicalMitigation,
   arenaTierUnlockForSoloStage,
   simulateSoloCombat,
   normalizeSoloCombatControls,

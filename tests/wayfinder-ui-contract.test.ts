@@ -60,7 +60,12 @@ describe('Wayfinder Arsenal automated UI contract', () => {
     const document = dom.window.document;
     expect(document.querySelector('#soloSurvivalReport')).toBeTruthy();
     expect(document.querySelector('#soloSurvivalReportBody')).toBeTruthy();
+    expect(document.querySelector('#soloThreatIntel')).toBeTruthy();
     expect(script).toContain('LIVE BUILD PROFILE');
+    expect(script).toContain('renderSoloThreatIntel');
+    expect(script).toContain('armourPieceCounts');
+    expect(script).toContain('data-defense-tree');
+    expect(script).toContain('paper-doll-armour-summary');
     expect(script).toContain('id="allocateCombatTreeNode"');
     expect(script).toContain('selectedCombatTreeNodeId = button.dataset.combatTreeNode');
     expect(script).toContain("['Support Magic','Reflexes','Healing','Vitality']");
@@ -74,6 +79,8 @@ describe('Wayfinder Arsenal automated UI contract', () => {
     expect(arena).toContain('profile.mendCooldownMultiplier');
     expect(arena).toContain('profile.regenerationPctPerSecond');
     expect(arena).toContain('fatalGuard.fatalGuardPct');
+    expect(arena).toContain('resolveArenaDefenseProfile');
+    expect(arena).toContain('profile.barrierStrengthMultiplier');
     expect(arena).not.toMatch(/Indomitable[\s\S]{0,220}emitCombatSkillUse/);
   });
 });

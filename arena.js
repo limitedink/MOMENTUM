@@ -98,6 +98,28 @@
     });
   }
 
+  function defenseProfile() {
+    if (!run) return null;
+    const resolver = window.MomentumCombatDevelopment?.resolveArenaDefenseProfile;
+    if (typeof resolver !== 'function') return null;
+    const pieces = run.combatBuild?.equippedStats?.armourPieces || [];
+    const armourPieceCounts = pieces.reduce((counts, piece) => ({
+      ...counts,
+      [piece.armourClass]: Number(counts[piece.armourClass] || 0) + 1
+    }), { light:0, medium:0, heavy:0 });
+    return resolver(run.combatBuild?.combatModifiers, {
+      style:run.weapon?.style,
+      technique:run.combatBuild?.technique,
+      stance:run.combatBuild?.stance,
+      aura:run.aura,
+      defensiveAbility:run.defensiveAbility,
+      boss:true,
+      enemyWarded:Boolean(run.combatBuild?.enemy?.ward > 0),
+      playerHealthRatio:run.you ? run.you.hp / Math.max(1, run.you.maxHp) : 1,
+      armourPieceCounts
+    });
+  }
+
   function emitCombatSkillUse(skillId, amount) {
     if (!run || !amount || amount <= 0) return;
     const event = { type:'combat-skill-used', skillId, amount:Math.max(0.001, Number(amount) || 0) };
@@ -134,9 +156,13 @@
       return true;
     }
     if (run.defensiveAbility === 'Arcane Barrier' && run.barrier <= 0) {
-      const granted = Math.round(24 * (1 + 0.006 * combatSkill('Warding')));
+      const profile = defenseProfile();
+      const barrierStrengthMultiplier = profile ? profile.barrierStrengthMultiplier : 1;
+      const barrierCooldownMultiplier = profile ? profile.barrierCooldownMultiplier : 1;
+      const defensiveCooldownMultiplier = profile ? profile.defensiveCooldownMultiplier : 1;
+      const granted = Math.round(24 * (1 + 0.006 * combatSkill('Warding')) * barrierStrengthMultiplier);
       run.barrier = granted;
-      run.defensiveReadyAt = performance.now() + 12_000;
+      run.defensiveReadyAt = performance.now() + 12_000 * defensiveCooldownMultiplier * barrierCooldownMultiplier;
       emit('ability', { ability:'Arcane Barrier', automatic:true, granted });
       emitCombatSkillUse('Warding', 1);
       return true;

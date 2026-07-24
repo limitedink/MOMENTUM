@@ -490,7 +490,11 @@ function inputForEncounter(options: SoloFrontierSimulationOptions, stage: number
       enemyWarded: (options.useConfiguredEnemy ? configured.enemy : soloFrontierStage(stage).enemy).ward > 0,
       playerHealthRatio: 1,
       enemyHealthRatio: 1,
-      baseInterval: configured.activeWeapon.attackInterval
+      baseInterval: configured.activeWeapon.attackInterval,
+      armourPieceCounts: configured.equippedStats.armourPieces.reduce((counts, piece) => ({
+        ...counts,
+        [piece.armourClass]: counts[piece.armourClass] + 1
+      }), { light: 0, medium: 0, heavy: 0 })
     }),
     enemy: options.useConfiguredEnemy ? configured.enemy : soloFrontierStage(stage).enemy
   };

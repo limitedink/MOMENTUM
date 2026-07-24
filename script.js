@@ -359,6 +359,7 @@ const soloOrderBadge = document.getElementById('soloOrderBadge');
 const soloCurrentStage = document.getElementById('soloCurrentStage');
 const soloClearedStage = document.getElementById('soloClearedStage');
 const soloStageProgress = document.getElementById('soloStageProgress');
+const soloThreatIntel = document.getElementById('soloThreatIntel');
 const soloFarmStageSelect = document.getElementById('soloFarmStageSelect');
 const soloFallbackStageSelect = document.getElementById('soloFallbackStageSelect');
 const soloWallDiagnosis = document.getElementById('soloWallDiagnosis');
@@ -1823,6 +1824,18 @@ function openCombatSkillTree(skillId) {
 }
 
 const SUSTAIN_TREE_SKILLS = new Set(['Support Magic','Reflexes','Healing','Vitality']);
+const DEFENSE_TREE_SKILLS = new Set(['Light Armour Proficiency','Medium Armour Proficiency','Heavy Armour Proficiency','Evasion','Warding']);
+
+function soloArmourPieceCounts(input) {
+  return (input?.equippedStats?.armourPieces || []).reduce((counts, piece) => ({
+    ...counts,
+    [piece.armourClass]: Number(counts[piece.armourClass] || 0) + 1
+  }), { light:0, medium:0, heavy:0 });
+}
+
+function soloBreakpointLabel(count) {
+  return count >= 6 ? '2 / 4 / 6 active' : count >= 4 ? '2 / 4 active' : count >= 2 ? '2 active' : 'none active';
+}
 
 function combatTreeModifierContext(input) {
   return {
@@ -1836,8 +1849,17 @@ function combatTreeModifierContext(input) {
     enemyHealthRatio:1,
     playerHealthRatio:1,
     displayedHitChance:.9,
-    baseInterval:input.activeWeapon.attackInterval
+    baseInterval:input.activeWeapon.attackInterval,
+    armourPieceCounts:soloArmourPieceCounts(input)
   };
+}
+
+function soloDeskCombatModifiers(state, input) {
+  return COMBAT_DEVELOPMENT_FRAMEWORK.resolveModifiers(
+    state.combatDevelopment,
+    state.combatProgression,
+    combatTreeModifierContext(input)
+  );
 }
 
 function combatTreeProfile(state, development) {
@@ -1845,10 +1867,16 @@ function combatTreeProfile(state, development) {
   const input = soloFrontierCombatInput(stage, `${state.seed}:tree-preview`, state);
   const context = combatTreeModifierContext(input);
   const snapshot = COMBAT_DEVELOPMENT_FRAMEWORK.resolveModifiers(development, state.combatProgression, context);
+  const defense = COMBAT_DEVELOPMENT_FRAMEWORK.resolveDefenseProfile(snapshot, context);
   const sustain = COMBAT_DEVELOPMENT_FRAMEWORK.resolveSustainProfile(snapshot, context);
   const derived = SOLO_FRONTIER_FRAMEWORK.deriveSoloPlayerStats({ ...input, combatModifiers:snapshot });
   const healingLevel = Number(state.combatProgression.Healing?.level || 1);
   const supportLevel = Number(state.combatProgression['Support Magic']?.level || 1);
+  const armourCounts = context.armourPieceCounts;
+  const barrierActive = input.defensiveAbility === 'Arcane Barrier';
+  const barrierAmount = barrierActive
+    ? 24 * (1 + .006 * Number(state.combatProgression.Warding?.level || 1)) * defense.barrierStrengthMultiplier
+    : null;
   const battleFocusActive = input.aura === 'Battle Focus';
   const mendActive = input.defensiveAbility === 'Mend';
   return {
@@ -1863,11 +1891,29 @@ function combatTreeProfile(state, development) {
     regeneration:sustain.regenerationPctPerSecond * 100,
     reserveCap:sustain.recoveryReserveCapPct * 100,
     damageRecovery:sustain.damageRecoveryPct * 100,
-    fatalGuard:sustain.fatalGuardPct * 100
+    fatalGuard:sustain.fatalGuardPct * 100,
+    lightPieces:armourCounts.light,
+    mediumPieces:armourCounts.medium,
+    heavyPieces:armourCounts.heavy,
+    lightBreakpoints:soloBreakpointLabel(armourCounts.light),
+    mediumBreakpoints:soloBreakpointLabel(armourCounts.medium),
+    heavyBreakpoints:soloBreakpointLabel(armourCounts.heavy),
+    lightArmourBonus:(defense.armourMultiplierByClass.light - 1) * 100,
+    mediumArmourBonus:(defense.armourMultiplierByClass.medium - 1) * 100,
+    heavyArmourBonus:(defense.armourMultiplierByClass.heavy - 1) * 100,
+    wardBonus:(defense.wardMultiplier - 1) * 100,
+    evasionBonus:defense.evasionBonus,
+    enemyHitChanceReduction:defense.enemyHitChanceReduction * 100,
+    physicalReduction:(1 - defense.physicalDamageMultiplier) * 100,
+    magicalReduction:(1 - defense.magicalDamageMultiplier) * 100,
+    armourPenetrationResistance:defense.armourPenetrationResistance * 100,
+    wardPenetrationResistance:defense.wardPenetrationResistance * 100,
+    barrierAmount,
+    barrierCooldown:barrierActive ? 12 * defense.defensiveCooldownMultiplier * defense.barrierCooldownMultiplier : null
   };
 }
 
-function combatTreeProfileMarkup(current, projected, showSustain) {
+function combatTreeProfileMarkup(current, projected, showSustain, showDefense) {
   const specs = [
     ['Max HP','maxHitPoints',value => `${Math.round(value)}`],
     ['Damage','damage',value => `${Math.round(value)}`],
@@ -1884,12 +1930,59 @@ function combatTreeProfileMarkup(current, projected, showSustain) {
     ['Damage recovery','damageRecovery',value => `${Number(value).toFixed(0)}%`],
     ['Fatal guard','fatalGuard',value => Number(value) > 0 ? `${Number(value).toFixed(0)}% HP` : 'None']
   );
+  if (showDefense) specs.push(
+    ['Light set','lightPieces',(value, profile) => `${value} · ${profile.lightBreakpoints}`],
+    ['Medium set','mediumPieces',(value, profile) => `${value} · ${profile.mediumBreakpoints}`],
+    ['Heavy set','heavyPieces',(value, profile) => `${value} · ${profile.heavyBreakpoints}`],
+    ['Armour bonus','lightArmourBonus',value => `+${Number(value).toFixed(0)}%`],
+    ['Ward bonus','wardBonus',value => `+${Number(value).toFixed(0)}%`],
+    ['Evasion','evasionBonus',value => `+${Number(value).toFixed(0)}`],
+    ['Enemy hit cut','enemyHitChanceReduction',value => `−${Number(value).toFixed(1)}pp`],
+    ['Physical cut','physicalReduction',value => `${Number(value).toFixed(0)}%`],
+    ['Magical cut','magicalReduction',value => `${Number(value).toFixed(0)}%`],
+    ['Armour pen resistance','armourPenetrationResistance',value => `${Number(value).toFixed(0)}%`],
+    ['Ward pen resistance','wardPenetrationResistance',value => `${Number(value).toFixed(0)}%`],
+    ['Barrier amount','barrierAmount',value => value === null ? 'Inactive' : `${Math.round(value)} HP`],
+    ['Barrier cooldown','barrierCooldown',value => value === null ? 'Inactive' : `${Number(value).toFixed(1)}s`]
+  );
   return specs.map(([label,key,format]) => {
     const before = current[key];
     const after = projected?.[key];
     const changed = projected && Math.abs(Number(after) - Number(before)) > .0001;
-    return `<span class="combat-tree-profile-stat${changed ? ' is-projected' : ''}"><small>${label}</small><strong>${format(before)}${changed ? ` → ${format(after)}` : ''}</strong></span>`;
+    return `<span class="combat-tree-profile-stat${changed ? ' is-projected' : ''}"><small>${label}</small><strong>${format(before, current)}${changed ? ` → ${format(after, projected)}` : ''}</strong></span>`;
   }).join('');
+}
+
+function renderSoloThreatIntel(stageDefinition, input, modifiers, preview) {
+  if (!soloThreatIntel) return;
+  const enemy = stageDefinition.enemy;
+  const threat = enemy.threat || {
+    name:'Legacy single attack', description:'Custom enemies use the existing single physical attack.', intervalMultiplier:1,
+    attackCycle:[{ damageType:enemy.damageType, damageMultiplier:1, accuracyFlat:0, tag:'standard', armourPenetrationPct:0, wardPenetrationPct:0 }]
+  };
+  const context = combatTreeModifierContext(input);
+  const defense = COMBAT_DEVELOPMENT_FRAMEWORK.resolveDefenseProfile(modifiers, context);
+  const hitChances = threat.attackCycle.map(step => Math.max(.20, Math.min(.98,
+    SOLO_FRONTIER_FRAMEWORK.calculateHitChance(enemy.accuracy + Number(step.accuracyFlat || 0), preview.derivedStats.evasion)
+      - defense.enemyHitChanceReduction
+  )));
+  const mitigation = threat.attackCycle.map(step => {
+    const penetration = Math.max(0, Math.min(.60, Number(step[step.damageType === 'magical' ? 'wardPenetrationPct' : 'armourPenetrationPct'] || 0)));
+    if (step.damageType === 'magical') {
+      const effectiveWard = preview.derivedStats.ward * (1 - penetration * (1 - defense.wardPenetrationResistance));
+      return SOLO_FRONTIER_FRAMEWORK.calculateMagicalMitigation(effectiveWard, stageDefinition.stage);
+    }
+    const effectiveArmour = preview.derivedStats.armour * (1 - penetration * (1 - defense.armourPenetrationResistance));
+    return SOLO_FRONTIER_FRAMEWORK.calculateArmourMitigation(effectiveArmour, stageDefinition.stage);
+  });
+  const uniqueTypes = [...new Set(threat.attackCycle.map(step => step.damageType))].map(type => type === 'magical' ? 'Magical' : 'Physical');
+  const penetration = threat.attackCycle.map(step => {
+    const value = Number(step[step.damageType === 'magical' ? 'wardPenetrationPct' : 'armourPenetrationPct'] || 0) * 100;
+    return value ? `${step.damageType === 'magical' ? 'Ward' : 'Armour'} ${value.toFixed(0)}%` : '';
+  }).filter(Boolean);
+  const cycleMarkup = threat.attackCycle.map((step, index) => `<span class="threat-cycle-chip"><b>${index + 1}</b>${step.damageType === 'magical' ? 'MAG' : 'PHY'} ×${Number(step.damageMultiplier || 1).toFixed(2)}<small>${String(step.tag || 'standard').toUpperCase()}${step.accuracyFlat ? ` · ${step.accuracyFlat > 0 ? '+' : ''}${step.accuracyFlat} acc` : ''}</small></span>`).join('');
+  const range = values => `${Math.round(Math.min(...values) * 100)}–${Math.round(Math.max(...values) * 100)}%`;
+  soloThreatIntel.innerHTML = `<div class="threat-intel-heading"><strong>${threat.name}</strong><span>Stage ${String(stageDefinition.stage).padStart(2,'0')} · ${threat.description}</span></div><div class="threat-cycle">${cycleMarkup}</div><div class="threat-intel-grid"><span><small>Cadence</small><strong>${(enemy.attackInterval * threat.intervalMultiplier).toFixed(2)}s</strong></span><span><small>Damage types</small><strong>${uniqueTypes.join(' + ')}</strong></span><span><small>Hit chance</small><strong>${range(hitChances)}</strong></span><span><small>Mitigation</small><strong>${range(mitigation)} prevented</strong></span><span><small>Penetration</small><strong>${penetration.length ? [...new Set(penetration)].join(' · ') : 'None'}</strong></span><span><small>Build readout</small><strong>${Math.round(preview.derivedStats.armour)} armour · ${Math.round(preview.derivedStats.ward)} ward</strong></span></div>`;
 }
 
 function renderCombatSkillTree() {
@@ -1926,18 +2019,27 @@ function renderCombatSkillTree() {
     : null;
   const currentProfile = combatTreeProfile(state, state.combatDevelopment);
   const projectedProfile = projectedAllocation?.accepted ? combatTreeProfile(state, projectedAllocation.state) : null;
-  const inactiveReason = skillId === 'Support Magic' && soloDeskAura !== 'Battle Focus'
+  const defenseWeight = skillId === 'Light Armour Proficiency' ? 'light' : skillId === 'Medium Armour Proficiency' ? 'medium' : skillId === 'Heavy Armour Proficiency' ? 'heavy' : null;
+  const selectedRequirement = selectedNode && DEFENSE_TREE_SKILLS.has(skillId)
+    ? Math.max(0, ...selectedNode.effectIds.map(effectId => Number(COMBAT_DEVELOPMENT_FRAMEWORK.effects[effectId]?.condition?.minimumArmourPieces || 0)))
+    : 0;
+  const selectedRequirementActive = !defenseWeight || Number(currentProfile[`${defenseWeight}Pieces`] || 0) >= selectedRequirement;
+  const inactiveReason = defenseWeight && selectedRequirement && !selectedRequirementActive
+    ? `${skillId} effects are inactive until ${selectedRequirement} ${defenseWeight} armour pieces are equipped.`
+    : skillId === 'Warding' && soloDeskDefensiveAbility !== 'Arcane Barrier'
+      ? 'Barrier and Spellbreak effects are inactive until Arcane Barrier is selected.'
+      : skillId === 'Support Magic' && soloDeskAura !== 'Battle Focus'
     ? 'Support effects are inactive until Battle Focus is selected.'
     : skillId === 'Healing' && soloDeskDefensiveAbility !== 'Mend'
       ? 'Healing effects are inactive until Mend is selected.'
       : '';
   const selectionMarkup = selectedNode ? `<section class="combat-tree-selection">
-    <div><span>${selectedNode.capstone ? 'CAPSTONE' : `TIER ${selectedNode.tier}`} · ${selectedNode.branch.toUpperCase()}</span><strong>${selectedNode.name}</strong><p>${selectedNode.description}</p><small>${selectedStatus === 'owned' ? 'Already allocated.' : selectedAllocation.reason}</small></div>
+    <div><span>${selectedNode.capstone ? 'CAPSTONE' : `TIER ${selectedNode.tier}`} · ${selectedNode.branch.toUpperCase()}</span><strong>${selectedNode.name}</strong><p>${selectedNode.description}</p><small>${selectedStatus === 'owned' ? 'Already allocated.' : selectedAllocation.reason}${selectedRequirement ? ` · ${selectedRequirement} ${defenseWeight} pieces · ${selectedRequirementActive ? 'ACTIVE' : 'INACTIVE'}` : ''}</small></div>
     <button type="button" class="btn btn-primary" id="allocateCombatTreeNode" ${selectedAllocation.allowed ? '' : 'disabled'}>${selectedAllocation.allowed ? 'Allocate 1 point' : selectedStatus === 'owned' ? 'Owned' : selectedAllocation.reason}</button>
   </section>` : '';
   combatTreeContent.innerHTML = `<section class="combat-tree-profile">
     <header><div><span>LIVE BUILD PROFILE</span><strong>${soloDeskStance} · ${soloDeskAura} · ${soloDeskDefensiveAbility}</strong></div>${inactiveReason ? `<em>${inactiveReason}</em>` : ''}</header>
-    <div>${combatTreeProfileMarkup(currentProfile, projectedProfile, SUSTAIN_TREE_SKILLS.has(skillId))}</div>
+    <div>${combatTreeProfileMarkup(currentProfile, projectedProfile, SUSTAIN_TREE_SKILLS.has(skillId), DEFENSE_TREE_SKILLS.has(skillId))}</div>
     ${selectionMarkup}
   </section>${entry.tree.branches.map(branch => {
     const nodes = entry.tree.nodes.filter(node => node.branch === branch.id);
@@ -2137,7 +2239,9 @@ function renderSoloPaperDoll(state) {
     const emptyIcon = ICON_MANIFEST.iconForPaperDollSlot(slot);
     return `<button type="button" class="paper-doll-slot${inspection || food ? ' is-filled' : ''}${inspection && state.lootCache.equipment.activeWeaponSlot === slot ? ' is-active-weapon' : ''}" data-paper-slot="${slot}" ${instance ? `data-paper-item="${instance.instanceId}"` : ''} aria-label="${soloDeskSlotLabel(slot)}: ${inspection?.definition.name || food?.name || 'empty'}"><small>${soloDeskSlotLabel(slot)}</small>${instance ? itemVisualMarkup(instance,state.lootCache,'paper-doll-item') : food ? `<span class="paper-doll-food">${resourceIconMarkup(food.name === 'Cooked Fish' ? 'Cooked Fish' : `${food.name}s`,'paper-doll-food-icon')}<em>${food.name}</em></span>` : `<span class="empty-slot-visual">${iconRefMarkup(emptyIcon,'empty-slot-icon')}<em>Empty</em></span>`}</button>`;
   };
-  soloPaperDoll.innerHTML = groups.map(([group,slots]) => `<section class="paper-doll-group is-${group}"><h4>${group}</h4><div>${slots.map(slotMarkup).join('')}</div></section>`).join('');
+  const counts = soloArmourPieceCounts({ equippedStats: (LOOT_FRAMEWORK?.calculateEquippedStats?.(state.lootCache.equipment, state.lootCache.items) || { armourPieces:[] }) });
+  const breakpointSummary = `<div class="paper-doll-armour-summary"><span><b>LIGHT</b><strong>${counts.light}/6</strong><small>${soloBreakpointLabel(counts.light)}</small></span><span><b>MEDIUM</b><strong>${counts.medium}/6</strong><small>${soloBreakpointLabel(counts.medium)}</small></span><span><b>HEAVY</b><strong>${counts.heavy}/6</strong><small>${soloBreakpointLabel(counts.heavy)}</small></span></div>`;
+  soloPaperDoll.innerHTML = breakpointSummary + groups.map(([group,slots]) => `<section class="paper-doll-group is-${group}"><h4>${group}</h4><div>${slots.map(slotMarkup).join('')}</div></section>`).join('');
   soloPaperDoll.querySelectorAll('[data-paper-slot]').forEach(button => button.addEventListener('click', () => {
     if (button.dataset.paperItem) {
       soloDeskSelectedItemId = button.dataset.paperItem;
@@ -2170,6 +2274,7 @@ function renderSoloDebrief(debrief) {
   soloDebriefSummary.innerHTML = `${bestVisual}<div class="debrief-stat is-good"><small>Victories</small><strong>${debrief.victories}</strong></div><div class="debrief-stat is-danger"><small>Deaths</small><strong>${reportedDeaths}</strong></div><div class="debrief-stat"><small>Combat XP</small><strong>+${Math.round(xpTotal)}</strong></div><div class="debrief-stat"><small>Gold</small><strong>+${Math.floor(debrief.gold || 0)}</strong></div><div class="debrief-stat"><small>Contract</small><strong>+${((debrief.contractProgressMs || 0) / 3_600_000).toFixed(2)}h</strong></div><div class="debrief-stat"><small>Kept drops</small><strong>${debrief.keptDropCount}</strong></div><div class="debrief-stat"><small>Salvage</small><strong>${debrief.filterSalvage + debrief.fullCacheSalvage}</strong></div><div class="debrief-stat"><small>Next order</small><strong>${wall?.fallbackStage ? `Farm ${wall.fallbackStage}` : debrief.finalOrder.toUpperCase()}</strong></div>${wall ? `<div class="debrief-stat"><small>Wall diagnosis</small><strong>${wall.termination === 'timeout' ? 'Timeout' : wall.reason}</strong></div>` : ''}${best ? `<div class="debrief-stat"><small>Best drop</small><strong>${soloDeskInspection(bestInstance)?.definition.name || 'Cached drop'}</strong></div>` : ''}`;
   if (soloSurvivalReportBody) {
     const sustain = debrief.sustain || {};
+    const defense = debrief.defense || {};
     const sources = sustain.healingBySource || {};
     const totalRawHealing = Number(sustain.healing || 0) + Number(sustain.overhealing || 0);
     const passiveRecovery = Number(sources['mend-echo'] || 0)
@@ -2177,6 +2282,7 @@ function renderSoloDebrief(debrief) {
       + Number(sources.regeneration || 0)
       + Number(sources['damage-recovery'] || 0);
     const lowest = Math.max(0, Math.min(1, Number(sustain.minimumHealthRatio ?? 1)));
+    const defenseProcs = Object.values(defense.procCounts || {}).reduce((sum, count) => sum + Number(count || 0), 0);
     soloSurvivalReportBody.innerHTML = `<div class="survival-report-grid">
       <span><small>Effective healing</small><strong>${Math.round(Number(sustain.healing || 0))} HP</strong></span>
       <span><small>Overheal</small><strong>${totalRawHealing ? (Number(sustain.overhealing || 0) / totalRawHealing * 100).toFixed(0) : 0}%</strong></span>
@@ -2188,8 +2294,19 @@ function renderSoloDebrief(debrief) {
       <span><small>Lowest health</small><strong>${Math.round(lowest * 100)}%</strong></span>
       <span><small>Below half</small><strong>${(Number(sustain.timeBelowHalfMs || 0) / 60000).toFixed(1)}m</strong></span>
       <span><small>Emergency triggers</small><strong>${Math.round(Number(sustain.emergencyTriggers || 0))}${Number(sustain.fatalGuards || 0) ? ` · ${Math.round(Number(sustain.fatalGuards))} fatal` : ''}</strong></span>
-    </div><div class="survival-report-actions">${['Support Magic','Reflexes','Healing','Vitality'].map(skillId => `<button type="button" class="btn btn-small btn-quiet" data-sustain-tree="${skillId}">Open ${skillId}</button>`).join('')}</div>`;
+      <span><small>Natural misses</small><strong>${Math.round(Number(defense.naturalMisses || 0))}</strong></span>
+      <span><small>Converted misses</small><strong>${Math.round(Number(defense.convertedMisses || 0))}</strong></span>
+      <span><small>Glances / guard</small><strong>${Math.round(Number(defense.glancingHits || 0))} / ${Math.round(Number(defense.guardPrevented || 0))} HP</strong></span>
+      <span><small>Armour prevention</small><strong>${Math.round(Number(defense.armourPrevented || 0))} HP</strong></span>
+      <span><small>Ward prevention</small><strong>${Math.round(Number(defense.wardPrevented || 0))} HP</strong></span>
+      <span><small>Defense reduction</small><strong>${Math.round(Number(defense.defensePrevented || 0))} HP</strong></span>
+      <span><small>Penetration resisted</small><strong>${(Number(defense.penetrationResisted || 0) * 100).toFixed(1)}%</strong></span>
+      <span><small>Barrier absorption</small><strong>${Math.round(Number(defense.barrierAbsorption || 0))} HP · ${Math.round(Number(defense.barrierBreaks || 0))} breaks</strong></span>
+      <span><small>Retaliation</small><strong>${Math.round(Number(defense.retaliationDamage || 0))} damage</strong></span>
+      <span><small>Defense procs</small><strong>${defenseProcs}</strong></span>
+    </div><div class="survival-report-actions">${[...SUSTAIN_TREE_SKILLS].map(skillId => `<button type="button" class="btn btn-small btn-quiet" data-sustain-tree="${skillId}">Open ${skillId}</button>`).join('')}${[...DEFENSE_TREE_SKILLS].map(skillId => `<button type="button" class="btn btn-small btn-quiet" data-defense-tree="${skillId}">Open ${skillId}</button>`).join('')}</div>`;
     soloSurvivalReportBody.querySelectorAll('[data-sustain-tree]').forEach(button => button.addEventListener('click', () => openCombatSkillTree(button.dataset.sustainTree)));
+    soloSurvivalReportBody.querySelectorAll('[data-defense-tree]').forEach(button => button.addEventListener('click', () => openCombatSkillTree(button.dataset.defenseTree)));
     if (soloSurvivalReport) soloSurvivalReport.hidden = false;
   }
   renderSoloCacheInspector(soloDeskState());
@@ -2247,7 +2364,9 @@ function renderSoloFrontierDesk() {
   const stageDefinition = SOLO_FRONTIER_FRAMEWORK.stage(activeStage);
   const activeInput = soloFrontierCombatInput(activeStage, `${state.seed}:encounter:${state.encounterSequence}:stage:${activeStage}:victory:${state.currentStageVictories}`);
   syncSoloDeskCombatControls(activeInput.activeWeapon.style);
-  const preview = SOLO_FRONTIER_FRAMEWORK.simulateSoloCombat(activeInput);
+  const activeCombatModifiers = soloDeskCombatModifiers(state, activeInput);
+  const preview = SOLO_FRONTIER_FRAMEWORK.simulateSoloCombat({ ...activeInput, combatModifiers:activeCombatModifiers });
+  renderSoloThreatIntel(stageDefinition, activeInput, activeCombatModifiers, preview);
   const elapsed = state.encounterElapsedMs;
   let currentEvent = null;
   let playerHitPoints = preview.derivedStats.maxHitPoints;
@@ -3343,9 +3462,10 @@ function buildArenaCombatBuild(tier, runLoadout) {
   const enemy = arenaEnemyForTier(tier);
   const technique = runLoadout.style === 'magic' ? 'Arc Bolt' : runLoadout.style === 'gun' ? 'Burst Fire' : runLoadout.style === 'ranged' ? 'Piercing Shot' : 'Power Strike';
   const development = soloDeskState().combatDevelopment;
+  const equippedStats = arenaEquippedStats();
   return {
     combatSkills: COMBAT_PROGRESSION_FRAMEWORK.compatibility.progressionLevelMap(combatProgression),
-    equippedStats: arenaEquippedStats(),
+    equippedStats,
     activeWeapon: {
       id: runLoadout.itemId,
       name: runLoadout.name,
@@ -3372,7 +3492,8 @@ function buildArenaCombatBuild(tier, runLoadout) {
       enemyWarded:enemy.ward > 0,
       playerHealthRatio:1,
       enemyHealthRatio:1,
-      baseInterval:runLoadout.attackInterval
+      baseInterval:runLoadout.attackInterval,
+      armourPieceCounts:soloArmourPieceCounts({ equippedStats })
     })
   };
 }

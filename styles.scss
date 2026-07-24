@@ -1584,6 +1584,24 @@ body.reduce-motion .skill-tree-stage,body.reduce-motion .skill-tree-node,body.re
   grid-template-columns:minmax(0,.9fr) minmax(0,1.15fr) minmax(0,1fr);
   gap:10px;
 }
+.solo-threat-intel { display:grid; gap:7px; margin-top:8px; min-width:0; }
+.threat-intel-heading { display:grid; gap:3px; padding:7px; border-left:2px solid var(--cyan); background:rgba(85,217,255,.06); }
+.threat-intel-heading strong { color:var(--text); font:900 11px ui-monospace,monospace; text-transform:uppercase; }
+.threat-intel-heading span { color:var(--muted); font-size:9px; line-height:1.35; }
+.threat-cycle { display:flex; flex-wrap:wrap; gap:4px; }
+.threat-cycle-chip { display:grid; grid-template-columns:auto 1fr; gap:0 4px; min-width:72px; padding:5px; color:var(--text); border:1px solid rgba(255,104,127,.42); background:rgba(255,104,127,.06); font:800 8px ui-monospace,monospace; }
+.threat-cycle-chip b { grid-row:span 2; color:var(--gold); font-size:10px; }
+.threat-cycle-chip small { color:var(--muted); font-size:7px; }
+.threat-intel-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px; }
+.threat-intel-grid span { min-width:0; padding:5px; border:1px solid rgba(74,103,160,.42); background:rgba(3,7,15,.48); }
+.threat-intel-grid small,.threat-intel-grid strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.threat-intel-grid small { color:var(--muted); font:700 7px ui-monospace,monospace; text-transform:uppercase; }
+.threat-intel-grid strong { margin-top:3px; color:var(--text); font:800 9px ui-monospace,monospace; }
+.paper-doll-armour-summary { grid-column:1/-1; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; }
+.paper-doll-armour-summary span { display:grid; gap:2px; min-width:0; padding:6px; border:1px solid rgba(102,230,169,.35); background:rgba(102,230,169,.05); }
+.paper-doll-armour-summary b { color:var(--green); font:800 7px ui-monospace,monospace; }
+.paper-doll-armour-summary strong { color:var(--text); font:900 11px ui-monospace,monospace; }
+.paper-doll-armour-summary small { overflow:hidden; color:var(--muted); font:700 7px ui-monospace,monospace; text-overflow:ellipsis; white-space:nowrap; }
 
 @media(max-width:1050px) {
   #soloCombatSkills .combat-skill-group { grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -1594,4 +1612,6 @@ body.reduce-motion .skill-tree-stage,body.reduce-motion .skill-tree-node,body.re
   #soloCacheList.solo-cache-list { grid-template-columns:repeat(5,minmax(0,1fr)); }
   #soloPaperDoll.solo-paper-doll { grid-template-columns:1fr; padding-inline:8px; }
   #soloPaperDoll .paper-doll-group { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .threat-intel-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .paper-doll-armour-summary { grid-template-columns:repeat(3,minmax(0,1fr)); }
 }
