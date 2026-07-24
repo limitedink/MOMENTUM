@@ -96,6 +96,31 @@ describe('v21.2 Defense modifier platform', () => {
     expect(resolveCombatDefenseProfile(snapshot, { armourPieceCounts: { light: 6, medium: 0, heavy: 0 } }).enemyHitChanceReduction).toBe(0.02);
   });
 
+  it('runs Heavy guard and Evasion conversion capstones deterministically in Solo', () => {
+    const progression = createInitialCombatProgression(100);
+    const allocateNames = (skillId: 'Heavy Armour Proficiency' | 'Evasion', names: readonly string[]) => {
+      let state = createCombatDevelopmentState();
+      const tree = COMBAT_SKILL_TREES[skillId].tree!;
+      for (const name of names) {
+        const node = tree.nodes.find(candidate => candidate.name === name)!;
+        const result = allocateCombatTreeNode(state, progression, skillId, node.id);
+        expect(result.accepted, result.reason).toBe(true);
+        state = result.state;
+      }
+      return resolveCombatModifierSnapshot(state, progression, { armourPieceCounts: { light: 0, medium: 0, heavy: 6 } });
+    };
+    const heavy = allocateNames('Heavy Armour Proficiency', ['Thick Plate', 'Brace for Impact', 'Set Feet', 'Hold Fast', 'Siegeproof']);
+    const heavyResult = simulateSoloCombat(defenseInput(heavy));
+    expect(heavyResult.metrics.defense.guardPrevented).toBeGreaterThan(0);
+    expect(heavyResult.metrics.defense.procCounts).toEqual(expect.objectContaining({}));
+
+    const evasion = allocateNames('Evasion', ['Side Step', 'Predictive Step', 'Pattern Read', 'Untouchable Rhythm']);
+    const evasionResult = simulateSoloCombat(defenseInput(evasion, { equippedStats: { ...defenseInput(emptySnapshot()).equippedStats, armourPieces: [] } }));
+    const replay = simulateSoloCombat(defenseInput(evasion, { equippedStats: { ...defenseInput(emptySnapshot()).equippedStats, armourPieces: [] } }));
+    expect(evasionResult.metrics.defense.convertedMisses).toBeGreaterThan(0);
+    expect(evasionResult.events).toEqual(replay.events);
+  });
+
   it('resolves ordered conversion, glance, guard, adaptation and retaliation deterministically', () => {
     const effects: CombatTreeEffectDefinition[] = [
       { id: 'periodic-avoidance', skillId: 'Evasion', kind: 'defense', defense: 'avoidance', every: 5, charges: 3 },

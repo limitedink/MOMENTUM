@@ -164,9 +164,9 @@ describe('v21 combat development', () => {
       }
     }
 
-    expect(Object.values(COMBAT_SKILL_TREES).filter(entry => entry.status === 'authored')).toHaveLength(14);
+    expect(Object.values(COMBAT_SKILL_TREES).filter(entry => entry.status === 'authored')).toHaveLength(16);
     expect(Object.values(COMBAT_SKILL_TREES).filter(entry => entry.release === 'v21.1')).toHaveLength(4);
-    expect(Object.values(COMBAT_SKILL_TREES).filter(entry => entry.status === 'planned-defense')).toHaveLength(3);
+    expect(Object.values(COMBAT_SKILL_TREES).filter(entry => entry.status === 'planned-defense')).toHaveLength(1);
     expect(new Set(referencedEffectIds).size).toBe(referencedEffectIds.length);
     expect(new Set(Object.keys(COMBAT_TREE_EFFECT_DEFINITIONS))).toEqual(new Set(referencedEffectIds));
   });

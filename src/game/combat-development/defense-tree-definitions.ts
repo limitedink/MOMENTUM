@@ -54,6 +54,8 @@ const trigger = (
     family?: string;
     priority?: number;
     cooldownSeconds?: number;
+    minimum?: number;
+    maximum?: number;
     condition?: CombatEffectCondition;
   } = {}
 ): EffectFactory => (id, skillId) => ({ id, skillId, kind: 'trigger', trigger: event, outcome, value, ...options });
@@ -281,6 +283,99 @@ const mediumBranches: readonly [BranchSpec, BranchSpec, BranchSpec] = [
 
 export const LIGHT_ARMOUR_SKILL_TREE = buildTree('Light Armour Proficiency', 'Light Armour Proficiency', lightBranches, 'light');
 export const MEDIUM_ARMOUR_SKILL_TREE = buildTree('Medium Armour Proficiency', 'Medium Armour Proficiency', mediumBranches, 'medium');
+
+const heavyBranches: readonly [BranchSpec, BranchSpec, BranchSpec] = [
+  {
+    id: 'plate', name: 'Plate', description: 'Turn a complete heavy set into a walking bulwark.', color: '#9aa9c7',
+    root: node('Thick Plate', '+8% matching-piece armour.', stat('armourPct', 0.08)),
+    pathA: [
+      node('Layered Steel', 'Gain another +10% matching-piece armour.', stat('armourPct', 0.10)),
+      node('Citadel Forging', 'Gain another +12% matching-piece armour.', stat('armourPct', 0.12)),
+      node('Walking Fortress', 'Gain another +20% matching-piece armour and take 5% less physical damage after mitigation.', stat('armourPct', 0.20), stat('physicalDamageReductionPct', 0.05))
+    ],
+    pathB: [
+      node('Deflecting Angles', '+10% armour-penetration resistance.', stat('armourPenetrationResistancePct', 0.10)),
+      node('Deep Plate', 'Gain another +20% armour-penetration resistance.', stat('armourPenetrationResistancePct', 0.20)),
+      node('Unbreachable', 'Gain another +20% armour-penetration resistance; Heavy-tagged physical attacks deal 5% less.', stat('armourPenetrationResistancePct', 0.20), stat('physicalDamageReductionPct', 0.05, { enemyAttackTag: 'heavy' }))
+    ]
+  },
+  {
+    id: 'brace', name: 'Brace', description: 'Absorb the impact pattern instead of chasing every hit.', color: '#ffc857',
+    root: node('Brace for Impact', 'The first physical hit each encounter deals 20% less damage.', guard(0.20, { damageType: 'physical', first: 1, family: 'heavy.brace.opening', priority: 1 })),
+    pathA: [
+      node('Set Feet', 'The first two physical hits deal 20% less damage.', guard(0.20, { damageType: 'physical', first: 2, family: 'heavy.brace.opening', priority: 2 })),
+      node('Hold Fast', 'The first three physical hits deal 25% less damage.', guard(0.25, { damageType: 'physical', first: 3, family: 'heavy.brace.opening', priority: 3 })),
+      node('Siegeproof', 'The first three Heavy-tagged hits deal 50% less; other first-three physical hits remain 25% less.', guard(0.25, { damageType: 'physical', first: 3, family: 'heavy.brace.opening', priority: 4 }), guard(0.50, { damageType: 'physical', enemyAttackTag: 'heavy', first: 3, family: 'heavy.brace.heavy', priority: 1 }))
+    ],
+    pathB: [
+      node('Absorb the Rhythm', 'Every sixth physical hit deals 25% less damage.', guard(0.25, { damageType: 'physical', every: 6, family: 'heavy.brace.rhythm', priority: 1 })),
+      node('Immovable Cycle', 'Every fourth physical hit deals 35% less damage.', guard(0.35, { damageType: 'physical', every: 4, family: 'heavy.brace.rhythm', priority: 2 })),
+      node('Iron Rhythm', 'Every third physical hit deals 50% less damage.', guard(0.50, { damageType: 'physical', every: 3, family: 'heavy.brace.rhythm', priority: 3 }))
+    ]
+  },
+  {
+    id: 'reprisal', name: 'Reprisal', description: 'Make armour prevention an invitation to answer back.', color: '#ff687f',
+    root: node('Return Force', 'After physical damage, your next attack deals +8%.', trigger('after-damage', 'damage', 0.08, { family: 'heavy.reprisal.attack', priority: 1 })),
+    pathA: [
+      node('Tempered Anger', 'The next attack bonus becomes +15%.', trigger('after-damage', 'damage', 0.15, { family: 'heavy.reprisal.attack', priority: 2 })),
+      node('Crushing Answer', 'The next technique gains +20% damage.', trigger('after-damage', 'damage', 0.20, { family: 'heavy.reprisal.technique', priority: 1, condition: { isTechnique: true } })),
+      node('Bastion’s Reply', 'After Heavy physical damage, the next technique gains +35% and cannot miss; otherwise it gains +20%, with a five-second cooldown.', trigger('after-damage', 'damage', 0.20, { family: 'heavy.reprisal.technique', priority: 3, cooldownSeconds: 5, condition: { isTechnique: true } }), trigger('after-damage', 'damage', 0.15, { family: 'heavy.reprisal.heavy-technique', priority: 1, cooldownSeconds: 5, condition: { isTechnique: true, enemyAttackTag: 'heavy' } }), trigger('after-damage', 'guarantee-hit', 1, { family: 'heavy.reprisal.heavy-hit', priority: 1, cooldownSeconds: 5, condition: { isTechnique: true, enemyAttackTag: 'heavy' } }))
+    ],
+    pathB: [
+      node('Spiked Plate', 'Reflects 10% of armour-prevented physical damage, capped at 10% of one derived hit.', retaliation(0.10, 0.10, { family: 'heavy.reprisal.retaliation', priority: 1 })),
+      node('Punishing Guard', 'Reflection becomes 15% of prevented damage, capped at 15% of one derived hit.', retaliation(0.15, 0.15, { family: 'heavy.reprisal.retaliation', priority: 2 })),
+      node('Wall of Thorns', 'Reflection becomes 25% of prevented damage, capped at 25% of one derived hit.', retaliation(0.25, 0.25, { family: 'heavy.reprisal.retaliation', priority: 3 }))
+    ]
+  }
+];
+
+const evasionBranches: readonly [BranchSpec, BranchSpec, BranchSpec] = [
+  {
+    id: 'footwork', name: 'Footwork', description: 'Make low-accuracy attacks slide past the Wayfinder.', color: '#55d9ff',
+    root: node('Side Step', '+5 Evasion.', stat('evasionFlat', 5)),
+    pathA: [
+      node('Light on Your Feet', 'Gain another +5 Evasion.', stat('evasionFlat', 5)),
+      node('Hard Target', 'Reduce enemy hit chance by 2 percentage points.', stat('enemyHitChanceReduction', 0.02)),
+      node('Blur', 'Gain another +10 Evasion and reduce enemy hit chance by another 3 percentage points.', stat('evasionFlat', 10), stat('enemyHitChanceReduction', 0.03))
+    ],
+    pathB: [
+      node('Predictive Step', 'Every tenth would-be hit becomes a miss.', avoidance({ every: 10, family: 'evasion.footwork.periodic', priority: 1 })),
+      node('Pattern Read', 'Every eighth would-be hit becomes a miss.', avoidance({ every: 8, family: 'evasion.footwork.periodic', priority: 2 })),
+      node('Untouchable Rhythm', 'Every fifth would-be hit becomes a miss.', avoidance({ every: 5, family: 'evasion.footwork.periodic', priority: 3 }))
+    ]
+  },
+  {
+    id: 'flow', name: 'Flow', description: 'Turn enemy misses into a widening gap and a sharp opening.', color: '#66e6a9',
+    root: node('Evasive Rhythm', 'Consecutive enemy misses grant +1 Evasion per stack, maximum three; a hit clears.', evasionStreak(1, 3, 'clear', { family: 'evasion.flow.streak', priority: 1 })),
+    pathA: [
+      node('Loose Pursuit', 'The streak becomes +2 Evasion per stack.', evasionStreak(2, 3, 'clear', { family: 'evasion.flow.streak', priority: 2 })),
+      node('Widening Gap', 'The streak maximum becomes five.', evasionStreak(2, 5, 'clear', { family: 'evasion.flow.streak', priority: 3 })),
+      node('Out of Reach', 'The streak becomes +3 Evasion per stack, maximum five; a hit removes two stacks.', evasionStreak(3, 5, 'remove-two', { family: 'evasion.flow.streak', priority: 4 }))
+    ],
+    pathB: [
+      node('Open Window', 'After an enemy miss, your next attack deals +10% damage.', trigger('after-enemy-miss', 'damage', 0.10, { family: 'evasion.flow.opening-damage', priority: 1 })),
+      node('Quick Punish', 'That attack is also 10% faster.', trigger('after-enemy-miss', 'attack-speed', 0.10, { family: 'evasion.flow.opening-speed', priority: 1 })),
+      node('Perfect Opening', 'After two consecutive enemy misses, the next technique deals +30% and is a guaranteed critical if it hits; consume two miss-streak stacks.', trigger('after-enemy-miss', 'damage', 0.30, { minimum: 2, family: 'evasion.flow.opening-damage', priority: 2, condition: { isTechnique: true } }), trigger('after-enemy-miss', 'guarantee-critical', 1, { minimum: 2, family: 'evasion.flow.opening-critical', priority: 1, condition: { isTechnique: true } }))
+    ]
+  },
+  {
+    id: 'escape', name: 'Escape', description: 'Keep a reserve of impossible escapes for the danger band.', color: '#a678ff',
+    root: node('Contingency Step', 'The first would-be hit after crossing below 40% HP becomes a miss.', avoidance({ threshold: 0.40, family: 'evasion.escape.emergency', priority: 1, charges: 1 })),
+    pathA: [
+      node('Early Exit', 'The emergency threshold becomes 50% HP.', avoidance({ threshold: 0.50, family: 'evasion.escape.emergency', priority: 2, charges: 1 })),
+      node('Second Route', 'The emergency conversion grants two charges.', avoidance({ threshold: 0.50, family: 'evasion.escape.emergency', priority: 3, charges: 2 })),
+      node('Not Today', 'The threshold becomes 60% HP and grants three conversions.', avoidance({ threshold: 0.60, family: 'evasion.escape.emergency', priority: 4, charges: 3 }))
+    ],
+    pathB: [
+      node('Counter Escape', 'An emergency conversion grants the next attack +15% damage.', trigger('after-enemy-miss', 'damage', 0.15, { family: 'evasion.escape.counter-damage', priority: 1 })),
+      node('Open Road', 'The emergency conversion also readies the technique.', trigger('after-enemy-miss', 'ready-technique', 1, { family: 'evasion.escape.counter-ready', priority: 1 })),
+      node('Vanishing Point', 'The next attack gains +30% damage and a guaranteed critical; the technique is readied.', trigger('after-enemy-miss', 'damage', 0.30, { family: 'evasion.escape.counter-damage', priority: 2 }), trigger('after-enemy-miss', 'guarantee-critical', 1, { family: 'evasion.escape.counter-critical', priority: 1 }), trigger('after-enemy-miss', 'ready-technique', 1, { family: 'evasion.escape.counter-ready', priority: 2 }))
+    ]
+  }
+];
+
+export const HEAVY_ARMOUR_SKILL_TREE = buildTree('Heavy Armour Proficiency', 'Heavy Armour Proficiency', heavyBranches, 'heavy');
+export const EVASION_SKILL_TREE = buildTree('Evasion', 'Evasion', evasionBranches);
 
 export const DEFENSE_TREE_EFFECT_DEFINITIONS: Readonly<Record<string, CombatTreeEffectDefinition>> = Object.freeze(
   Object.fromEntries(effectDefinitions.map(effect => [effect.id, effect]))

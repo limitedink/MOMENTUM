@@ -323,6 +323,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
   let techniqueCount = 0;
   let consecutiveHits = 0;
   let consecutiveMisses = 0;
+  let consecutiveEnemyMisses = 0;
   let reflexTempoStacks = 0;
   let afterMiss = false;
   let afterEnemyMiss = false;
@@ -342,6 +343,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
   let automaticDefensiveSuppressed = false;
   let enemyAttackIndex = 0;
   let previousEnemyDamageType: DamageType | null = null;
+  let previousEnemyAttackTag: EnemyAttackTag = 'standard';
   const evasionStreaks = new Map<string, number>();
   const adaptiveHits = new Map<string, number>();
   let barrierResponseAttackDamagePct = 0;
@@ -495,7 +497,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     if (effect.trigger === 'nth-action') return Boolean(effect.every && actionCount > 0 && actionCount % effect.every === 0);
     if (effect.trigger === 'nth-hit') return Boolean(effect.every && (counters.playerHits + 1) % effect.every === 0);
     if (effect.trigger === 'after-miss') return afterMiss;
-    if (effect.trigger === 'after-enemy-miss') return afterEnemyMiss;
+    if (effect.trigger === 'after-enemy-miss') return afterEnemyMiss && (!effect.minimum || consecutiveEnemyMisses >= effect.minimum);
     if (effect.trigger === 'after-damage') return afterDamage || (chargedAfterDamage && afterDamageCharges > 0);
     if (effect.trigger === 'after-mend') return (triggerCharges.get(effect.id) || 0) > 0;
     if (effect.trigger === 'after-technique') return Boolean(context.isTechnique);
@@ -563,27 +565,26 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     return true;
   };
 
-  const evasionStreakBonus = (context: CombatModifierContext): number => activeDefenseEffects(context)
-    .filter((effect): effect is Extract<DefenseEffect, { defense: 'evasion-streak' }> => effect.defense === 'evasion-streak')
+  const activeEvasionStreakEffects = (context: CombatModifierContext): Extract<DefenseEffect, { defense: 'evasion-streak' }>[] => defenseFamilyWinners(activeDefenseEffects(context)
+    .filter((effect): effect is Extract<DefenseEffect, { defense: 'evasion-streak' }> => effect.defense === 'evasion-streak'));
+
+  const evasionStreakBonus = (context: CombatModifierContext): number => activeEvasionStreakEffects(context)
     .reduce((sum, effect) => sum + Math.min(effect.maxStacks, evasionStreaks.get(effect.id) || 0) * effect.evasionPerStack, 0);
 
   const evasionStreakAttackBonus = (
     context: CombatModifierContext,
     field: 'damageBonusPct' | 'attackSpeedPct'
-  ): number => activeDefenseEffects(context)
-    .filter((effect): effect is Extract<DefenseEffect, { defense: 'evasion-streak' }> => effect.defense === 'evasion-streak')
+  ): number => activeEvasionStreakEffects(context)
     .reduce((sum, effect) => sum + Math.min(effect.maxStacks, evasionStreaks.get(effect.id) || 0) * (effect[field] || 0), 0);
 
   const evasionStreakGuarantee = (
     context: CombatModifierContext,
     field: 'guaranteeHit' | 'guaranteeCritical'
-  ): boolean => activeDefenseEffects(context)
-    .filter((effect): effect is Extract<DefenseEffect, { defense: 'evasion-streak' }> => effect.defense === 'evasion-streak')
+  ): boolean => activeEvasionStreakEffects(context)
     .some(effect => Boolean(effect[field]) && (evasionStreaks.get(effect.id) || 0) > 0);
 
   const updateEvasionStreaks = (context: CombatModifierContext, hit: boolean): void => {
-    activeDefenseEffects(context)
-      .filter((effect): effect is Extract<DefenseEffect, { defense: 'evasion-streak' }> => effect.defense === 'evasion-streak')
+    activeEvasionStreakEffects(context)
       .forEach(effect => {
         const current = evasionStreaks.get(effect.id) || 0;
         if (!hit) {
@@ -1100,8 +1101,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       - (Number(initialModifiers?.attackSpeedPct) || 0);
     nextPlayerIntervalReduction = actionIntervalBonus + tempoSpeed + emergencySpeed + defenseStreakSpeed + conditionalSpeed;
     if (emergencyAttackSpeedCharges > 0) emergencyAttackSpeedCharges -= 1;
-    activeDefenseEffects(modifierContext(action))
-      .filter((effect): effect is Extract<DefenseEffect, { defense: 'evasion-streak' }> => effect.defense === 'evasion-streak')
+    activeEvasionStreakEffects(modifierContext(action))
       .forEach(effect => {
         const current = evasionStreaks.get(effect.id) || 0;
         if (effect.consumeStacks) evasionStreaks.set(effect.id, Math.max(0, current - effect.consumeStacks));
@@ -1175,6 +1175,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       emitSkillUse(atMs, 'Evasion', 1);
       emitSkillUse(atMs, 'Reflexes', 0.5);
       afterEnemyMiss = true;
+      consecutiveEnemyMisses += 1;
       updateEvasionStreaks(attackContext, false);
       const context = modifierContext(undefined, { damageType, enemyAttackTag: attackTag, barrierActive: barrier > 0 });
       const ready = triggered('ready-technique', context, false, true);
@@ -1200,6 +1201,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
         damageType, rawDamage: 0, damage: 0, targetHitPoints: playerHitPoints, attackTag, convertedMiss: true
       });
       afterEnemyMiss = true;
+      consecutiveEnemyMisses += 1;
       const context = modifierContext(undefined, { damageType, enemyAttackTag: attackTag, barrierActive: barrier > 0 });
       const ready = triggered('ready-technique', context, false, true);
       if (ready.length) {
@@ -1210,6 +1212,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       return;
     }
     counters.enemyHits += 1;
+    consecutiveEnemyMisses = 0;
     const damageMultiplier = Number.isFinite(Number(attackStep?.damageMultiplier)) ? Math.max(0, Number(attackStep?.damageMultiplier)) : 1;
     const rawDamage = finiteNonNegative(input.enemy.damage) * damageMultiplier;
     const previousHitPoints = playerHitPoints;
@@ -1259,7 +1262,10 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     const staticDefenseReduction = damageType === 'magical'
       ? 1 - defenseProfile.magicalDamageMultiplier
       : 1 - defenseProfile.physicalDamageMultiplier;
-    const defenseReduction = Math.min(0.20, staticDefenseReduction + adaptiveReduction + barrierResponseReduction);
+    const contextualDefenseReduction = damageType === 'magical'
+      ? statTotal('magicalDamageReductionPct', preDamageContext)
+      : statTotal('physicalDamageReductionPct', preDamageContext);
+    const defenseReduction = Math.min(0.20, staticDefenseReduction + contextualDefenseReduction + adaptiveReduction + barrierResponseReduction);
     if (barrierResponseReduction > 0) barrierResponseMagicalCharges -= 1;
     const postMitigationBeforeSustain = postMitigationBeforeDefense > 0
       ? Math.max(1, Math.round(postMitigationBeforeDefense * (1 - defenseReduction)))
@@ -1321,6 +1327,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
 
     updateEvasionStreaks(preDamageContext, true);
     previousEnemyDamageType = damageType;
+    previousEnemyAttackTag = attackTag;
     const retaliation = activeDefenseEffects(preDamageContext)
       .filter((effect): effect is Extract<DefenseEffect, { defense: 'retaliation' }> =>
         effect.defense === 'retaliation' && effect.source === 'armour-prevented')
@@ -1342,7 +1349,10 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
 
     if (damage > 0) {
       afterDamage = true;
-      const context = modifierContext(effectiveTechnique);
+      const context = modifierContext(effectiveTechnique, {
+        damageType: previousEnemyDamageType || undefined,
+        enemyAttackTag: previousEnemyAttackTag
+      });
       afterDamageCharges = Math.max(
         afterDamageCharges,
         ...activeEffects('trigger', context)

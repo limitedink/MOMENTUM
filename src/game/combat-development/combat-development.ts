@@ -35,6 +35,8 @@ import {
 } from './sustain-tree-definitions';
 import {
   DEFENSE_TREE_EFFECT_DEFINITIONS,
+  EVASION_SKILL_TREE,
+  HEAVY_ARMOUR_SKILL_TREE,
   LIGHT_ARMOUR_SKILL_TREE,
   MEDIUM_ARMOUR_SKILL_TREE
 } from './defense-tree-definitions';
@@ -77,7 +79,9 @@ const SUSTAIN_TREES = Object.freeze({
 
 const DEFENSE_TREES = Object.freeze({
   'Light Armour Proficiency': LIGHT_ARMOUR_SKILL_TREE,
-  'Medium Armour Proficiency': MEDIUM_ARMOUR_SKILL_TREE
+  'Medium Armour Proficiency': MEDIUM_ARMOUR_SKILL_TREE,
+  'Heavy Armour Proficiency': HEAVY_ARMOUR_SKILL_TREE,
+  Evasion: EVASION_SKILL_TREE
 });
 
 const catalogEntries = COMBAT_SKILL_IDS.map((skillId): [CombatSkillId, CombatSkillTreeCatalogEntry] => {
