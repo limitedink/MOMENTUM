@@ -6,6 +6,7 @@ import {
   DEFENSIVE_ABILITY_IDS,
   TECHNIQUE_IDS,
   type ArmourClass,
+  type CombatRecoverySource,
   type DamageType,
   type DerivedSoloPlayerStats,
   type SoloCombatDefeatReason,
@@ -170,7 +171,10 @@ export function deriveSoloPlayerStats(input: SoloCombatInput): DerivedSoloPlayer
     0.98
   );
   return Object.freeze({
-    maxHitPoints: round(100 + 2 * skill(input, 'Vitality') + finiteNonNegative(input.equippedStats.hitPoints)),
+    maxHitPoints: round(
+      (100 + 2 * skill(input, 'Vitality') + finiteNonNegative(input.equippedStats.hitPoints))
+      * (1 + clamp(finiteNonNegative(modifiers?.maxHitPointsPct), 0, 0.40))
+    ),
     damage: round(damage),
     accuracy: round(accuracy),
     evasion: round(evasion),
@@ -259,19 +263,49 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
   const modifierEffects = input.combatModifiers?.effects ?? [];
   const initialModifiers = input.combatModifiers?.static;
   const effectUses = new Map<string, number>();
+  const triggerCharges = new Map<string, number>();
   let actionCount = 0;
   let techniqueCount = 0;
   let consecutiveHits = 0;
   let consecutiveMisses = 0;
+  let reflexTempoStacks = 0;
   let afterMiss = false;
   let afterEnemyMiss = false;
   let afterDamage = false;
   let afterDamageCharges = 0;
+  let lastDefensiveCooldownReductionAt = Number.NEGATIVE_INFINITY;
   let targetMarked = false;
   let armourShredPct = 0;
   let armourShredFlat = 0;
+  let recoveryReserve = 0;
+  let minimumHealthRatio = 1;
+  let belowHalfSince: number | null = null;
+  let defensiveReadyAt = 0;
+  let techniqueReadyAt = 0;
+  let emergencyAttackSpeedCharges = 0;
+  let emergencyAttackSpeedPct = 0;
+  let automaticDefensiveSuppressed = false;
   interface DotTick { effectId: string; dot: 'bleed' | 'burn'; nextAt: number; tickDamage: number; remaining: number; }
+  interface RecoveryTick {
+    effectId: string;
+    source: CombatRecoverySource;
+    nextAt: number;
+    tickHealing: number;
+    remaining: number;
+    alreadyScaled: boolean;
+  }
   const dotTicks: DotTick[] = [];
+  const recoveryTicks: RecoveryTick[] = [];
+  const healingBySource = Object.fromEntries([
+    'mend',
+    'mend-echo',
+    'mend-hot',
+    'regeneration',
+    'damage-recovery',
+    'recovery-reserve',
+    'emergency',
+    'fatal-guard'
+  ].map(source => [source, 0])) as Record<CombatRecoverySource, number>;
   const counters = {
     damageDealt: 0,
     physicalDealt: 0,
@@ -281,6 +315,15 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     barrierAbsorbed: 0,
     healing: 0,
     overhealing: 0,
+    mendCasts: 0,
+    reserveStored: 0,
+    reserveReleased: 0,
+    damageRecovered: 0,
+    sustainPrevented: 0,
+    cooldownRemovedMs: 0,
+    emergencyTriggers: 0,
+    fatalGuards: 0,
+    timeBelowHalfMs: 0,
     barrierGranted: 0,
     playerAttempts: 0,
     playerHits: 0,
@@ -301,12 +344,14 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     skillEvents.push(event);
   };
 
-  const modifierContext = (action?: string): CombatModifierContext => {
+  const modifierContext = (action?: string, overrides: Partial<CombatModifierContext> = {}): CombatModifierContext => {
     const isTechnique = Boolean(action && action !== BASIC_ATTACK);
     return ({
     style: input.activeWeapon.style,
     technique: isTechnique ? action : undefined,
     stance: input.stance,
+    aura: aura || undefined,
+    defensiveAbility: defensiveAbility || undefined,
     boss: input.enemy.kind === 'boss',
     enemyWarded: input.enemy.ward > 0,
     enemyHealthRatio: enemyHitPoints / enemyMaxHitPoints,
@@ -316,7 +361,8 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     burning: dotTicks.some(tick => tick.dot === 'burn' && tick.remaining > 0),
     marked: targetMarked,
     maximumShred: armourShredPct >= 0.20 || armourShredFlat >= 10,
-    isTechnique
+    isTechnique,
+    ...overrides
   });
   };
 
@@ -329,6 +375,22 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
 
   const statTotal = (statId: Extract<CombatTreeEffectDefinition, { kind: 'stat' }>['stat'], context: CombatModifierContext): number =>
     activeEffects('stat', context).filter(effect => effect.stat === statId).reduce((sum, effect) => sum + effect.value, 0);
+
+  const strongestByFamily = (
+    effects: Extract<CombatTreeEffectDefinition, { kind: 'trigger' }>[]
+  ): Extract<CombatTreeEffectDefinition, { kind: 'trigger' }>[] => {
+    const selected = new Map<string, Extract<CombatTreeEffectDefinition, { kind: 'trigger' }>>();
+    const independent: Extract<CombatTreeEffectDefinition, { kind: 'trigger' }>[] = [];
+    effects.forEach(effect => {
+      if (!effect.family) {
+        independent.push(effect);
+        return;
+      }
+      const current = selected.get(effect.family);
+      if (!current || (effect.priority || 0) > (current.priority || 0)) selected.set(effect.family, effect);
+    });
+    return [...independent, ...selected.values()];
+  };
 
   const triggerSatisfied = (
     effect: Extract<CombatTreeEffectDefinition, { kind: 'trigger' }>,
@@ -346,6 +408,8 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     if (effect.trigger === 'after-miss') return afterMiss;
     if (effect.trigger === 'after-enemy-miss') return afterEnemyMiss;
     if (effect.trigger === 'after-damage') return afterDamage || (chargedAfterDamage && afterDamageCharges > 0);
+    if (effect.trigger === 'after-mend') return (triggerCharges.get(effect.id) || 0) > 0;
+    if (effect.trigger === 'after-technique') return Boolean(context.isTechnique);
     if (effect.trigger === 'health-threshold') return Boolean(context.enemyHealthRatio !== undefined && context.enemyHealthRatio < (effect.condition?.enemyHealthBelow ?? 1))
       || Boolean(context.playerHealthRatio !== undefined && context.playerHealthRatio < (effect.condition?.playerHealthBelow ?? 0));
     if (effect.trigger === 'critical-hit' || effect.trigger === 'critical-technique') return critical;
@@ -359,8 +423,8 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     critical = false,
     consume = false
   ): Extract<CombatTreeEffectDefinition, { kind: 'trigger' }>[] => {
-    const matches = activeEffects('trigger', context)
-      .filter(effect => effect.outcome === outcome && triggerSatisfied(effect, context, critical));
+    const matches = strongestByFamily(activeEffects('trigger', context)
+      .filter(effect => effect.outcome === outcome && triggerSatisfied(effect, context, critical)));
     if (consume) matches.forEach(effect => {
       if (effect.trigger === 'after-damage' && effect.limit && effect.limit > 1) return;
       effectUses.set(effect.id, (effectUses.get(effect.id) || 0) + 1);
@@ -370,6 +434,106 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
 
   const specialActive = (specialId: Extract<CombatTreeEffectDefinition, { kind: 'special' }>['special'], context: CombatModifierContext): boolean =>
     activeEffects('special', context).some(effect => effect.special === specialId);
+
+  const recordHealthBand = (atMs: number): void => {
+    const ratio = clamp(playerHitPoints / Math.max(1, derivedStats.maxHitPoints), 0, 1);
+    minimumHealthRatio = Math.min(minimumHealthRatio, ratio);
+    if (ratio < 0.50 && belowHalfSince === null) belowHalfSince = atMs;
+    if (ratio >= 0.50 && belowHalfSince !== null) {
+      counters.timeBelowHalfMs += Math.max(0, atMs - belowHalfSince);
+      belowHalfSince = null;
+    }
+  };
+
+  const applyRecovery = (
+    atMs: number,
+    source: CombatRecoverySource,
+    requestedAmount: number,
+    emitEvent = true,
+    alreadyScaled = false
+  ): { applied: number; overhealing: number } => {
+    const healingBonus = alreadyScaled ? 0 : clamp(statTotal('healingPct', modifierContext()), 0, 0.75);
+    const healing = Math.max(0, requestedAmount) * (1 + healingBonus);
+    const missing = Math.max(0, derivedStats.maxHitPoints - playerHitPoints);
+    const applied = Math.min(missing, healing);
+    const overhealing = Math.max(0, healing - applied);
+    playerHitPoints = round(playerHitPoints + applied);
+    counters.healing += applied;
+    counters.overhealing += overhealing;
+    healingBySource[source] += applied;
+    if (source === 'damage-recovery') counters.damageRecovered += applied;
+    if (source === 'recovery-reserve') counters.reserveReleased += applied;
+    if (emitEvent) {
+      if (source === 'mend') emit(atMs, { type: 'healing', ability: 'Mend', amount: round(applied), overhealing: round(overhealing), playerHitPoints });
+      else emit(atMs, { type: 'recovery', source, amount: round(applied), overhealing: round(overhealing), playerHitPoints });
+    }
+    recordHealthBand(atMs);
+    return { applied, overhealing };
+  };
+
+  const scheduleRecovery = (
+    atMs: number,
+    effectId: string,
+    source: CombatRecoverySource,
+    totalHealing: number,
+    durationSeconds: number,
+    alreadyScaled = false
+  ): void => {
+    const ticks = Math.max(1, Math.round(durationSeconds));
+    if (totalHealing <= 0) return;
+    recoveryTicks.push({
+      effectId,
+      source,
+      nextAt: atMs + 1_000,
+      tickHealing: totalHealing / ticks,
+      remaining: ticks,
+      alreadyScaled
+    });
+  };
+
+  const strongestRecovery = (
+    recoveryId: Extract<CombatTreeEffectDefinition, { kind: 'recovery' }>['recovery'],
+    context: CombatModifierContext
+  ): Extract<CombatTreeEffectDefinition, { kind: 'recovery' }> | undefined =>
+    activeEffects('recovery', context)
+      .filter(effect => effect.recovery === recoveryId)
+      .sort((left, right) => (right.priority || 0) - (left.priority || 0) || right.value - left.value)[0];
+
+  const strongestReserve = (context: CombatModifierContext): Extract<CombatTreeEffectDefinition, { kind: 'reserve' }> | undefined =>
+    activeEffects('reserve', context)
+      .sort((left, right) => (right.priority || 0) - (left.priority || 0) || right.capPctMaxHitPoints - left.capPctMaxHitPoints)[0];
+
+  const strongestEmergency = (
+    predicate: (effect: Extract<CombatTreeEffectDefinition, { kind: 'emergency' }>) => boolean,
+    context: CombatModifierContext
+  ): Extract<CombatTreeEffectDefinition, { kind: 'emergency' }> | undefined =>
+    activeEffects('emergency', context)
+      .filter(effect => predicate(effect) && (effectUses.get(effect.id) || 0) < effect.limit)
+      .sort((left, right) => (right.priority || 0) - (left.priority || 0))[0];
+
+  const armAfterMendTriggers = (context: CombatModifierContext): void => {
+    const chargedOutcomes = new Set(['damage', 'accuracy', 'attack-speed', 'guarantee-hit', 'guarantee-critical']);
+    strongestByFamily(activeEffects('trigger', context)
+      .filter(effect => effect.trigger === 'after-mend' && chargedOutcomes.has(effect.outcome)))
+      .forEach(effect => triggerCharges.set(effect.id, Math.max(1, effect.count || 1)));
+  };
+
+  const consumeAfterMendCharges = (): void => {
+    for (const [effectId, charges] of triggerCharges) {
+      if (charges <= 1) triggerCharges.delete(effectId);
+      else triggerCharges.set(effectId, charges - 1);
+    }
+  };
+
+  const triggerReductionValue = (
+    effect: Extract<CombatTreeEffectDefinition, { kind: 'trigger' }>,
+    overhealing = 0
+  ): number => {
+    if (effect.scale !== 'overheal-pct-max-hit-points') return Math.max(0, effect.value);
+    const ratio = overhealing / Math.max(1, derivedStats.maxHitPoints);
+    const scaled = Math.floor(ratio / 0.10 + 1e-9);
+    return clamp(scaled, effect.minimum || 0, effect.maximum || Number.POSITIVE_INFINITY);
+  };
 
   const intervalScaleFor = (dynamicAttackSpeed: number): number => {
     const staticAttackSpeed = clamp(Number(initialModifiers?.attackSpeedPct) || 0, -0.30, 0.30);
@@ -420,28 +584,92 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
   let auraDamageMultiplier = 1;
   if (aura === 'Battle Focus') {
     const supportScaling = 1 + 0.005 * skill(input, 'Support Magic');
-    const damageBonus = STARTER_ABILITY_TUNING['Battle Focus'].baseDamageBonus * supportScaling;
+    const damageBonus = STARTER_ABILITY_TUNING['Battle Focus'].baseDamageBonus * supportScaling
+      + clamp(statTotal('auraDamageBonus', modifierContext()), 0, 0.10);
     auraDamageMultiplier += damageBonus;
     emit(0, { type: 'aura-activated', ability: aura, damageBonus: round(damageBonus) });
     emitSkillUse(0, 'Support Magic', 1);
   }
 
-  let defensiveReadyAt = 0;
+  const performMend = (
+    atMs: number,
+    multiplier = 1,
+    consumeCooldown = true,
+    treeGenerated = false
+  ): { applied: number; overhealing: number } => {
+    const context = modifierContext(undefined);
+    const healingBonus = clamp(statTotal('healingPct', context), 0, 0.75);
+    const healing = Math.round(
+      STARTER_ABILITY_TUNING.Mend.baseHealing
+      * (1 + 0.006 * skill(input, 'Healing'))
+      * (1 + healingBonus)
+      * Math.max(0, multiplier)
+    );
+    counters.mendCasts += 1;
+    emit(atMs, { type: 'ability-used', actor: 'player', ability: 'Mend', effect: 'heal' });
+    const result = applyRecovery(atMs, treeGenerated ? 'emergency' : 'mend', healing, true, true);
+
+    if (consumeCooldown) {
+      const cooldownReduction = clamp(statTotal('mendCooldownPct', context), 0, 0.40);
+      defensiveReadyAt = atMs + STARTER_ABILITY_TUNING.Mend.cooldownSeconds * 1_000 * (1 - cooldownReduction);
+    }
+
+    if (!treeGenerated) {
+      const mendContext = modifierContext(undefined, { overhealing: result.overhealing > 0 });
+      const reserveEffect = strongestReserve(mendContext);
+      if (reserveEffect && result.overhealing > 0) {
+        const cap = derivedStats.maxHitPoints * Math.min(0.20, reserveEffect.capPctMaxHitPoints);
+        const stored = Math.min(Math.max(0, cap - recoveryReserve), result.overhealing * reserveEffect.conversionPct);
+        recoveryReserve = round(recoveryReserve + stored);
+        counters.reserveStored += stored;
+      }
+
+      const echo = strongestRecovery('mend-echo', mendContext);
+      if (echo && result.applied > 0) {
+        scheduleRecovery(atMs, echo.id, 'mend-echo', result.applied * echo.value, echo.durationSeconds, true);
+      }
+      const hot = strongestRecovery('mend-hot', mendContext);
+      if (hot) {
+        scheduleRecovery(atMs, hot.id, 'mend-hot', derivedStats.maxHitPoints * hot.value, hot.durationSeconds);
+      }
+
+      const immediate = strongestByFamily(activeEffects('trigger', mendContext)
+        .filter(effect => effect.trigger === 'after-mend'));
+      immediate.forEach(effect => {
+        if (effect.limit && (effectUses.get(effect.id) || 0) >= effect.limit) return;
+        if (effect.outcome === 'reduce-technique-cooldown') {
+          const remaining = Math.max(0, techniqueReadyAt - atMs);
+          techniqueReadyAt = atMs + remaining * (1 - clamp(effect.value, 0, 0.40));
+          counters.cooldownRemovedMs += remaining - Math.max(0, techniqueReadyAt - atMs);
+        } else if (effect.outcome === 'ready-technique') {
+          counters.cooldownRemovedMs += Math.max(0, techniqueReadyAt - atMs);
+          techniqueReadyAt = atMs;
+        } else if (effect.outcome === 'reduce-defensive-cooldown' && result.overhealing > 0) {
+          const reductionMs = triggerReductionValue(effect, result.overhealing) * 1_000;
+          const before = defensiveReadyAt;
+          defensiveReadyAt = Math.max(atMs, defensiveReadyAt - reductionMs);
+          counters.cooldownRemovedMs += Math.max(0, before - defensiveReadyAt);
+        } else {
+          return;
+        }
+        if (effect.limit) effectUses.set(effect.id, (effectUses.get(effect.id) || 0) + 1);
+      });
+      armAfterMendTriggers(mendContext);
+      emitSkillUse(atMs, 'Healing', result.applied || 1);
+    }
+    return result;
+  };
+
   const tryDefensiveAbility = (atMs: number): void => {
     if (!defensiveAbility || atMs < defensiveReadyAt) return;
     if (defensiveAbility === 'Mend') {
-      if (playerHitPoints / derivedStats.maxHitPoints > STARTER_ABILITY_TUNING.Mend.useBelowHealthPercent) return;
-      const healing = Math.round(STARTER_ABILITY_TUNING.Mend.baseHealing * (1 + 0.006 * skill(input, 'Healing')));
-      const missing = derivedStats.maxHitPoints - playerHitPoints;
-      const applied = Math.min(missing, healing);
-      const overhealing = healing - applied;
-      playerHitPoints = round(playerHitPoints + applied);
-      counters.healing += applied;
-      counters.overhealing += overhealing;
-      defensiveReadyAt = atMs + STARTER_ABILITY_TUNING.Mend.cooldownSeconds * 1_000;
-      emit(atMs, { type: 'ability-used', actor: 'player', ability: defensiveAbility, effect: 'heal' });
-      emit(atMs, { type: 'healing', ability: defensiveAbility, amount: applied, overhealing, playerHitPoints });
-      emitSkillUse(atMs, 'Healing', applied || 1);
+      const threshold = Math.min(
+        0.85,
+        STARTER_ABILITY_TUNING.Mend.useBelowHealthPercent
+          + clamp(statTotal('mendThresholdBonus', modifierContext()), 0, 0.10)
+      );
+      if (playerHitPoints / derivedStats.maxHitPoints > threshold) return;
+      performMend(atMs);
       return;
     }
     if (barrier > 0) return;
@@ -472,10 +700,10 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     emitSkillUse(atMs, 'Reflexes', 0.25);
   };
 
-  let techniqueReadyAt = 0;
   let nextPlayerIntervalReduction = 0;
   const playerAttack = (atMs: number): void => {
     nextPlayerIntervalReduction = 0;
+    const hadMendCharges = triggerCharges.size > 0;
     const useTechnique = atMs >= techniqueReadyAt;
     const action = useTechnique ? effectiveTechnique : BASIC_ATTACK;
     actionCount += 1;
@@ -486,8 +714,26 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       const baseCooldownIncrease = Math.max(0, statTotal('baseTechniqueCooldownPct', context));
       techniqueReadyAt = atMs + techniqueCooldownMs(effectiveTechnique) * (1 + baseCooldownIncrease) * (1 - cooldownReduction);
       emit(atMs, { type: 'ability-used', actor: 'player', ability: effectiveTechnique, effect: 'attack' });
+      const techniqueTriggers = strongestByFamily(activeEffects('trigger', context)
+        .filter(effect => effect.trigger === 'after-technique'));
+      techniqueTriggers.forEach(effect => {
+        if (effect.limit && (effectUses.get(effect.id) || 0) >= effect.limit) return;
+        if (effect.outcome === 'reduce-defensive-cooldown') {
+          const before = defensiveReadyAt;
+          defensiveReadyAt = Math.max(atMs, defensiveReadyAt - Math.max(0, effect.value) * 1_000);
+          counters.cooldownRemovedMs += Math.max(0, before - defensiveReadyAt);
+        } else if (effect.outcome === 'ready-defensive') {
+          counters.cooldownRemovedMs += Math.max(0, defensiveReadyAt - atMs);
+          defensiveReadyAt = atMs;
+        } else {
+          return;
+        }
+        if (effect.limit) effectUses.set(effect.id, (effectUses.get(effect.id) || 0) + 1);
+      });
     }
     const actionContext = modifierContext(action);
+    const actionIntervalBonus = triggered('attack-speed', actionContext, false, true)
+      .reduce((sum, effect) => sum + effect.value, 0);
     const baseAttacks = action === 'Burst Fire' ? STARTER_ABILITY_TUNING['Burst Fire'].projectileCount : 1;
     const projectileEffects = activeEffects('trigger', actionContext)
       .filter(effect => effect.outcome === 'add-projectile'
@@ -524,9 +770,14 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
         emitWeaponSkillUse(atMs, false);
         consecutiveMisses += 1;
         afterMiss = true;
-        nextPlayerIntervalReduction = triggered('attack-speed', modifierContext(action), false, true)
-          .reduce((sum, effect) => sum + effect.value, 0);
         const streakEffect = activeEffects('streak', context).sort((left, right) => right.maxStacks - left.maxStacks || right.damagePerStack - left.damagePerStack)[0];
+        const tempoEffect = activeEffects('tempo', context)
+          .sort((left, right) => right.attackSpeedPerStack - left.attackSpeedPerStack || right.maxStacks - left.maxStacks)[0];
+        if (tempoEffect) {
+          reflexTempoStacks = tempoEffect.missBehavior === 'remove-one'
+            ? Math.max(0, reflexTempoStacks - 1)
+            : 0;
+        }
         if (specialActive('miss-preserves-streak', context)) {
           // Deliberately retain the shared Strength hit chain.
         } else if (!streakEffect || streakEffect.missBehavior === 'reset' || !streakEffect.missBehavior) consecutiveHits = 0;
@@ -599,6 +850,9 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       emit(atMs, { type: 'attack', actor: 'player', action, hit: true, critical, damageType, rawDamage: round(rawDamage), damage, targetHitPoints: enemyHitPoints });
       emitWeaponSkillUse(atMs, true);
       consecutiveHits += 1;
+      const tempoEffect = activeEffects('tempo', context)
+        .sort((left, right) => right.attackSpeedPerStack - left.attackSpeedPerStack || right.maxStacks - left.maxStacks)[0];
+      if (tempoEffect) reflexTempoStacks = Math.min(tempoEffect.maxStacks, reflexTempoStacks + 1);
       consecutiveMisses = 0;
       if (!targetMarked && activeEffects('mark', context).length) targetMarked = true;
       const shredEffects = activeEffects('shred', context).filter(effect => !effect.techniqueOnly || useTechnique);
@@ -636,13 +890,24 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       afterDamage = false;
       afterDamageCharges = Math.max(0, afterDamageCharges - 1);
     }
+    const tempoEffect = activeEffects('tempo', modifierContext(action))
+      .sort((left, right) => right.attackSpeedPerStack - left.attackSpeedPerStack || right.maxStacks - left.maxStacks)[0];
+    const tempoSpeed = tempoEffect ? reflexTempoStacks * tempoEffect.attackSpeedPerStack : 0;
+    const emergencySpeed = emergencyAttackSpeedCharges > 0 ? emergencyAttackSpeedPct : 0;
+    const conditionalSpeed = statTotal('attackSpeedPct', modifierContext(action))
+      - (Number(initialModifiers?.attackSpeedPct) || 0);
+    nextPlayerIntervalReduction = actionIntervalBonus + tempoSpeed + emergencySpeed + conditionalSpeed;
+    if (emergencyAttackSpeedCharges > 0) emergencyAttackSpeedCharges -= 1;
+    if (hadMendCharges) consumeAfterMendCharges();
   };
 
   const timeoutMs = SOLO_COMBAT_TIMEOUT_SECONDS * 1_000;
   const playerIntervalMs = Math.max(50, Math.round(derivedStats.attackInterval * 1_000));
   const enemyIntervalMs = Math.max(50, Math.round(finiteNonNegative(input.enemy.attackInterval) * 1_000));
+  const regenerationPctPerSecond = clamp(statTotal('regenerationPctPerSecond', modifierContext()), 0, 0.01);
   let nextPlayerAt = 0;
   let nextEnemyAt = enemyIntervalMs;
+  let nextRegenerationAt = regenerationPctPerSecond > 0 ? 1_000 : Number.POSITIVE_INFINITY;
   let durationMs = 0;
   let termination: SoloCombatTermination | null = null;
   const accelerateNextPlayerAttack = (atMs: number, context: CombatModifierContext): void => {
@@ -652,6 +917,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
   };
 
   const enemyAttack = (atMs: number): void => {
+    automaticDefensiveSuppressed = false;
     counters.enemyAttempts += 1;
     const hit = random() < derivedStats.enemyHitChance;
     if (!hit) {
@@ -659,21 +925,41 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       emitSkillUse(atMs, 'Evasion', 1);
       emitSkillUse(atMs, 'Reflexes', 0.5);
       afterEnemyMiss = true;
-      accelerateNextPlayerAttack(atMs, modifierContext());
+      const context = modifierContext();
+      const ready = triggered('ready-technique', context, false, true);
+      if (ready.length) {
+        counters.cooldownRemovedMs += Math.max(0, techniqueReadyAt - atMs);
+        techniqueReadyAt = atMs;
+      }
+      accelerateNextPlayerAttack(atMs, context);
       return;
     }
     counters.enemyHits += 1;
     const rawDamage = finiteNonNegative(input.enemy.damage);
+    const previousHitPoints = playerHitPoints;
+    const previousRatio = previousHitPoints / Math.max(1, derivedStats.maxHitPoints);
+    const preDamageContext = modifierContext(effectiveTechnique);
     const mitigation = input.enemy.damageType === 'magical' ? derivedStats.magicalMitigation : derivedStats.armourMitigation;
-    const postMitigation = rawDamage > 0 ? Math.max(1, Math.round(rawDamage * (1 - mitigation))) : 0;
+    const postMitigationBeforeSustain = rawDamage > 0 ? Math.max(1, Math.round(rawDamage * (1 - mitigation))) : 0;
+    const sustainReduction = clamp(statTotal('damageTakenReductionPct', preDamageContext), 0, 0.15);
+    const postMitigation = postMitigationBeforeSustain > 0
+      ? Math.max(1, Math.round(postMitigationBeforeSustain * (1 - sustainReduction)))
+      : 0;
     const prevented = Math.max(0, rawDamage - postMitigation);
-    counters.preventedByMitigation += prevented;
+    const sustainPrevented = Math.max(0, postMitigationBeforeSustain - postMitigation);
+    counters.preventedByMitigation += Math.max(0, rawDamage - postMitigationBeforeSustain);
+    counters.sustainPrevented += sustainPrevented;
     const absorbed = Math.min(barrier, postMitigation);
     barrier -= absorbed;
     counters.barrierAbsorbed += absorbed;
     const damage = Math.min(playerHitPoints, postMitigation - absorbed);
     playerHitPoints = Math.max(0, round(playerHitPoints - damage));
     counters.damageTaken += damage;
+    const damagedHitPoints = playerHitPoints;
+    recordHealthBand(atMs);
+    emit(atMs, { type: 'attack', actor: 'enemy', action: 'Basic Attack', hit: true, critical: false, damageType: input.enemy.damageType, rawDamage, damage, targetHitPoints: damagedHitPoints });
+    if (absorbed > 0) emit(atMs, { type: 'barrier', ability: 'Arcane Barrier', granted: 0, absorbed, remaining: barrier });
+
     if (damage > 0) {
       afterDamage = true;
       const context = modifierContext(effectiveTechnique);
@@ -686,10 +972,99 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       accelerateNextPlayerAttack(atMs, context);
       const streakEffect = activeEffects('streak', context).sort((left, right) => right.maxStacks - left.maxStacks || right.damagePerStack - left.damagePerStack)[0];
       if (streakEffect?.resetOnDamage) consecutiveHits = 0;
-      if (triggered('ready-technique', context, false, true).length) techniqueReadyAt = atMs;
+      const tempoEffect = activeEffects('tempo', context)
+        .sort((left, right) => right.attackSpeedPerStack - left.attackSpeedPerStack || right.maxStacks - left.maxStacks)[0];
+      if (tempoEffect) reflexTempoStacks = Math.max(0, reflexTempoStacks - tempoEffect.damageRemoves);
+      if (triggered('ready-technique', context, false, true).length) {
+        counters.cooldownRemovedMs += Math.max(0, techniqueReadyAt - atMs);
+        techniqueReadyAt = atMs;
+      }
+
+      const defensiveRecovery = strongestByFamily(activeEffects('trigger', context)
+        .filter(effect => effect.trigger === 'after-damage' && effect.outcome === 'reduce-defensive-cooldown'))[0];
+      if (defensiveRecovery && atMs - lastDefensiveCooldownReductionAt >= 1_000) {
+        const before = defensiveReadyAt;
+        defensiveReadyAt = Math.max(atMs, defensiveReadyAt - Math.max(0, defensiveRecovery.value) * 1_000);
+        counters.cooldownRemovedMs += Math.max(0, before - defensiveReadyAt);
+        lastDefensiveCooldownReductionAt = atMs;
+      }
+
+      const damageRecovery = strongestRecovery('damage-recovery', context);
+      if (damageRecovery) {
+        const cap = derivedStats.maxHitPoints * Math.min(0.10, damageRecovery.capPctMaxHitPoints || 0.10);
+        const pending = recoveryTicks
+          .filter(tick => tick.source === 'damage-recovery')
+          .reduce((sum, tick) => sum + tick.tickHealing * tick.remaining, 0);
+        const recoverable = Math.min(Math.max(0, cap - pending), damage * Math.min(0.20, damageRecovery.value));
+        scheduleRecovery(atMs, damageRecovery.id, 'damage-recovery', recoverable, damageRecovery.durationSeconds);
+      }
+
+      const reserveEffect = strongestReserve(context);
+      if (reserveEffect && recoveryReserve > 0 && playerHitPoints / derivedStats.maxHitPoints <= reserveEffect.releaseBelow) {
+        const reserveBeforeRelease = recoveryReserve;
+        const released = applyRecovery(atMs, 'recovery-reserve', recoveryReserve, true, true);
+        recoveryReserve = reserveEffect.retainUnused
+          ? Math.max(0, reserveBeforeRelease - released.applied)
+          : 0;
+      }
+
+      if (playerHitPoints <= 0) {
+        const fatalGuard = strongestEmergency(effect => Boolean(effect.fatalGuardPctMaxHitPoints), modifierContext());
+        if (fatalGuard) {
+          effectUses.set(fatalGuard.id, (effectUses.get(fatalGuard.id) || 0) + 1);
+          playerHitPoints = 1;
+          applyRecovery(atMs, 'fatal-guard', derivedStats.maxHitPoints * (fatalGuard.fatalGuardPctMaxHitPoints || 0));
+          counters.fatalGuards += 1;
+          counters.emergencyTriggers += 1;
+        }
+      }
+
+      if (playerHitPoints > 0) {
+        const emergencyCandidates = activeEffects('emergency', modifierContext())
+          .filter(effect =>
+            !effect.fatalGuardPctMaxHitPoints
+            && previousRatio > effect.threshold
+            && playerHitPoints / derivedStats.maxHitPoints <= effect.threshold
+            && (effectUses.get(effect.id) || 0) < effect.limit);
+        const emergencyByFamily = new Map<string, Extract<CombatTreeEffectDefinition, { kind: 'emergency' }>>();
+        emergencyCandidates.forEach(effect => {
+          const family = effect.family || effect.id;
+          const current = emergencyByFamily.get(family);
+          if (!current || (effect.priority || 0) > (current.priority || 0)) emergencyByFamily.set(family, effect);
+        });
+        emergencyByFamily.forEach(effect => {
+          effectUses.set(effect.id, (effectUses.get(effect.id) || 0) + 1);
+          counters.emergencyTriggers += 1;
+          if (effect.healPctMaxHitPoints) applyRecovery(atMs, 'emergency', derivedStats.maxHitPoints * effect.healPctMaxHitPoints);
+          if (effect.freeMendMultiplier) {
+            performMend(atMs, effect.freeMendMultiplier, false, true);
+            automaticDefensiveSuppressed = true;
+          }
+          if (effect.readyDefensive) {
+            counters.cooldownRemovedMs += Math.max(0, defensiveReadyAt - atMs);
+            defensiveReadyAt = atMs;
+          }
+          if (effect.attackSpeedPct && effect.attackCount) {
+            emergencyAttackSpeedPct = Math.max(emergencyAttackSpeedPct, effect.attackSpeedPct);
+            emergencyAttackSpeedCharges = Math.max(emergencyAttackSpeedCharges, effect.attackCount);
+          }
+        });
+
+        const thresholdRecovery = activeEffects('trigger', modifierContext())
+          .filter(effect =>
+            effect.trigger === 'health-threshold'
+            && effect.outcome === 'reduce-defensive-cooldown'
+            && previousRatio > (effect.condition?.playerHealthBelow || 0)
+            && playerHitPoints / derivedStats.maxHitPoints <= (effect.condition?.playerHealthBelow || 0)
+            && (!effect.limit || (effectUses.get(effect.id) || 0) < effect.limit));
+        thresholdRecovery.forEach(effect => {
+          const remaining = Math.max(0, defensiveReadyAt - atMs);
+          defensiveReadyAt = atMs + remaining * (1 - clamp(effect.value, 0, 1));
+          counters.cooldownRemovedMs += remaining - Math.max(0, defensiveReadyAt - atMs);
+          effectUses.set(effect.id, (effectUses.get(effect.id) || 0) + 1);
+        });
+      }
     }
-    emit(atMs, { type: 'attack', actor: 'enemy', action: 'Basic Attack', hit: true, critical: false, damageType: input.enemy.damageType, rawDamage, damage, targetHitPoints: playerHitPoints });
-    if (absorbed > 0) emit(atMs, { type: 'barrier', ability: 'Arcane Barrier', granted: 0, absorbed, remaining: barrier });
     if (input.enemy.damageType === 'physical') {
       for (const armourClass of ['light', 'medium', 'heavy'] as const) {
         if (input.equippedStats.armourPieces.some(piece => piece.armourClass === armourClass && piece.armour > 0)) {
@@ -697,20 +1072,34 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
         }
       }
     } else if (prevented > 0) {
-      emitSkillUse(atMs, 'Warding', prevented);
+      emitSkillUse(atMs, 'Warding', Math.max(0, rawDamage - postMitigationBeforeSustain));
     }
     if (damage > 0 && playerHitPoints > 0) emitSkillUse(atMs, 'Vitality', damage);
   };
 
   while (!termination) {
     const nextDotAt = dotTicks.length ? Math.min(...dotTicks.map(tick => tick.nextAt)) : Number.POSITIVE_INFINITY;
-    const nextAt = Math.min(nextPlayerAt, nextEnemyAt, nextDotAt);
+    const nextRecoveryAt = recoveryTicks.length ? Math.min(...recoveryTicks.map(tick => tick.nextAt)) : Number.POSITIVE_INFINITY;
+    const nextAt = Math.min(nextRecoveryAt, nextRegenerationAt, nextDotAt, nextPlayerAt, nextEnemyAt);
     if (nextAt > timeoutMs) {
       durationMs = timeoutMs;
       termination = 'timeout';
       break;
     }
     durationMs = nextAt;
+    if (nextRecoveryAt === nextAt) {
+      const due = recoveryTicks.filter(tick => tick.nextAt === nextAt);
+      due.forEach(tick => {
+        applyRecovery(nextAt, tick.source, tick.tickHealing, true, tick.alreadyScaled);
+        tick.remaining -= 1;
+        tick.nextAt += 1_000;
+        if (tick.remaining <= 0) recoveryTicks.splice(recoveryTicks.indexOf(tick), 1);
+      });
+    }
+    if (nextRegenerationAt === nextAt) {
+      applyRecovery(nextAt, 'regeneration', derivedStats.maxHitPoints * regenerationPctPerSecond);
+      nextRegenerationAt += 1_000;
+    }
     if (nextDotAt === nextAt) {
       const due = dotTicks.filter(tick => tick.nextAt === nextAt);
       due.forEach(tick => {
@@ -740,12 +1129,17 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
         termination = 'player-defeated';
         break;
       }
-      tryDefensiveAbility(nextAt);
+      if (!automaticDefensiveSuppressed) tryDefensiveAbility(nextAt);
     }
     if (nextAt === timeoutMs) {
       termination = 'timeout';
       break;
     }
+  }
+
+  if (belowHalfSince !== null) {
+    counters.timeBelowHalfMs += Math.max(0, durationMs - belowHalfSince);
+    belowHalfSince = null;
   }
 
   const outcome = termination === 'enemy-defeated' ? 'victory' : 'defeat';
@@ -757,7 +1151,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       physicalDealt: round(counters.physicalDealt),
       magicalDealt: round(counters.magicalDealt),
       taken: round(counters.damageTaken),
-      prevented: round(counters.preventedByMitigation + counters.barrierAbsorbed)
+      prevented: round(counters.preventedByMitigation + counters.sustainPrevented + counters.barrierAbsorbed)
     },
     hitRate: {
       playerAttempts: counters.playerAttempts,
@@ -777,7 +1171,20 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       healing: round(counters.healing),
       overhealing: round(counters.overhealing),
       barrierGranted: round(counters.barrierGranted),
-      barrierAbsorbed: round(counters.barrierAbsorbed)
+      barrierAbsorbed: round(counters.barrierAbsorbed),
+      healingBySource: Object.fromEntries(
+        Object.entries(healingBySource).map(([source, amount]) => [source, round(amount)])
+      ) as Record<CombatRecoverySource, number>,
+      mendCasts: counters.mendCasts,
+      reserveStored: round(counters.reserveStored),
+      reserveReleased: round(counters.reserveReleased),
+      damageRecovered: round(counters.damageRecovered),
+      damagePrevented: round(counters.sustainPrevented),
+      cooldownRemovedMs: round(counters.cooldownRemovedMs),
+      emergencyTriggers: counters.emergencyTriggers,
+      fatalGuards: counters.fatalGuards,
+      minimumHealthRatio: round(minimumHealthRatio),
+      timeBelowHalfMs: round(counters.timeBelowHalfMs)
     },
     durationSeconds: round(durationMs / 1_000, 3),
     timeout: termination === 'timeout',

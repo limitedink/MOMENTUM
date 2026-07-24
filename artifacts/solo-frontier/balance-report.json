@@ -511,8 +511,8 @@
         {
           "node": "Snap Recovery",
           "allocatedNodes": 10,
-          "damage": 92.91882407757743,
-          "improvementPct": 10.38756300416197,
+          "damage": 92.93850563432966,
+          "improvementPct": 10.410944693583634,
           "profiles": [
             {
               "profile": "opening-burst",
@@ -536,7 +536,7 @@
             },
             {
               "profile": "elusive-target",
-              "improvementPct": 16.613979627678233
+              "improvementPct": 16.777651453630014
             },
             {
               "profile": "counter-duel",
@@ -547,8 +547,8 @@
         {
           "node": "No Wasted Motion",
           "allocatedNodes": 10,
-          "damage": 92.66606970980425,
-          "improvementPct": 10.08729081524744,
+          "damage": 92.71007678503857,
+          "improvementPct": 10.13957122062581,
           "profiles": [
             {
               "profile": "opening-burst",
@@ -560,11 +560,11 @@
             },
             {
               "profile": "sustained-target",
-              "improvementPct": 11.94209891435467
+              "improvementPct": 12.077294685990303
             },
             {
               "profile": "fortified-boss",
-              "improvementPct": 16.513317191283285
+              "improvementPct": 16.71113267038564
             },
             {
               "profile": "pressure-fight",
@@ -572,7 +572,7 @@
             },
             {
               "profile": "elusive-target",
-              "improvementPct": 18.185671894870726
+              "improvementPct": 18.218623481781382
             },
             {
               "profile": "counter-duel",
@@ -668,7 +668,7 @@
             "Snap Recovery",
             "No Wasted Motion"
           ],
-          "spreadPct": 0.2723867903416219
+          "spreadPct": 0.24608736173927326
         },
         {
           "branch": "Exploitation",
@@ -680,14 +680,14 @@
         }
       ],
       "capstoneSpreadPct": 0.3351813012789882,
-      "allCapstoneSpreadPct": 4.234517565032934
+      "allCapstoneSpreadPct": 4.233620822641761
     },
     {
       "skillId": "Light Melee Weapon Proficiency",
       "allocatedNodes": 10,
       "baselineDamage": 108.22510822510823,
-      "tenPointDamage": 128.33126577405142,
-      "improvementPct": 18.578089575223512,
+      "tenPointDamage": 128.76641771825908,
+      "improvementPct": 18.98016997167138,
       "modifierCaps": {
         "attackSpeedPct": 0.03,
         "techniqueCooldownPct": 0.1,
@@ -842,8 +842,8 @@
         {
           "node": "Perfect Tempo",
           "allocatedNodes": 10,
-          "damage": 147.17564554622967,
-          "improvementPct": 35.99029648471621,
+          "damage": 146.2365926339567,
+          "improvementPct": 35.122611593775964,
           "profiles": [
             {
               "profile": "opening-burst",
@@ -863,7 +863,7 @@
             },
             {
               "profile": "pressure-fight",
-              "improvementPct": 41.11353558105162
+              "improvementPct": 35.0397413444699
             },
             {
               "profile": "elusive-target",
@@ -878,8 +878,8 @@
         {
           "node": "Ghost Riposte",
           "allocatedNodes": 10,
-          "damage": 128.16630158157227,
-          "improvementPct": 18.425662661372776,
+          "damage": 130.53418577113393,
+          "improvementPct": 20.61358765252774,
           "profiles": [
             {
               "profile": "opening-burst",
@@ -891,23 +891,23 @@
             },
             {
               "profile": "sustained-target",
-              "improvementPct": 18.984655566438114
+              "improvementPct": 21.99673626511569
             },
             {
               "profile": "fortified-boss",
-              "improvementPct": 21.754094469499165
+              "improvementPct": 24.423152724295782
             },
             {
               "profile": "pressure-fight",
-              "improvementPct": 14.424755355726004
+              "improvementPct": 15.571485463958567
             },
             {
               "profile": "elusive-target",
-              "improvementPct": 19.33879600246293
+              "improvementPct": 19.812148423388543
             },
             {
               "profile": "counter-duel",
-              "improvementPct": 38.75403922747422
+              "improvementPct": 46.76829268292681
             }
           ]
         }
@@ -935,11 +935,11 @@
             "Perfect Tempo",
             "Ghost Riposte"
           ],
-          "spreadPct": 13.80780819119731
+          "spreadPct": 11.346867579958321
         }
       ],
-      "capstoneSpreadPct": 13.80780819119731,
-      "allCapstoneSpreadPct": 18.556890067405117
+      "capstoneSpreadPct": 11.346867579958321,
+      "allCapstoneSpreadPct": 17.69145555177416
     },
     {
       "skillId": "Medium Melee Weapon Proficiency",
@@ -957,8 +957,8 @@
         {
           "node": "Master-at-Arms",
           "allocatedNodes": 10,
-          "damage": 97.41575069675883,
-          "improvementPct": 20.016204858406894,
+          "damage": 97.93117537360222,
+          "improvementPct": 20.651208060277938,
           "profiles": [
             {
               "profile": "opening-burst",
@@ -970,31 +970,31 @@
             },
             {
               "profile": "sustained-target",
-              "improvementPct": 24.160206718346245
+              "improvementPct": 23.026074182886536
             },
             {
               "profile": "fortified-boss",
-              "improvementPct": 25.03862395715315
+              "improvementPct": 25.972813116114967
             },
             {
               "profile": "pressure-fight",
-              "improvementPct": 32.898062342038735
+              "improvementPct": 36.876355748373115
             },
             {
               "profile": "elusive-target",
-              "improvementPct": 23.689430433550584
+              "improvementPct": 24.07617964752702
             },
             {
               "profile": "counter-duel",
-              "improvementPct": 23.43602144884871
+              "improvementPct": 23.71594461813309
             }
           ]
         },
         {
           "node": "Perfect Balance",
           "allocatedNodes": 10,
-          "damage": 89.32807758142975,
-          "improvementPct": 10.052191580321468,
+          "damage": 90.44731732618267,
+          "improvementPct": 11.431094945857057,
           "profiles": [
             {
               "profile": "opening-burst",
@@ -1006,31 +1006,31 @@
             },
             {
               "profile": "sustained-target",
-              "improvementPct": 12.065878983172219
+              "improvementPct": 12.670986321094313
             },
             {
               "profile": "fortified-boss",
-              "improvementPct": 13.174695298897277
+              "improvementPct": 13.924050632911399
             },
             {
               "profile": "pressure-fight",
-              "improvementPct": 18.275393280248608
+              "improvementPct": 25.497215592680966
             },
             {
               "profile": "elusive-target",
-              "improvementPct": 10.66301016292952
+              "improvementPct": 11.255270840090791
             },
             {
               "profile": "counter-duel",
-              "improvementPct": 11.022044088176353
+              "improvementPct": 11.505821985395691
             }
           ]
         },
         {
           "node": "Reprisal",
           "allocatedNodes": 10,
-          "damage": 91.7186564085768,
-          "improvementPct": 12.997384695366643,
+          "damage": 93.34956260305114,
+          "improvementPct": 15.00666112695901,
           "profiles": [
             {
               "profile": "opening-burst",
@@ -1042,31 +1042,31 @@
             },
             {
               "profile": "sustained-target",
-              "improvementPct": 15.0876332883932
+              "improvementPct": 15.265512100011481
             },
             {
               "profile": "fortified-boss",
-              "improvementPct": 14.995131450827671
+              "improvementPct": 17.067217423957935
             },
             {
               "profile": "pressure-fight",
-              "improvementPct": 23.07059065651369
+              "improvementPct": 29.814271749755594
             },
             {
               "profile": "elusive-target",
-              "improvementPct": 16.885329698415386
+              "improvementPct": 21.3615396850644
             },
             {
               "profile": "counter-duel",
-              "improvementPct": 15.778688524590168
+              "improvementPct": 16.373767681097306
             }
           ]
         },
         {
           "node": "Turn the Tide",
           "allocatedNodes": 10,
-          "damage": 90.44902462626081,
-          "improvementPct": 11.433198339553318,
+          "damage": 91.47775628139176,
+          "improvementPct": 12.700595738674657,
           "profiles": [
             {
               "profile": "opening-burst",
@@ -1078,31 +1078,31 @@
             },
             {
               "profile": "sustained-target",
-              "improvementPct": 12.142389167940571
+              "improvementPct": 12.671420735052097
             },
             {
               "profile": "fortified-boss",
-              "improvementPct": 14.391865467344566
+              "improvementPct": 15.157480314960626
             },
             {
               "profile": "pressure-fight",
-              "improvementPct": 23.34524059676404
+              "improvementPct": 30.094043887147315
             },
             {
               "profile": "elusive-target",
-              "improvementPct": 11.762120990186009
+              "improvementPct": 12.123438648052897
             },
             {
               "profile": "counter-duel",
-              "improvementPct": 13.226452905811637
+              "improvementPct": 13.693467336683419
             }
           ]
         },
         {
           "node": "Relentless Force",
           "allocatedNodes": 10,
-          "damage": 95.54033906393595,
-          "improvementPct": 17.70569772676909,
+          "damage": 96.60850308277769,
+          "improvementPct": 19.02167579798213,
           "profiles": [
             {
               "profile": "opening-burst",
@@ -1114,31 +1114,31 @@
             },
             {
               "profile": "sustained-target",
-              "improvementPct": 21.23039806996385
+              "improvementPct": 21.39147240004833
             },
             {
               "profile": "fortified-boss",
-              "improvementPct": 23.778166478032723
+              "improvementPct": 26.150733434496722
             },
             {
               "profile": "pressure-fight",
-              "improvementPct": 30.279470476990976
+              "improvementPct": 35.17566409597257
             },
             {
               "profile": "elusive-target",
-              "improvementPct": 21.14957129247379
+              "improvementPct": 22.166246851385395
             },
             {
               "profile": "counter-duel",
-              "improvementPct": 16.6111886610115
+              "improvementPct": 17.376524695061015
             }
           ]
         },
         {
           "node": "Earthshaker",
           "allocatedNodes": 10,
-          "damage": 95.89721597387329,
-          "improvementPct": 18.145370079811897,
+          "damage": 97.27403806045064,
+          "improvementPct": 19.8416148904752,
           "profiles": [
             {
               "profile": "opening-burst",
@@ -1150,23 +1150,23 @@
             },
             {
               "profile": "sustained-target",
-              "improvementPct": 20.494746641840656
+              "improvementPct": 20.67128396377196
             },
             {
               "profile": "fortified-boss",
-              "improvementPct": 22.392918913419457
+              "improvementPct": 25.465068210004137
             },
             {
               "profile": "pressure-fight",
-              "improvementPct": 29.052765416401783
+              "improvementPct": 30.304729856047864
             },
             {
               "profile": "elusive-target",
-              "improvementPct": 17.060447990181025
+              "improvementPct": 21.3615396850644
             },
             {
               "profile": "counter-duel",
-              "improvementPct": 19.03738719381178
+              "improvementPct": 22.10935811540955
             }
           ]
         }
@@ -1178,7 +1178,7 @@
             "Master-at-Arms",
             "Perfect Balance"
           ],
-          "spreadPct": 8.661783567252392
+          "spreadPct": 7.945554654528873
         },
         {
           "branch": "Counterforce",
@@ -1186,7 +1186,7 @@
             "Reprisal",
             "Turn the Tide"
           ],
-          "spreadPct": 1.3939155124593081
+          "spreadPct": 2.0254649939813953
         },
         {
           "branch": "Technique",
@@ -1194,11 +1194,11 @@
             "Relentless Force",
             "Earthshaker"
           ],
-          "spreadPct": 0.3728389759959664
+          "spreadPct": 0.6865342013248035
         }
       ],
-      "capstoneSpreadPct": 8.661783567252392,
-      "allCapstoneSpreadPct": 8.465191975001032
+      "capstoneSpreadPct": 7.945554654528873,
+      "allCapstoneSpreadPct": 7.746583177059583
     },
     {
       "skillId": "Heavy Melee Weapon Proficiency",
@@ -2235,6 +2235,620 @@
       ],
       "capstoneSpreadPct": 5.0673787235337695,
       "allCapstoneSpreadPct": 5.369664589213935
+    }
+  ],
+  "sustainTrees": [
+    {
+      "skillId": "Support Magic",
+      "allocatedNodes": 10,
+      "improvementPct": 9.325732530112042,
+      "profiles": [
+        {
+          "profile": "steady-attrition",
+          "improvementPct": 3.350515463917536
+        },
+        {
+          "profile": "heavy-pressure",
+          "improvementPct": 9.21787709497206
+        },
+        {
+          "profile": "rapid-pressure",
+          "improvementPct": 15.408805031446548
+        }
+      ],
+      "representative": {
+        "outcome": "victory",
+        "durationSeconds": 16.368,
+        "healthRemaining": 409,
+        "healing": 92,
+        "damagePrevented": 9,
+        "emergencies": 0
+      },
+      "modifierCaps": {
+        "maxHitPointsMultiplier": 1,
+        "healingMultiplier": 1.2,
+        "mendCooldownMultiplier": 1,
+        "damageTakenMultiplier": 0.97,
+        "regenerationPctPerSecond": 0,
+        "reserveCapPct": 0,
+        "damageRecoveryPct": 0,
+        "fatalGuardPct": 0
+      },
+      "capstones": [
+        {
+          "node": "War Chorus",
+          "allocatedNodes": 10,
+          "improvementPct": 39.801670163568836,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": -0.6684491978609652
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 2.7932960893854775
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 117.28016359918199
+            }
+          ]
+        },
+        {
+          "node": "Overclocked Aura",
+          "allocatedNodes": 10,
+          "improvementPct": 5.4045393891914095,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 1.51898734177216
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 3.1930333817126177
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 11.501597444089452
+            }
+          ]
+        },
+        {
+          "node": "Sanctuary Signal",
+          "allocatedNodes": 10,
+          "improvementPct": 6.667968681696597,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 1.3033939863208222
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 7.540258483654716
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 11.160253575114254
+            }
+          ]
+        },
+        {
+          "node": "Renewal Echo",
+          "allocatedNodes": 10,
+          "improvementPct": 9.147740984526768,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 6.194444444444458
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 8.938547486033531
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 12.310231023102315
+            }
+          ]
+        },
+        {
+          "node": "Perfect Circuit",
+          "allocatedNodes": 10,
+          "improvementPct": 10.016070395276262,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 4.699738903394257
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 13.497822931785187
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 11.850649350649345
+            }
+          ]
+        },
+        {
+          "node": "Battle Hymn",
+          "allocatedNodes": 10,
+          "improvementPct": 38.99395040262825,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 2.005347593582907
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 5.787348586810226
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 109.18915502749162
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "skillId": "Reflexes",
+      "allocatedNodes": 10,
+      "improvementPct": 6.7468968724706535,
+      "profiles": [
+        {
+          "profile": "steady-attrition",
+          "improvementPct": 5.248618784530379
+        },
+        {
+          "profile": "heavy-pressure",
+          "improvementPct": 3.7709497206704023
+        },
+        {
+          "profile": "rapid-pressure",
+          "improvementPct": 11.221122112211223
+        }
+      ],
+      "representative": {
+        "outcome": "victory",
+        "durationSeconds": 15.172,
+        "healthRemaining": 346,
+        "healing": 38,
+        "damagePrevented": 0,
+        "emergencies": 0
+      },
+      "modifierCaps": {
+        "maxHitPointsMultiplier": 1,
+        "healingMultiplier": 1,
+        "mendCooldownMultiplier": 1,
+        "damageTakenMultiplier": 1,
+        "regenerationPctPerSecond": 0,
+        "reserveCapPct": 0,
+        "damageRecoveryPct": 0,
+        "fatalGuardPct": 0
+      },
+      "capstones": [
+        {
+          "node": "Perfect Rhythm",
+          "allocatedNodes": 10,
+          "improvementPct": 5.842018461754139,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 2.3622047244094446
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 7.5418994413407825
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 7.621951219512191
+            }
+          ]
+        },
+        {
+          "node": "Zero Hesitation",
+          "allocatedNodes": 10,
+          "improvementPct": 3.3549783549783476,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 0
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 0
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 10.064935064935042
+            }
+          ]
+        },
+        {
+          "node": "Immediate Answer",
+          "allocatedNodes": 10,
+          "improvementPct": 6.571614920214615,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 2.5495750708215414
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 3.6339165545087537
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 13.531353135313552
+            }
+          ]
+        },
+        {
+          "node": "Perfect Read",
+          "allocatedNodes": 10,
+          "improvementPct": 9.25573790084809,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 4.3596730245231585
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 3.9187227866473107
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 19.4888178913738
+            }
+          ]
+        },
+        {
+          "node": "Redline",
+          "allocatedNodes": 10,
+          "improvementPct": 3.3946047660689573,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 3.7940379403794022
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 0
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 6.38977635782747
+            }
+          ]
+        },
+        {
+          "node": "Adrenal Surge",
+          "allocatedNodes": 10,
+          "improvementPct": 9.498390498390497,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 4.871794871794877
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 7.714285714285718
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 15.909090909090896
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "skillId": "Healing",
+      "allocatedNodes": 10,
+      "improvementPct": 23.341860978375806,
+      "profiles": [
+        {
+          "profile": "steady-attrition",
+          "improvementPct": 14.111702127659553
+        },
+        {
+          "profile": "heavy-pressure",
+          "improvementPct": 14.821229050279339
+        },
+        {
+          "profile": "rapid-pressure",
+          "improvementPct": 41.092651757188506
+        }
+      ],
+      "representative": {
+        "outcome": "victory",
+        "durationSeconds": 17.408,
+        "healthRemaining": 480.12,
+        "healing": 144.12,
+        "damagePrevented": 0,
+        "emergencies": 0
+      },
+      "modifierCaps": {
+        "maxHitPointsMultiplier": 1,
+        "healingMultiplier": 1.33,
+        "mendCooldownMultiplier": 0.85,
+        "damageTakenMultiplier": 1,
+        "regenerationPctPerSecond": 0,
+        "reserveCapPct": 0.05,
+        "damageRecoveryPct": 0,
+        "fatalGuardPct": 0
+      },
+      "capstones": [
+        {
+          "node": "Miracle Work",
+          "allocatedNodes": 10,
+          "improvementPct": 14.819966242974616,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 12.608923884514422
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 13.729569093610694
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 18.121405750798726
+            }
+          ]
+        },
+        {
+          "node": "Renewing Tide",
+          "allocatedNodes": 10,
+          "improvementPct": 23.362951174632784,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 20.813079019073566
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 14.821229050279339
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 34.454545454545446
+            }
+          ]
+        },
+        {
+          "node": "First Responder",
+          "allocatedNodes": 10,
+          "improvementPct": 54.10488118986806,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 14.20921409214091
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 14.260667634252533
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 133.84476184321073
+            }
+          ]
+        },
+        {
+          "node": "Life Support",
+          "allocatedNodes": 10,
+          "improvementPct": 11.778988805932022,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 7.040419947506571
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 4.6692737430167774
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 23.627272727272718
+            }
+          ]
+        },
+        {
+          "node": "Living Reserve",
+          "allocatedNodes": 10,
+          "improvementPct": 8.693265993266001,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 8.368888888888893
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 6.720000000000015
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 10.990909090909096
+            }
+          ]
+        },
+        {
+          "node": "Closed Loop",
+          "allocatedNodes": 10,
+          "improvementPct": 8.322973755178003,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 8.616494845360823
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 4.499596231493941
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 11.852830188679242
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "skillId": "Vitality",
+      "allocatedNodes": 10,
+      "improvementPct": 17.272423846679818,
+      "profiles": [
+        {
+          "profile": "steady-attrition",
+          "improvementPct": 9.830000000000005
+        },
+        {
+          "profile": "heavy-pressure",
+          "improvementPct": 14.487861858811591
+        },
+        {
+          "profile": "rapid-pressure",
+          "improvementPct": 27.49940968122786
+        }
+      ],
+      "representative": {
+        "outcome": "victory",
+        "durationSeconds": 17.408,
+        "healthRemaining": 461.8376,
+        "healing": 125.8376,
+        "damagePrevented": 0,
+        "emergencies": 0
+      },
+      "modifierCaps": {
+        "maxHitPointsMultiplier": 1.1,
+        "healingMultiplier": 1.25,
+        "mendCooldownMultiplier": 1,
+        "damageTakenMultiplier": 1,
+        "regenerationPctPerSecond": 0.003,
+        "reserveCapPct": 0,
+        "damageRecoveryPct": 0.2,
+        "fatalGuardPct": 0
+      },
+      "capstones": [
+        {
+          "node": "Mountain Heart",
+          "allocatedNodes": 10,
+          "improvementPct": 50.09265586210123,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 8.458356940509915
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 11.166203607713033
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 130.65340703808076
+            }
+          ]
+        },
+        {
+          "node": "Life Wellspring",
+          "allocatedNodes": 10,
+          "improvementPct": 14.761904397423827,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 10.24804964539008
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 11.658659217877098
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 22.379004329004303
+            }
+          ]
+        },
+        {
+          "node": "Evergreen",
+          "allocatedNodes": 10,
+          "improvementPct": 61.15023058371569,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 13.216774039608703
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 15.340655154900972
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 154.8932625566374
+            }
+          ]
+        },
+        {
+          "node": "Living Engine",
+          "allocatedNodes": 10,
+          "improvementPct": 17.312168254569027,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 12.531855136733183
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 11.16942610462166
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 28.235223522352236
+            }
+          ]
+        },
+        {
+          "node": "Indomitable",
+          "allocatedNodes": 10,
+          "improvementPct": 12.820979328125595,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 6.443665377176022
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 7.511604875571365
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 24.5076677316294
+            }
+          ]
+        },
+        {
+          "node": "Last Bastion",
+          "allocatedNodes": 10,
+          "improvementPct": 46.43236057805098,
+          "profiles": [
+            {
+              "profile": "steady-attrition",
+              "improvementPct": 3.0375030963586847
+            },
+            {
+              "profile": "heavy-pressure",
+              "improvementPct": 8.2601794431983
+            },
+            {
+              "profile": "rapid-pressure",
+              "improvementPct": 127.99939919459598
+            }
+          ]
+        }
+      ]
     }
   ],
   "route": [

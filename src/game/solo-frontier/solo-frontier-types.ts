@@ -104,6 +104,18 @@ export interface DerivedSoloPlayerStats {
   magicalMitigation: number;
 }
 
+export const COMBAT_RECOVERY_SOURCES = [
+  'mend',
+  'mend-echo',
+  'mend-hot',
+  'regeneration',
+  'damage-recovery',
+  'recovery-reserve',
+  'emergency',
+  'fatal-guard'
+] as const;
+export type CombatRecoverySource = (typeof COMBAT_RECOVERY_SOURCES)[number];
+
 interface SequencedCombatEvent {
   sequence: number;
   atMs: number;
@@ -117,6 +129,7 @@ export type SoloCombatEvent =
   | (SequencedCombatEvent & { type: 'ability-used'; actor: 'player'; ability: TechniqueId | DefensiveAbilityId; effect: 'attack' | 'heal' | 'barrier' })
   | (SequencedCombatEvent & { type: 'attack'; actor: 'player' | 'enemy'; action: string; hit: boolean; critical: boolean; damageType: DamageType; rawDamage: number; damage: number; targetHitPoints: number })
   | (SequencedCombatEvent & { type: 'healing'; ability: 'Mend'; amount: number; overhealing: number; playerHitPoints: number })
+  | (SequencedCombatEvent & { type: 'recovery'; source: CombatRecoverySource; amount: number; overhealing: number; playerHitPoints: number })
   | (SequencedCombatEvent & { type: 'barrier'; ability: 'Arcane Barrier'; granted: number; absorbed: number; remaining: number })
   | TimedCombatSkillUseEvent
   | (SequencedCombatEvent & { type: 'encounter-ended'; outcome: SoloCombatOutcome; termination: SoloCombatTermination; durationMs: number });
@@ -157,6 +170,17 @@ export interface SoloCombatMetrics {
     overhealing: number;
     barrierGranted: number;
     barrierAbsorbed: number;
+    healingBySource: Record<CombatRecoverySource, number>;
+    mendCasts: number;
+    reserveStored: number;
+    reserveReleased: number;
+    damageRecovered: number;
+    damagePrevented: number;
+    cooldownRemovedMs: number;
+    emergencyTriggers: number;
+    fatalGuards: number;
+    minimumHealthRatio: number;
+    timeBelowHalfMs: number;
   };
   durationSeconds: number;
   timeout: boolean;

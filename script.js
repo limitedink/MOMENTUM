@@ -398,12 +398,15 @@ const frontierExchangeSummary = document.getElementById('frontierExchangeSummary
 const soloDebriefPanel = document.getElementById('soloDebriefPanel');
 const soloDebriefOutcome = document.getElementById('soloDebriefOutcome');
 const soloDebriefSummary = document.getElementById('soloDebriefSummary');
+const soloSurvivalReport = document.getElementById('soloSurvivalReport');
+const soloSurvivalReportBody = document.getElementById('soloSurvivalReportBody');
 const soloQaToolbar = document.getElementById('soloQaToolbar');
 const soloQaSeedStage = document.getElementById('soloQaSeedStage');
 const soloQaForceDefeat = document.getElementById('soloQaForceDefeat');
 const soloQaFillCache = document.getElementById('soloQaFillCache');
 const soloQaClearCache = document.getElementById('soloQaClearCache');
 let selectedCombatTreeSkill = null;
+let selectedCombatTreeNodeId = null;
 let selectedExchangeCategory = 'gun';
 
 // Attach confetti to our overlay canvas
@@ -1811,8 +1814,79 @@ function applyFrontierTransaction(result) {
 
 function openCombatSkillTree(skillId) {
   selectedCombatTreeSkill = skillId;
+  selectedCombatTreeNodeId = null;
   renderCombatSkillTree();
   combatTreeModal.style.display = 'flex';
+}
+
+const SUSTAIN_TREE_SKILLS = new Set(['Support Magic','Reflexes','Healing','Vitality']);
+
+function combatTreeModifierContext(input) {
+  return {
+    style:input.activeWeapon.style,
+    technique:input.technique,
+    stance:input.stance,
+    aura:input.aura,
+    defensiveAbility:input.defensiveAbility,
+    boss:input.enemy.kind === 'boss',
+    enemyWarded:input.enemy.ward > 0,
+    enemyHealthRatio:1,
+    playerHealthRatio:1,
+    displayedHitChance:.9,
+    baseInterval:input.activeWeapon.attackInterval
+  };
+}
+
+function combatTreeProfile(state, development) {
+  const stage = Math.max(1, Math.min(30, soloDeskCurrentStage(state)));
+  const input = soloFrontierCombatInput(stage, `${state.seed}:tree-preview`, state);
+  const context = combatTreeModifierContext(input);
+  const snapshot = COMBAT_DEVELOPMENT_FRAMEWORK.resolveModifiers(development, state.combatProgression, context);
+  const sustain = COMBAT_DEVELOPMENT_FRAMEWORK.resolveSustainProfile(snapshot, context);
+  const derived = SOLO_FRONTIER_FRAMEWORK.deriveSoloPlayerStats({ ...input, combatModifiers:snapshot });
+  const healingLevel = Number(state.combatProgression.Healing?.level || 1);
+  const supportLevel = Number(state.combatProgression['Support Magic']?.level || 1);
+  const battleFocusActive = input.aura === 'Battle Focus';
+  const mendActive = input.defensiveAbility === 'Mend';
+  return {
+    maxHitPoints:derived.maxHitPoints,
+    damage:derived.damage,
+    accuracy:derived.accuracy,
+    attackInterval:derived.attackInterval,
+    battleFocusBonus:battleFocusActive ? (.10 * (1 + .005 * supportLevel) + sustain.battleFocusDamageBonus) * 100 : null,
+    mendAmount:mendActive ? 24 * (1 + .006 * healingLevel) * sustain.healingMultiplier : null,
+    mendCooldown:mendActive ? 10 * sustain.mendCooldownMultiplier : null,
+    mendThreshold:mendActive ? sustain.mendTriggerHealthPercent * 100 : null,
+    regeneration:sustain.regenerationPctPerSecond * 100,
+    reserveCap:sustain.recoveryReserveCapPct * 100,
+    damageRecovery:sustain.damageRecoveryPct * 100,
+    fatalGuard:sustain.fatalGuardPct * 100
+  };
+}
+
+function combatTreeProfileMarkup(current, projected, showSustain) {
+  const specs = [
+    ['Max HP','maxHitPoints',value => `${Math.round(value)}`],
+    ['Damage','damage',value => `${Math.round(value)}`],
+    ['Accuracy','accuracy',value => `${Math.round(value)}`],
+    ['Attack interval','attackInterval',value => `${Number(value).toFixed(2)}s`]
+  ];
+  if (showSustain) specs.push(
+    ['Battle Focus','battleFocusBonus',value => value === null ? 'Inactive' : `+${Number(value).toFixed(1)}%`],
+    ['Mend','mendAmount',value => value === null ? 'Inactive' : `${Math.round(value)} HP`],
+    ['Mend cooldown','mendCooldown',value => value === null ? 'Inactive' : `${Number(value).toFixed(1)}s`],
+    ['Mend trigger','mendThreshold',value => value === null ? 'Inactive' : `${Math.round(value)}% HP`],
+    ['Regeneration','regeneration',value => `${Number(value).toFixed(2)}%/s`],
+    ['Reserve cap','reserveCap',value => `${Number(value).toFixed(0)}% HP`],
+    ['Damage recovery','damageRecovery',value => `${Number(value).toFixed(0)}%`],
+    ['Fatal guard','fatalGuard',value => Number(value) > 0 ? `${Number(value).toFixed(0)}% HP` : 'None']
+  );
+  return specs.map(([label,key,format]) => {
+    const before = current[key];
+    const after = projected?.[key];
+    const changed = projected && Math.abs(Number(after) - Number(before)) > .0001;
+    return `<span class="combat-tree-profile-stat${changed ? ' is-projected' : ''}"><small>${label}</small><strong>${format(before)}${changed ? ` → ${format(after)}` : ''}</strong></span>`;
+  }).join('');
 }
 
 function renderCombatSkillTree() {
@@ -1830,27 +1904,74 @@ function renderCombatSkillTree() {
   respecCombatTree.disabled = spent === 0;
   respecCombatTree.textContent = spent ? `Respec · ${COMBAT_DEVELOPMENT_FRAMEWORK.respecCost(spent)} Gold` : 'No points allocated';
   if (!entry.tree) {
-    combatTreeContent.innerHTML = `<section class="combat-tree-roadmap"><div>${iconRefMarkup(ICON_MANIFEST.iconForCombatSkill(skillId),'combat-tree-roadmap-icon')}</div><h3>${skillId}</h3><p>Your ${earned} earned points already exist and will remain unspent.</p><strong>${entry.release === 'v21.1' ? 'Sustain tree authored in v21.1' : 'Defense tree authored in v21.2'}</strong></section>`;
+    combatTreeContent.innerHTML = `<section class="combat-tree-roadmap"><div>${iconRefMarkup(ICON_MANIFEST.iconForCombatSkill(skillId),'combat-tree-roadmap-icon')}</div><h3>${skillId}</h3><p>Your ${earned} earned points already exist and will remain unspent.</p><strong>Defense tree arrives in ${entry.release}</strong></section>`;
     return;
   }
-  combatTreeContent.innerHTML = entry.tree.branches.map(branch => {
+
+  if (!selectedCombatTreeNodeId || !entry.tree.nodes.some(node => node.id === selectedCombatTreeNodeId)) {
+    selectedCombatTreeNodeId = entry.tree.nodes.find(node => SKILL_TREE_RULES.nodeState(entry.tree, treeState, node.id) === 'available')?.id
+      || entry.tree.nodes[0]?.id
+      || null;
+  }
+  const selectedNode = entry.tree.nodes.find(node => node.id === selectedCombatTreeNodeId) || null;
+  const selectedStatus = selectedNode ? SKILL_TREE_RULES.nodeState(entry.tree, treeState, selectedNode.id) : 'locked';
+  const selectedAllocation = selectedNode
+    ? SKILL_TREE_RULES.canAllocate(entry.tree, treeState, selectedNode.id, available)
+    : { allowed:false, reason:'Select a node' };
+  const projectedAllocation = selectedNode && selectedAllocation.allowed
+    ? COMBAT_DEVELOPMENT_FRAMEWORK.allocateNode(state.combatDevelopment, state.combatProgression, skillId, selectedNode.id)
+    : null;
+  const currentProfile = combatTreeProfile(state, state.combatDevelopment);
+  const projectedProfile = projectedAllocation?.accepted ? combatTreeProfile(state, projectedAllocation.state) : null;
+  const inactiveReason = skillId === 'Support Magic' && soloDeskAura !== 'Battle Focus'
+    ? 'Support effects are inactive until Battle Focus is selected.'
+    : skillId === 'Healing' && soloDeskDefensiveAbility !== 'Mend'
+      ? 'Healing effects are inactive until Mend is selected.'
+      : '';
+  const selectionMarkup = selectedNode ? `<section class="combat-tree-selection">
+    <div><span>${selectedNode.capstone ? 'CAPSTONE' : `TIER ${selectedNode.tier}`} · ${selectedNode.branch.toUpperCase()}</span><strong>${selectedNode.name}</strong><p>${selectedNode.description}</p><small>${selectedStatus === 'owned' ? 'Already allocated.' : selectedAllocation.reason}</small></div>
+    <button type="button" class="btn btn-primary" id="allocateCombatTreeNode" ${selectedAllocation.allowed ? '' : 'disabled'}>${selectedAllocation.allowed ? 'Allocate 1 point' : selectedStatus === 'owned' ? 'Owned' : selectedAllocation.reason}</button>
+  </section>` : '';
+  combatTreeContent.innerHTML = `<section class="combat-tree-profile">
+    <header><div><span>LIVE BUILD PROFILE</span><strong>${soloDeskStance} · ${soloDeskAura} · ${soloDeskDefensiveAbility}</strong></div>${inactiveReason ? `<em>${inactiveReason}</em>` : ''}</header>
+    <div>${combatTreeProfileMarkup(currentProfile, projectedProfile, SUSTAIN_TREE_SKILLS.has(skillId))}</div>
+    ${selectionMarkup}
+  </section>${entry.tree.branches.map(branch => {
     const nodes = entry.tree.nodes.filter(node => node.branch === branch.id);
     return `<section class="combat-tree-branch" style="--branch-color:${branch.color}"><header><span>${branch.name}</span><small>${branch.description}</small></header>${nodes.map(node => {
       const status = SKILL_TREE_RULES.nodeState(entry.tree, treeState, node.id);
       const allocation = SKILL_TREE_RULES.canAllocate(entry.tree, treeState, node.id, available);
-      return `<button type="button" class="combat-tree-node is-${status}${node.capstone ? ' is-capstone' : ''}" data-combat-tree-node="${node.id}" ${status === 'available' && allocation.allowed ? '' : 'disabled'}><span class="combat-tree-node-icon">${node.capstone ? '★' : '◆'}</span><span><strong>${node.name}</strong><small>${node.description}</small><em>${status === 'owned' ? 'OWNED' : allocation.reason}</em></span></button>`;
+      const selected = node.id === selectedCombatTreeNodeId;
+      return `<button type="button" class="combat-tree-node is-${status}${node.capstone ? ' is-capstone' : ''}${selected ? ' is-selected' : ''}" data-combat-tree-node="${node.id}" aria-pressed="${selected}"><span class="combat-tree-node-icon">${node.capstone ? '★' : '◆'}</span><span><strong>${node.name}</strong><small>${node.description}</small><em>${status === 'owned' ? 'OWNED' : allocation.reason}</em></span></button>`;
     }).join('')}</section>`;
-  }).join('');
-  combatTreeContent.querySelectorAll('[data-combat-tree-node]').forEach(button => button.addEventListener('click', () => {
+  }).join('')}`;
+  const treeNodeButtons = [...combatTreeContent.querySelectorAll('[data-combat-tree-node]')];
+  treeNodeButtons.forEach((button, index) => {
+    button.addEventListener('click', () => {
+      selectedCombatTreeNodeId = button.dataset.combatTreeNode;
+      renderCombatSkillTree();
+    });
+    button.addEventListener('keydown', event => {
+      if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) return;
+      event.preventDefault();
+      const delta = event.key === 'ArrowLeft' ? -7 : event.key === 'ArrowRight' ? 7 : event.key === 'ArrowUp' ? -1 : 1;
+      const next = treeNodeButtons[Math.max(0, Math.min(treeNodeButtons.length - 1, index + delta))];
+      if (!next || next === button) return;
+      selectedCombatTreeNodeId = next.dataset.combatTreeNode;
+      renderCombatSkillTree();
+      queueMicrotask(() => combatTreeContent.querySelector('[aria-pressed="true"]')?.focus());
+    });
+  });
+  combatTreeContent.querySelector('#allocateCombatTreeNode')?.addEventListener('click', () => {
     const current = soloDeskState();
-    const result = COMBAT_DEVELOPMENT_FRAMEWORK.allocateNode(current.combatDevelopment, current.combatProgression, skillId, button.dataset.combatTreeNode);
+    const result = COMBAT_DEVELOPMENT_FRAMEWORK.allocateNode(current.combatDevelopment, current.combatProgression, skillId, selectedCombatTreeNodeId);
     if (!result.accepted) { showToast(result.reason); return; }
     soloFrontierRuntime.hydrate({ ...current, combatDevelopment:result.state });
     syncSoloFrontierProjection();
     saveGame();
     renderCombatSkillTree();
     renderSoloCombatSkills(soloDeskState());
-  }));
+  });
 }
 
 function dailyOfferLabel(offer) {
@@ -2034,6 +2155,30 @@ function renderSoloDebrief(debrief) {
   const bestVisual = bestInstance ? itemVisualMarkup(bestInstance, soloDeskState().lootCache, 'debrief-item-visual') : '';
   const xpTotal = Object.values(debrief.skillXp || {}).reduce((sum, amount) => sum + Number(amount || 0), 0);
   soloDebriefSummary.innerHTML = `${bestVisual}<div class="debrief-stat is-good"><small>Victories</small><strong>${debrief.victories}</strong></div><div class="debrief-stat is-danger"><small>Deaths</small><strong>${reportedDeaths}</strong></div><div class="debrief-stat"><small>Combat XP</small><strong>+${Math.round(xpTotal)}</strong></div><div class="debrief-stat"><small>Gold</small><strong>+${Math.floor(debrief.gold || 0)}</strong></div><div class="debrief-stat"><small>Contract</small><strong>+${((debrief.contractProgressMs || 0) / 3_600_000).toFixed(2)}h</strong></div><div class="debrief-stat"><small>Kept drops</small><strong>${debrief.keptDropCount}</strong></div><div class="debrief-stat"><small>Salvage</small><strong>${debrief.filterSalvage + debrief.fullCacheSalvage}</strong></div><div class="debrief-stat"><small>Next order</small><strong>${wall?.fallbackStage ? `Farm ${wall.fallbackStage}` : debrief.finalOrder.toUpperCase()}</strong></div>${wall ? `<div class="debrief-stat"><small>Wall diagnosis</small><strong>${wall.termination === 'timeout' ? 'Timeout' : wall.reason}</strong></div>` : ''}${best ? `<div class="debrief-stat"><small>Best drop</small><strong>${soloDeskInspection(bestInstance)?.definition.name || 'Cached drop'}</strong></div>` : ''}`;
+  if (soloSurvivalReportBody) {
+    const sustain = debrief.sustain || {};
+    const sources = sustain.healingBySource || {};
+    const totalRawHealing = Number(sustain.healing || 0) + Number(sustain.overhealing || 0);
+    const passiveRecovery = Number(sources['mend-echo'] || 0)
+      + Number(sources['mend-hot'] || 0)
+      + Number(sources.regeneration || 0)
+      + Number(sources['damage-recovery'] || 0);
+    const lowest = Math.max(0, Math.min(1, Number(sustain.minimumHealthRatio ?? 1)));
+    soloSurvivalReportBody.innerHTML = `<div class="survival-report-grid">
+      <span><small>Effective healing</small><strong>${Math.round(Number(sustain.healing || 0))} HP</strong></span>
+      <span><small>Overheal</small><strong>${totalRawHealing ? (Number(sustain.overhealing || 0) / totalRawHealing * 100).toFixed(0) : 0}%</strong></span>
+      <span><small>Mend casts</small><strong>${Math.round(Number(sustain.mendCasts || 0))}</strong></span>
+      <span><small>Passive recovery</small><strong>${Math.round(passiveRecovery)} HP</strong></span>
+      <span><small>Reserve</small><strong>${Math.round(Number(sustain.reserveReleased || 0))} / ${Math.round(Number(sustain.reserveStored || 0))} HP</strong></span>
+      <span><small>Sustain prevention</small><strong>${Math.round(Number(sustain.damagePrevented || 0))} HP</strong></span>
+      <span><small>Cooldown removed</small><strong>${(Number(sustain.cooldownRemovedMs || 0) / 1000).toFixed(1)}s</strong></span>
+      <span><small>Lowest health</small><strong>${Math.round(lowest * 100)}%</strong></span>
+      <span><small>Below half</small><strong>${(Number(sustain.timeBelowHalfMs || 0) / 60000).toFixed(1)}m</strong></span>
+      <span><small>Emergency triggers</small><strong>${Math.round(Number(sustain.emergencyTriggers || 0))}${Number(sustain.fatalGuards || 0) ? ` · ${Math.round(Number(sustain.fatalGuards))} fatal` : ''}</strong></span>
+    </div><div class="survival-report-actions">${['Support Magic','Reflexes','Healing','Vitality'].map(skillId => `<button type="button" class="btn btn-small btn-quiet" data-sustain-tree="${skillId}">Open ${skillId}</button>`).join('')}</div>`;
+    soloSurvivalReportBody.querySelectorAll('[data-sustain-tree]').forEach(button => button.addEventListener('click', () => openCombatSkillTree(button.dataset.sustainTree)));
+    if (soloSurvivalReport) soloSurvivalReport.hidden = false;
+  }
   renderSoloCacheInspector(soloDeskState());
 }
 
@@ -2102,7 +2247,7 @@ function renderSoloFrontierDesk() {
       if (event.actor === 'player') enemyHitPoints = event.targetHitPoints;
       else playerHitPoints = event.targetHitPoints;
     }
-    if (event.type === 'healing') playerHitPoints = event.playerHitPoints;
+    if (event.type === 'healing' || event.type === 'recovery') playerHitPoints = event.playerHitPoints;
   }
   if (!currentEvent) currentEvent = preview.events.find(event => event.type === 'encounter-started') || null;
   const outcomeActive = soloDeskLastOutcome && performance.now() - soloDeskOutcomeAt < 4_200;
@@ -2112,6 +2257,7 @@ function renderSoloFrontierDesk() {
   const lastAction = currentEvent?.type === 'attack'
     ? `${currentEvent.actor === 'player' ? activeInput.activeWeapon.name : shownEnemy.name} ${currentEvent.hit ? 'HIT' : 'MISS'}${currentEvent.hit ? ` · ${Math.round(currentEvent.damage)} damage` : ''}`
     : currentEvent?.type === 'healing' ? `MEND · +${currentEvent.amount} HP`
+      : currentEvent?.type === 'recovery' ? `${String(currentEvent.source).replaceAll('-',' ').toUpperCase()} · +${currentEvent.amount} HP`
       : currentEvent?.type === 'barrier' ? `ARCANE BARRIER · ${currentEvent.granted} WARD`
         : currentEvent?.type === 'aura-activated' ? 'BATTLE FOCUS · AURA ACTIVE'
           : currentEvent?.type === 'encounter-started' ? 'CONTACT ACQUIRED'
@@ -2119,7 +2265,7 @@ function renderSoloFrontierDesk() {
   const effects = [];
   if (currentEvent?.type === 'aura-activated') effects.push('aura');
   if (currentEvent?.type === 'barrier') effects.push('barrier');
-  if (currentEvent?.type === 'healing') effects.push('heal');
+  if (currentEvent?.type === 'healing' || currentEvent?.type === 'recovery') effects.push('heal');
   if (currentEvent?.type === 'attack' && currentEvent.hit) effects.push(currentEvent.actor === 'player' ? 'hit' : 'defeat');
   if (outcomeActive) effects.push(soloDeskLastOutcome.outcome === 'victory' ? 'victory' : 'defeat');
   const stageVictories = Number(state.stageVictories[String(activeStage)] || 0);
@@ -3206,6 +3352,8 @@ function buildArenaCombatBuild(tier, runLoadout) {
       style:runLoadout.style,
       technique,
       stance:soloDeskStance,
+      aura:soloDeskAura,
+      defensiveAbility:soloDeskDefensiveAbility,
       boss:true,
       enemyWarded:enemy.ward > 0,
       playerHealthRatio:1,

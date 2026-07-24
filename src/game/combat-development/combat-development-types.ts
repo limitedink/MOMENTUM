@@ -1,6 +1,12 @@
 import type { CombatProgressionState, CombatSkillId } from '../combat-progression';
 import type { SkillTreeDefinition, SkillTreeState } from '../skills/skill-types';
-import type { SoloCombatStance, TechniqueId, WeaponStyle } from '../solo-frontier/solo-frontier-types';
+import type {
+  AuraId,
+  DefensiveAbilityId,
+  SoloCombatStance,
+  TechniqueId,
+  WeaponStyle
+} from '../solo-frontier/solo-frontier-types';
 
 export const OFFENSE_COMBAT_SKILL_IDS = [
   'Strength',
@@ -21,7 +27,7 @@ export const DEFENSE_COMBAT_SKILL_IDS = [
   'Light Armour Proficiency', 'Medium Armour Proficiency', 'Heavy Armour Proficiency', 'Evasion', 'Warding'
 ] as const satisfies readonly CombatSkillId[];
 
-export type CombatSkillTreeStatus = 'authored' | 'planned-sustain' | 'planned-defense';
+export type CombatSkillTreeStatus = 'authored' | 'planned-defense';
 
 export interface CombatSkillTreeCatalogEntry {
   skillId: CombatSkillId;
@@ -52,6 +58,8 @@ export interface CombatEffectCondition {
   styles?: readonly WeaponStyle[];
   technique?: TechniqueId;
   stance?: SoloCombatStance;
+  aura?: AuraId;
+  defensiveAbility?: DefensiveAbilityId;
   boss?: boolean;
   enemyWarded?: boolean;
   enemyHealthBelow?: number;
@@ -64,6 +72,7 @@ export interface CombatEffectCondition {
   marked?: boolean;
   maximumShred?: boolean;
   bossOrWarded?: boolean;
+  overhealing?: boolean;
 }
 
 export type CombatModifierStat =
@@ -84,7 +93,14 @@ export type CombatModifierStat =
   | 'criticalArmourPenetration'
   | 'criticalWardPenetration'
   | 'techniqueHitChanceBonus'
-  | 'baseTechniqueCooldownPct';
+  | 'baseTechniqueCooldownPct'
+  | 'maxHitPointsPct'
+  | 'healingPct'
+  | 'mendCooldownPct'
+  | 'mendThresholdBonus'
+  | 'auraDamageBonus'
+  | 'damageTakenReductionPct'
+  | 'regenerationPctPerSecond';
 
 export type CombatTrigger =
   | 'first-hit'
@@ -98,7 +114,9 @@ export type CombatTrigger =
   | 'critical-hit'
   | 'critical-technique'
   | 'technique'
-  | 'maximum-shred';
+  | 'maximum-shred'
+  | 'after-mend'
+  | 'after-technique';
 
 export type CombatTriggeredOutcome =
   | 'damage'
@@ -108,7 +126,9 @@ export type CombatTriggeredOutcome =
   | 'guarantee-hit'
   | 'guarantee-critical'
   | 'ready-technique'
+  | 'ready-defensive'
   | 'reduce-technique-cooldown'
+  | 'reduce-defensive-cooldown'
   | 'add-projectile'
   | 'consume-dot';
 
@@ -147,6 +167,11 @@ export type CombatTreeEffectDefinition =
     every?: number;
     limit?: number;
     count?: number;
+    family?: string;
+    priority?: number;
+    scale?: 'overheal-pct-max-hit-points';
+    minimum?: number;
+    maximum?: number;
     condition?: CombatEffectCondition;
   }
   | {
@@ -194,10 +219,71 @@ export type CombatTreeEffectDefinition =
     special: CombatSpecialEffect;
     value: number;
     condition?: CombatEffectCondition;
+  }
+  | {
+    id: string;
+    skillId: CombatSkillId;
+    kind: 'tempo';
+    attackSpeedPerStack: number;
+    maxStacks: number;
+    missBehavior: 'reset' | 'remove-one';
+    damageRemoves: number;
+    condition?: CombatEffectCondition;
+  }
+  | {
+    id: string;
+    skillId: CombatSkillId;
+    kind: 'recovery';
+    recovery: 'mend-echo' | 'mend-hot' | 'damage-recovery';
+    value: number;
+    durationSeconds: number;
+    capPctMaxHitPoints?: number;
+    priority?: number;
+    condition?: CombatEffectCondition;
+  }
+  | {
+    id: string;
+    skillId: CombatSkillId;
+    kind: 'reserve';
+    conversionPct: number;
+    capPctMaxHitPoints: number;
+    releaseBelow: number;
+    retainUnused?: boolean;
+    priority?: number;
+    condition?: CombatEffectCondition;
+  }
+  | {
+    id: string;
+    skillId: CombatSkillId;
+    kind: 'emergency';
+    threshold: number;
+    healPctMaxHitPoints?: number;
+    freeMendMultiplier?: number;
+    fatalGuardPctMaxHitPoints?: number;
+    readyDefensive?: boolean;
+    attackSpeedPct?: number;
+    attackCount?: number;
+    limit: number;
+    family?: string;
+    priority?: number;
+    condition?: CombatEffectCondition;
   };
 
 export interface CombatModifierSnapshot {
   effectIds: readonly string[];
   effects: readonly CombatTreeEffectDefinition[];
   static: Readonly<Record<CombatModifierStat, number>>;
+}
+
+export interface CombatSustainProfile {
+  maxHitPointsMultiplier: number;
+  healingMultiplier: number;
+  mendCooldownMultiplier: number;
+  mendTriggerHealthPercent: number;
+  battleFocusDamageBonus: number;
+  damageTakenMultiplier: number;
+  regenerationPctPerSecond: number;
+  recoveryReserveCapPct: number;
+  damageRecoveryPct: number;
+  fatalGuardPct: number;
 }

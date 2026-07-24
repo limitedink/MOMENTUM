@@ -69,6 +69,24 @@ describe('Solo Frontier deterministic acceptance harness', () => {
       expect(tree.modifierCaps.criticalChance).toBeLessThanOrEqual(0.60);
       expect(tree.modifierCaps.penetration).toBeLessThanOrEqual(60);
     });
+
+    expect(audit.sustainTrees).toHaveLength(4);
+    audit.sustainTrees.forEach(tree => {
+      expect(tree.allocatedNodes).toBe(10);
+      expect(tree.improvementPct).toBeGreaterThanOrEqual(5);
+      expect(tree.improvementPct).toBeLessThanOrEqual(30);
+      expect(tree.capstones).toHaveLength(6);
+      expect(tree.capstones.every(capstone => capstone.allocatedNodes === 10)).toBe(true);
+      expect(tree.capstones.every(capstone => capstone.improvementPct > 0)).toBe(true);
+      expect(tree.modifierCaps.maxHitPointsMultiplier).toBeLessThanOrEqual(1.40);
+      expect(tree.modifierCaps.healingMultiplier).toBeLessThanOrEqual(1.75);
+      expect(tree.modifierCaps.mendCooldownMultiplier).toBeGreaterThanOrEqual(0.60);
+      expect(tree.modifierCaps.damageTakenMultiplier).toBeGreaterThanOrEqual(0.85);
+      expect(tree.modifierCaps.regenerationPctPerSecond).toBeLessThanOrEqual(0.01);
+      expect(tree.modifierCaps.reserveCapPct).toBeLessThanOrEqual(0.20);
+      expect(tree.modifierCaps.damageRecoveryPct).toBeLessThanOrEqual(0.20);
+      expect(tree.modifierCaps.fatalGuardPct).toBeLessThanOrEqual(0.15);
+    });
   });
 });
 

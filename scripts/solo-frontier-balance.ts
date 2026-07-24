@@ -3,15 +3,18 @@ import { createInitialCombatProgression } from '../src/game/combat-progression';
 import {
   COMBAT_SKILL_TREES,
   OFFENSE_COMBAT_SKILL_IDS,
+  SUSTAIN_COMBAT_SKILL_IDS,
   allocateCombatTreeNode,
   createCombatDevelopmentState,
-  resolveCombatModifierSnapshot
+  resolveCombatModifierSnapshot,
+  resolveCombatSustainProfile
 } from '../src/game/combat-development';
 import { COMBAT_LOOT_DEFINITIONS, calculateEquippedStats, createEquipmentLoadout, inspectItem, type EquipmentLoadout, type ItemInstance } from '../src/game/loot';
 import {
   SOLO_FRONTIER_ENCOUNTER_RECOVERY_SECONDS,
   advanceSoloFrontier,
   createInitialSoloFrontierState,
+  deriveSoloPlayerStats,
   setSoloFrontierOrder,
   simulateSoloCombat,
   soloFrontierStage,
@@ -187,7 +190,7 @@ const CAPSTONE_SCENARIO_PROFILES: readonly OffenseScenarioProfile[] = Object.fre
   { id: 'counter-duel', kind: 'regular', hitPoints: 2_000, armour: 60, ward: 0, evasion: 60, accuracy: 0, damage: 15, attackInterval: 0.45 }
 ]);
 
-function allocateTreeBuild(skillId: (typeof OFFENSE_COMBAT_SKILL_IDS)[number], nodeNames: readonly string[]) {
+function allocateTreeBuild(skillId: CombatSkillId, nodeNames: readonly string[]) {
   const progression = createInitialCombatProgression(100);
   let development = createCombatDevelopmentState();
   const tree = COMBAT_SKILL_TREES[skillId].tree!;
@@ -202,7 +205,7 @@ function allocateTreeBuild(skillId: (typeof OFFENSE_COMBAT_SKILL_IDS)[number], n
 }
 
 function capstoneVariantBuild(
-  skillId: (typeof OFFENSE_COMBAT_SKILL_IDS)[number],
+  skillId: CombatSkillId,
   capstoneId: string
 ): readonly string[] {
   const tree = COMBAT_SKILL_TREES[skillId].tree!;
@@ -337,6 +340,191 @@ function offenseTreeBalanceAudit(samples = 11) {
   });
 }
 
+const SUSTAIN_TREE_BUILD_NODES: Readonly<Record<(typeof SUSTAIN_COMBAT_SKILL_IDS)[number], readonly string[]>> = Object.freeze({
+  'Support Magic': [
+    'Linked Rhythm', 'Return Current', 'Mutual Flow', 'Perfect Circuit',
+    'Focused Signal', 'Soothing Field', 'Guided Strikes', 'Quickening Current',
+    'Steady Pulse', 'Restorative Chorus'
+  ],
+  Reflexes: [
+    'Heightened Senses', 'Shake It Off', 'Accelerated Recovery', 'Adrenal Surge',
+    'Quick Response', 'Rebound', 'Fluid Motion', 'Technique Instinct',
+    'Counterstep', 'Read the Opening'
+  ],
+  Healing: [
+    'Field Medicine', 'Lingering Care', 'Sustained Treatment', 'Renewing Tide',
+    'Rapid Aid', 'No Waste', 'Potent Remedy', 'Practised Hands',
+    'Critical Care', 'Efficient Practice'
+  ],
+  Vitality: [
+    'Natural Recovery', 'Recuperation', 'Adaptive Recovery', 'Living Engine',
+    'Hardy', 'Grit', 'Deep Reserves', 'Efficient Circulation',
+    'Steady Pulse', 'Emergency Reserve'
+  ]
+});
+
+interface SustainScenarioProfile {
+  id: string;
+  hitPoints: number;
+  damage: number;
+  accuracy: number;
+  attackInterval: number;
+}
+
+const SUSTAIN_SCENARIO_PROFILES: readonly SustainScenarioProfile[] = Object.freeze([
+  { id: 'steady-attrition', hitPoints: 1_800, damage: 28, accuracy: 80, attackInterval: 0.85 },
+  { id: 'heavy-pressure', hitPoints: 1_500, damage: 54, accuracy: 90, attackInterval: 1.35 },
+  { id: 'rapid-pressure', hitPoints: 2_000, damage: 20, accuracy: 115, attackInterval: 0.48 }
+]);
+
+function sustainTreeScenario(
+  skillId: (typeof SUSTAIN_COMBAT_SKILL_IDS)[number],
+  seed: string,
+  nodeNames: readonly string[] = [],
+  profile: SustainScenarioProfile = SUSTAIN_SCENARIO_PROFILES[0]
+): SoloCombatInput {
+  const state = nodeNames.length ? allocateTreeBuild(skillId, nodeNames) : null;
+  const context = {
+    style: 'medium-melee' as const,
+    technique: 'Power Strike' as const,
+    stance: 'Balanced' as const,
+    aura: 'Battle Focus' as const,
+    defensiveAbility: 'Mend' as const,
+    boss: true,
+    enemyWarded: false,
+    enemyHealthRatio: 1,
+    playerHealthRatio: 1,
+    displayedHitChance: 0.9,
+    baseInterval: 0.68
+  };
+  const combatModifiers = state
+    ? resolveCombatModifierSnapshot(state.development, state.progression, context)
+    : undefined;
+  return {
+    combatSkills: skills(100),
+    equippedStats: { hitPoints: 260, accuracy: 15, evasion: 20, ward: 0, armourPieces: [] },
+    activeWeapon: {
+      id: `sustain:${skillId}`,
+      name: `${skillId} Balance Weapon`,
+      style: 'medium-melee',
+      damage: 26,
+      accuracy: 25,
+      attackInterval: 0.68
+    },
+    stance: 'Balanced',
+    technique: 'Power Strike',
+    defensiveAbility: 'Mend',
+    aura: 'Battle Focus',
+    enemy: {
+      id: `sustain:${profile.id}`,
+      name: 'Sustain Pressure Target',
+      kind: 'boss',
+      hitPoints: profile.hitPoints,
+      damage: profile.damage,
+      armour: 65,
+      ward: 0,
+      evasion: 35,
+      accuracy: profile.accuracy,
+      attackInterval: profile.attackInterval,
+      damageType: 'physical'
+    },
+    stage: 20,
+    seed,
+    combatModifiers
+  };
+}
+
+function sustainOutcomeScore(input: SoloCombatInput): number {
+  const result = simulateSoloCombat(input);
+  const maximumHitPoints = deriveSoloPlayerStats(input).maxHitPoints;
+  const survivalMargin = (
+    result.playerHitPointsRemaining
+    + result.metrics.sustain.healing
+    + result.metrics.sustain.damagePrevented
+  ) / Math.max(1, maximumHitPoints);
+  const progress = result.outcome === 'victory'
+    ? 1 + 30 / Math.max(30, result.metrics.durationSeconds)
+    : result.enemyHealthRemovedPercent / 100;
+  return progress + survivalMargin;
+}
+
+function sustainTreeBalanceAudit(samples = 11) {
+  return SUSTAIN_COMBAT_SKILL_IDS.map(skillId => {
+    const buildNodes = SUSTAIN_TREE_BUILD_NODES[skillId];
+    const pairedProfileRatios = SUSTAIN_SCENARIO_PROFILES.map(profile => {
+      const ratios = Array.from({ length: samples }, (_, index) => {
+        const seed = `sustain:${skillId}:${profile.id}:${index}`;
+        const baseline = sustainOutcomeScore(sustainTreeScenario(skillId, seed, [], profile));
+        const built = sustainOutcomeScore(sustainTreeScenario(skillId, seed, buildNodes, profile));
+        return built / Math.max(0.001, baseline);
+      });
+      return { profile: profile.id, improvementPct: (median(ratios) - 1) * 100 };
+    });
+    const averageRatio = pairedProfileRatios.reduce((sum, profile) => sum + 1 + profile.improvementPct / 100, 0)
+      / pairedProfileRatios.length;
+    const representativeInput = sustainTreeScenario(skillId, `sustain:${skillId}:representative`, buildNodes);
+    const representativeResult = simulateSoloCombat(representativeInput);
+    const representativeContext = {
+      style: representativeInput.activeWeapon.style,
+      technique: representativeInput.technique,
+      stance: representativeInput.stance,
+      aura: representativeInput.aura === 'none' ? undefined : representativeInput.aura,
+      defensiveAbility: representativeInput.defensiveAbility === 'none' ? undefined : representativeInput.defensiveAbility,
+      boss: true,
+      enemyWarded: false,
+      playerHealthRatio: 0.25,
+      enemyHealthRatio: 0.5,
+      baseInterval: representativeInput.activeWeapon.attackInterval
+    };
+    const sustainProfile = resolveCombatSustainProfile(representativeInput.combatModifiers, representativeContext);
+    const tree = COMBAT_SKILL_TREES[skillId].tree!;
+    const capstones = tree.nodes.filter(node => node.capstone).map(node => {
+      const names = capstoneVariantBuild(skillId, node.id);
+      const profileImprovements = SUSTAIN_SCENARIO_PROFILES.map(profile => {
+        const ratios = Array.from({ length: samples }, (_, index) => {
+          const seed = `sustain:${skillId}:${node.id}:${profile.id}:${index}`;
+          const baseline = sustainOutcomeScore(sustainTreeScenario(skillId, seed, [], profile));
+          const built = sustainOutcomeScore(sustainTreeScenario(skillId, seed, names, profile));
+          return built / Math.max(0.001, baseline);
+        });
+        return { profile: profile.id, improvementPct: (median(ratios) - 1) * 100 };
+      });
+      return {
+        node: node.name,
+        allocatedNodes: names.length,
+        improvementPct: profileImprovements.reduce((sum, profile) => sum + profile.improvementPct, 0)
+          / profileImprovements.length,
+        profiles: profileImprovements
+      };
+    });
+    return {
+      skillId,
+      allocatedNodes: buildNodes.length,
+      improvementPct: (averageRatio - 1) * 100,
+      profiles: pairedProfileRatios,
+      representative: {
+        outcome: representativeResult.outcome,
+        durationSeconds: representativeResult.metrics.durationSeconds,
+        healthRemaining: representativeResult.playerHitPointsRemaining,
+        healing: representativeResult.metrics.sustain.healing,
+        damagePrevented: representativeResult.metrics.sustain.damagePrevented,
+        emergencies: representativeResult.metrics.sustain.emergencyTriggers
+      },
+      modifierCaps: {
+        maxHitPointsMultiplier: sustainProfile.maxHitPointsMultiplier,
+        healingMultiplier: sustainProfile.healingMultiplier,
+        mendCooldownMultiplier: sustainProfile.mendCooldownMultiplier,
+        damageTakenMultiplier: sustainProfile.damageTakenMultiplier,
+        regenerationPctPerSecond: sustainProfile.regenerationPctPerSecond,
+        reserveCapPct: sustainProfile.recoveryReserveCapPct,
+        damageRecoveryPct: sustainProfile.damageRecoveryPct,
+        fatalGuardPct: sustainProfile.fatalGuardPct
+      },
+      capstones
+    };
+  });
+}
+
 export function measureBuild(build: BalanceBuild, stage: number, samples = 51) {
   const results = Array.from({ length: samples }, (_, index) => simulateSoloCombat(balanceInputForBuild(build, stage, `${build.name}:${stage}:${index}`)));
   const victories = results.filter(result => result.outcome === 'victory');
@@ -402,6 +590,7 @@ export function runSoloFrontierBalanceAudit() {
       ...milestones
     },
     offenseTrees: offenseTreeBalanceAudit(),
+    sustainTrees: sustainTreeBalanceAudit(),
     route,
     starterRoute: Array.from({ length: 12 }, (_, index) => measureBuild(starter, index + 1, 21))
   };

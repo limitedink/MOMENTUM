@@ -25,7 +25,12 @@ import {
   type SoloFrontierRuntimeState
 } from '../src/game/solo-frontier';
 import type { SoloCombatInput } from '../src/game/solo-frontier';
-import { selectCombatDrill } from '../src/game/combat-development';
+import {
+  COMBAT_SKILL_TREES,
+  allocateCombatTreeNode,
+  createCombatDevelopmentState,
+  selectCombatDrill
+} from '../src/game/combat-development';
 
 const STRONG_ENCOUNTER_MS = SOLO_FRONTIER_ENCOUNTER_RECOVERY_SECONDS * 1_000;
 
@@ -76,6 +81,23 @@ function cachedItem(instanceId: string): ItemInstance {
     acquiredAt: 1,
     rerolls: 0
   };
+}
+
+function developmentWithNodes(
+  progression: ReturnType<typeof createInitialCombatProgression>,
+  selections: readonly (readonly [CombatSkillId, readonly string[]])[]
+) {
+  let development = createCombatDevelopmentState();
+  for (const [skillId, names] of selections) {
+    for (const name of names) {
+      const node = COMBAT_SKILL_TREES[skillId].tree!.nodes.find(candidate => candidate.name === name);
+      if (!node) throw new Error(`Missing ${skillId} test node: ${name}`);
+      const allocation = allocateCombatTreeNode(development, progression, skillId, node.id);
+      if (!allocation.accepted) throw new Error(allocation.reason);
+      development = allocation.state;
+    }
+  }
+  return development;
 }
 
 describe('Solo Frontier v20 orders and deterministic progression', () => {
@@ -317,6 +339,95 @@ describe('Solo Frontier v20 progression, catch-up, and migration contracts', () 
     expect(continued.debrief.victories).toBeGreaterThan(0);
     expect(continued.debrief.skillXp['Offensive Magic']).toBeGreaterThan(0);
     expect(continued.debrief.strongestKeptDrops.length).toBeLessThanOrEqual(3);
+  });
+
+  it('aggregates Sustain sources into a save-stable Survival Report debrief', () => {
+    const progression = createInitialCombatProgression(100);
+    const development = developmentWithNodes(progression, [
+      ['Healing', ['Field Medicine', 'Lingering Care', 'Sustained Treatment']],
+      ['Vitality', ['Natural Recovery', 'Steady Pulse', 'Recuperation']]
+    ]);
+    const initial = setSoloFrontierOrder(createInitialSoloFrontierState({
+      combatProgression: progression,
+      combatDevelopment: development,
+      lastUpdatedAt: 1_000
+    }), 'push');
+    const options = {
+      combatInput: combatInput({
+        equippedStats: { hitPoints: 100, accuracy: 40, evasion: 0, ward: 0, armourPieces: [] },
+        activeWeapon: { id: 'sustain-runtime', name: 'Sustain Runtime', style: 'medium-melee', damage: 24, accuracy: 40, attackInterval: 0.7 },
+        stance: 'Balanced' as const,
+        technique: 'Power Strike' as const,
+        defensiveAbility: 'Mend' as const,
+        aura: 'Battle Focus' as const,
+        enemy: {
+          id: 'sustain-runtime-enemy', name: 'Sustain Runtime Enemy', kind: 'boss' as const,
+          hitPoints: 1_200, damage: 18, armour: 40, ward: 0, evasion: 25,
+          accuracy: 100, attackInterval: 0.8, damageType: 'physical' as const
+        }
+      }),
+      useConfiguredEnemy: true,
+      seed: 'sustain-runtime',
+      maxEncounters: 1
+    };
+    const result = advanceSoloFrontier(initial, 120_000, options);
+    const replay = advanceSoloFrontier(initial, 120_000, options);
+    expect(replay).toEqual(result);
+    expect(result.debrief.sustain.healing).toBeGreaterThan(0);
+    expect(result.debrief.sustain.mendCasts).toBeGreaterThan(0);
+    expect(
+      result.debrief.sustain.healingBySource['mend-hot']
+      + result.debrief.sustain.healingBySource.regeneration
+      + result.debrief.sustain.healingBySource['damage-recovery']
+    ).toBeGreaterThan(0);
+    expect(result.debrief.sustain.minimumHealthRatio).toBeLessThan(1);
+    const reloaded = advanceSoloFrontier(
+      JSON.parse(JSON.stringify(result.state)) as SoloFrontierRuntimeState,
+      0,
+      { ...options, resetDebrief:false }
+    );
+    expect(reloaded.debrief.sustain).toEqual(result.debrief.sustain);
+  });
+
+  it('keeps active Sustain trees identical across online and batched offline continuation', async () => {
+    const progression = createInitialCombatProgression(100);
+    const development = developmentWithNodes(progression, [
+      ['Support Magic', ['Soothing Field', 'Restorative Chorus', 'Recurrent Pattern', 'Renewal Echo']],
+      ['Healing', ['Field Medicine', 'Lingering Care', 'Sustained Treatment']],
+      ['Vitality', ['Natural Recovery', 'Steady Pulse', 'Recuperation']]
+    ]);
+    const initial = setSoloFrontierOrder(createInitialSoloFrontierState({
+      seed: 'sustain-online-offline',
+      highestClearedStage: 1,
+      firstClearStages: [1],
+      farmStage: 1,
+      combatProgression: progression,
+      combatDevelopment: development,
+      lastUpdatedAt: 1_000
+    }), 'farm', 1);
+    const options = {
+      combatInput: combatInput({
+        equippedStats: { hitPoints: 100, accuracy: 40, evasion: 0, ward: 0, armourPieces: [] },
+        activeWeapon: { id: 'sustain-replay', name: 'Sustain Replay', style: 'medium-melee', damage: 24, accuracy: 40, attackInterval: 0.7 },
+        stance: 'Balanced' as const,
+        technique: 'Power Strike' as const,
+        defensiveAbility: 'Mend' as const,
+        aura: 'Battle Focus' as const,
+        enemy: {
+          id: 'sustain-replay-enemy', name: 'Sustain Replay Enemy', kind: 'boss' as const,
+          hitPoints: 1_200, damage: 18, armour: 40, ward: 0, evasion: 25,
+          accuracy: 100, attackInterval: 0.8, damageType: 'physical' as const
+        }
+      }),
+      useConfiguredEnemy: true,
+      seed: 'sustain-online-offline'
+    };
+    const elapsedMs = 120_000;
+    const online = advanceSoloFrontier(initial, elapsedMs, options);
+    const offline = await catchUpSoloFrontier(initial, elapsedMs / 1_000, { ...options, batchEncounters:2 });
+    expect(offline.state).toEqual(online.state);
+    expect(offline.events).toEqual(online.events);
+    expect(offline.state.debrief?.sustain.healing).toBeGreaterThan(0);
   });
 
   it('migrates v19 Arena seeds and loot idempotently without restoring generic Combat', () => {

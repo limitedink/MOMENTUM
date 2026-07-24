@@ -1,4 +1,4 @@
-# Momentum v21 — Wayfinder Arsenal
+# Momentum v21.1 — Wayfinder Resolve
 
 ## Player loop
 
@@ -26,7 +26,7 @@ One Combat Drill may run beside Production and combat. It awards exactly **0.1 X
 
 Arena's existing compatible tree is presented as **Arena Discipline**. Every one of the 17 combat skills has an independent persisted tree state and earns one point at levels 10, 20, …, 100, for ten points total. Existing high-level saves receive earned points without automatic allocation.
 
-The eight Offense trees are authored in v21.0. Each has exactly 21 nodes: three seven-node branches, each formed by one root followed by two independent three-node paths. Every node costs one point. The six capstones share one exclusive group, so lower paths may be mixed but only one capstone may be owned in a skill tree. A full-tree respec costs:
+The eight Offense trees were authored in v21.0. v21.1 authors all four Sustain trees: **Support Magic, Reflexes, Healing, and Vitality**. Each authored tree has exactly 21 nodes: three seven-node branches, each formed by one root followed by two independent three-node paths. Every node costs one point. The six capstones share one exclusive group, so lower paths may be mixed but only one capstone may be owned in a skill tree. A full-tree respec costs:
 
 `100 + 50 × allocated nodes` Gold
 
@@ -35,6 +35,31 @@ Arena Discipline uses the same price and is locked only during an active Arena r
 Offense effects resolve through the typed `CombatTreeEffectDefinition` registry and `CombatModifierSnapshot`. Same-kind percentages add. Tree attack-speed reduction caps at 30%, technique cooldown reduction at 40%, total critical chance at 60%, and normal armour or ward penetration at 60. Explicit ignore-mitigation capstones bypass that final cap. Repeats and damage-over-time cannot recurse, critically strike, or award extra XP. Hit streaks, marks, shred, burns, bleeds, retaliation charges, first-hit state, and other counters are encounter-local and deterministic across online/offline continuation.
 
 The deterministic balance report includes legal ten-point builds for Strength, Melee Accuracy, all three melee proficiencies, Marksmanship, Ranged, and Offensive Magic. Every capstone variant is also a legal ten-point build. Sibling capstones are compared inside their branch across a deterministic encounter portfolio covering opening burst, a short skirmish, sustained damage, a fortified boss, incoming pressure, evasion, and counterplay; total encounter throughput includes the standard recovery interval. Each sibling pair must remain within 15%. The report retains the all-six spread as a diagnostic because Power, Momentum, Execution, and equivalent branches intentionally solve different fights.
+
+## Sustain effect contract
+
+Support Magic links Battle Focus, Mend, and weapon techniques. Reflexes supplies universal tempo, retaliation, enemy-miss responses, and low-health urgency. Healing controls direct Mend output, healing-over-time, trigger timing, Recovery Reserve, and overheal conversion. Vitality controls maximum HP, healing received, regeneration, damage recovery, emergency healing, a once-per-encounter fatal guard, and low-health damage reduction.
+
+All four trees resolve through the shared typed modifier registry. Static and conditional modifiers use the same combat context as Offense, including the selected aura, defensive ability, and current player-health ratio. Encounter-local trigger state, recovery ticks, reserve, emergency uses, and cooldown changes reset between encounters. Tree-created recovery, repeats, and emergency Mends do not emit use events or award extra combat XP.
+
+Sustain caps are:
+
+- Maximum HP: **+40%**.
+- Healing: **+75%**.
+- Mend cooldown reduction: **40%**.
+- Mend trigger threshold: **85% HP**.
+- Additional Battle Focus damage: **+10 percentage points**.
+- Damage-taken reduction: **15%**.
+- Regeneration: **1% maximum HP per second**.
+- Recovery Reserve: **20% maximum HP**.
+- Damage recovery: **20% of damage taken**.
+- Fatal-guard recovery: **15% maximum HP**.
+
+Recovery events resolve before attacks at the same timestamp so online, offline, save/reload, and batched catch-up remain identical. The Survival Report records effective healing, overheal, recovery by source, Mend casts, reserve stored/released, damage recovery and prevention, cooldown removed, minimum health, time below half health, emergency triggers, and fatal guards.
+
+The tree panel now treats node selection and point spending as separate actions. Selecting a node shows the current and projected live build profile; **Allocate 1 point** confirms the irreversible spend. The profile uses the current weapon, stance, aura, defensive ability, stage, and equipment. It warns when Support Magic or Healing effects are inactive under the current Battle Desk configuration.
+
+Solo Frontier implements the complete deterministic Sustain contract. Arena reuses the universal subset its real-time model can represent: maximum HP and baseline stats through the shared build, Battle Focus amplification, Mend output/threshold/cooldown, incoming-damage reduction, regeneration, and the once-per-run fatal guard. Arena Discipline remains separate and save-compatible.
 
 ## Gold and Frontier Exchange
 
@@ -63,7 +88,7 @@ Rare gear costs `400 + 30 × item level`; Epic gear costs `700 + 35 × item leve
 
 ## Saves and migration
 
-The Momentum and Solo Frontier save version is **v21**. `migrateMomentumSaveToV21` is the single idempotent entry point for v1–v21 and runs the prior combat split, paper-doll, loot, and Solo migrations before canonicalization.
+The Momentum and Solo Frontier save version remains **v21**. v21.1 adds no migration boundary: all 17 tree-state slots already existed in v21.0, so newly authored Sustain nodes are available immediately while existing allocations and unspent points remain untouched. `migrateMomentumSaveToV21` remains the single idempotent entry point for v1–v21 and runs the prior combat split, paper-doll, loot, and Solo migrations before canonicalization.
 
 The v21 boundary preserves generated instance IDs, rarity, item level, affixes, favourites, equipped positions, active weapon, `foodId`, 35-slot grandfathered overflow, and legacy refinements. Pulse Sidearm, Iron Blade, Frontier Bow, Ember Focus, and Plated Vest map to canonical definitions. Each legacy refinement rank becomes `enhancementRank` and retains +2 damage per rank. Overlapping legacy projections deduplicate by instance ID and root-level combat loot projections are removed from the resulting save. Only the non-combat tool remains in the root `equipment` object.
 
@@ -71,7 +96,7 @@ Representative v1, v14, v17, v18, v19, and v20 fixtures migrate through v21 twic
 
 ## Deterministic verification
 
-`npm run balance:solo` writes `artifacts/solo-frontier/balance-report.json`. The accepted route remains approximately 2.46 hours to stage 10, 2.53 days to stage 20, and 11.52 days to stage 30, with a 5.03-minute median first loot comparison and 16 median item rolls during an eight-hour stage-15 farm. The report also records Offense-tree build impact, capstone variants, and modifier-cap observations.
+`npm run balance:solo` writes `artifacts/solo-frontier/balance-report.json`. The accepted route remains approximately 2.46 hours to stage 10, 2.53 days to stage 20, and 11.52 days to stage 30, with a 5.03-minute median first loot comparison and 16 median item rolls during an eight-hour stage-15 farm. The report records Offense and Sustain ten-point builds, every authored capstone variant, representative pressure profiles, and modifier-cap observations. Sustain representative builds must improve the paired survival/encounter score by 5–30%; every capstone build must remain legal and improve its representative portfolio.
 
 Release checks are:
 
@@ -83,10 +108,10 @@ npm run balance:solo
 git diff --check
 ```
 
-Automated contracts cover the 35-cell responsive grid, exact slot filtering, keyboard movement, shared rarity renderer, all 78 asset mappings, historical migration, online/offline replay, Drill caps, Gold and boss rewards, store rollback protection, atomic purchases, contract reward holding, tree topology, every Offense root and capstone, and equipped Common-through-Chase rarity presentation.
+Automated contracts cover the 35-cell responsive grid, exact slot filtering, keyboard movement, shared rarity renderer, all 78 asset mappings, historical migration, online/offline replay, Drill caps, Gold and boss rewards, store rollback protection, atomic purchases, contract reward holding, tree topology, every Offense and Sustain root/capstone, save-stable Survival Report aggregation, Arena’s universal Sustain subset, and equipped Common-through-Chase rarity presentation.
 
 ## Roadmap and scope
 
-v21.1 authors the four Sustain trees: Support Magic, Reflexes, Healing, and Vitality. v21.2 authors the five Defense trees: Light, Medium, and Heavy Armour Proficiency, Evasion, and Warding. Their point pools, save state, cards, and tree interfaces already exist in v21.0.
+v21.2 authors the five Defense trees: Light, Medium, and Heavy Armour Proficiency, Evasion, and Warding. Their point pools, save state, cards, and tree interfaces already exist; no second foundational tree rewrite is planned.
 
 Multiplayer/backend expansion, desktop battle overlays, companions, matchmaking, monetization, and additional regions remain outside Wayfinder Arsenal. No human playtest gate is part of this release workflow.

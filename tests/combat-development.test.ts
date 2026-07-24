@@ -3,6 +3,7 @@ import {
   COMBAT_SKILL_TREES,
   COMBAT_TREE_EFFECT_DEFINITIONS,
   OFFENSE_COMBAT_SKILL_IDS,
+  SUSTAIN_COMBAT_SKILL_IDS,
   advanceCombatDrill,
   allocateCombatTreeNode,
   availableCombatTreePoints,
@@ -11,6 +12,7 @@ import {
   earnedCombatTreePoints,
   normalizeCombatDevelopmentState,
   resolveCombatModifierSnapshot,
+  resolveCombatSustainProfile,
   selectCombatDrill
 } from '../src/game/combat-development';
 import {
@@ -58,7 +60,7 @@ function deterministicTreeInput(
   };
 }
 
-function developmentForNode(skillId: (typeof OFFENSE_COMBAT_SKILL_IDS)[number], nodeId: string) {
+function developmentForNode(skillId: CombatSkillId, nodeId: string) {
   const tree = COMBAT_SKILL_TREES[skillId].tree!;
   const required = new Set<string>();
   const visit = (id: string): void => {
@@ -73,6 +75,45 @@ function developmentForNode(skillId: (typeof OFFENSE_COMBAT_SKILL_IDS)[number], 
     ownedNodeIds: tree.nodes.filter(node => required.has(node.id)).map(node => node.id)
   };
   return state;
+}
+
+function deterministicSustainInput(
+  modifiers: SoloCombatInput['combatModifiers'],
+  seed: string,
+  enemyDamage = 54
+): SoloCombatInput {
+  return {
+    combatSkills: Object.fromEntries(COMBAT_SKILL_IDS.map(id => [id, 100])) as SoloCombatInput['combatSkills'],
+    equippedStats: { hitPoints: 80, accuracy: 20, evasion: 10, ward: 10, armourPieces: [] },
+    activeWeapon: {
+      id: 'sustain-test-weapon',
+      name: 'Sustain Test Weapon',
+      style: 'medium-melee',
+      damage: 24,
+      accuracy: 30,
+      attackInterval: 0.72
+    },
+    stance: 'Balanced',
+    technique: 'Power Strike',
+    defensiveAbility: 'Mend',
+    aura: 'Battle Focus',
+    enemy: {
+      id: 'sustain-target',
+      name: 'Sustain Target',
+      kind: 'boss',
+      hitPoints: 5_500,
+      damage: enemyDamage,
+      armour: 70,
+      ward: 50,
+      evasion: 25,
+      accuracy: 54,
+      attackInterval: 0.85,
+      damageType: 'physical'
+    },
+    stage: 20,
+    seed,
+    combatModifiers: modifiers
+  };
 }
 
 function allocateByName(
@@ -94,12 +135,13 @@ function allocateByName(
 }
 
 describe('v21 combat development', () => {
-  it('registers all 17 skills and authors exactly eight 21-node Offense trees', () => {
+  it('registers all 17 skills and authors eight Offense plus four Sustain trees', () => {
     expect(Object.keys(COMBAT_SKILL_TREES)).toEqual([...COMBAT_SKILL_IDS]);
     expect(OFFENSE_COMBAT_SKILL_IDS).toHaveLength(8);
+    expect(SUSTAIN_COMBAT_SKILL_IDS).toHaveLength(4);
     const referencedEffectIds: string[] = [];
 
-    for (const skillId of OFFENSE_COMBAT_SKILL_IDS) {
+    for (const skillId of [...OFFENSE_COMBAT_SKILL_IDS, ...SUSTAIN_COMBAT_SKILL_IDS]) {
       const entry = COMBAT_SKILL_TREES[skillId];
       const tree = entry.tree!;
       expect(entry.status).toBe('authored');
@@ -122,7 +164,8 @@ describe('v21 combat development', () => {
       }
     }
 
-    expect(Object.values(COMBAT_SKILL_TREES).filter(entry => entry.status === 'planned-sustain')).toHaveLength(4);
+    expect(Object.values(COMBAT_SKILL_TREES).filter(entry => entry.status === 'authored')).toHaveLength(12);
+    expect(Object.values(COMBAT_SKILL_TREES).filter(entry => entry.release === 'v21.1')).toHaveLength(4);
     expect(Object.values(COMBAT_SKILL_TREES).filter(entry => entry.status === 'planned-defense')).toHaveLength(5);
     expect(new Set(referencedEffectIds).size).toBe(referencedEffectIds.length);
     expect(new Set(Object.keys(COMBAT_TREE_EFFECT_DEFINITIONS))).toEqual(new Set(referencedEffectIds));
@@ -232,5 +275,126 @@ describe('v21 combat development', () => {
         expect(first.events.length).toBeGreaterThan(1);
       }
     }
+  });
+
+  it('executes deterministic combat scenarios for every Sustain root and capstone', () => {
+    const progression = createInitialCombatProgression(100);
+    for (const skillId of SUSTAIN_COMBAT_SKILL_IDS) {
+      const tree = COMBAT_SKILL_TREES[skillId].tree!;
+      const targets = tree.nodes.filter(node => node.requires.length === 0 || node.capstone);
+      expect(targets).toHaveLength(9);
+      for (const node of targets) {
+        const development = developmentForNode(skillId, node.id);
+        const modifiers = resolveCombatModifierSnapshot(development, progression, {
+          style: 'medium-melee',
+          technique: 'Power Strike',
+          stance: 'Balanced',
+          aura: 'Battle Focus',
+          defensiveAbility: 'Mend',
+          boss: true,
+          enemyWarded: true,
+          enemyHealthRatio: 1,
+          playerHealthRatio: 1,
+          displayedHitChance: 0.90,
+          baseInterval: 0.72
+        });
+        expect(node.effectIds?.every(effectId => modifiers.effectIds.includes(effectId))).toBe(true);
+        const seed = `${skillId}:${node.id}`;
+        const first = simulateSoloCombat(deterministicSustainInput(modifiers, seed));
+        const replay = simulateSoloCombat(deterministicSustainInput(modifiers, seed));
+        expect(replay).toEqual(first);
+        expect(first.events.length).toBeGreaterThan(1);
+      }
+    }
+  });
+
+  it('caps Sustain modifiers and reports an inspectable Sustain profile', () => {
+    const progression = createInitialCombatProgression(100);
+    let state = createCombatDevelopmentState();
+    state = allocateByName(state, progression, 'Vitality', [
+      'Hardy', 'Deep Reserves', 'Iron Constitution', 'Mountain Heart',
+      'Efficient Circulation', 'Strong Pulse'
+    ]);
+    state = allocateByName(state, progression, 'Support Magic', [
+      'Soothing Field', 'Steady Pulse', 'Anchoring Wave', 'Sanctuary Signal'
+    ]);
+    const snapshot = resolveCombatModifierSnapshot(state, progression, {
+      style: 'medium-melee',
+      technique: 'Power Strike',
+      aura: 'Battle Focus',
+      defensiveAbility: 'Mend',
+      playerHealthRatio: 1
+    });
+    const profile = resolveCombatSustainProfile(snapshot, {
+      aura: 'Battle Focus',
+      defensiveAbility: 'Mend',
+      playerHealthRatio: 0.25
+    });
+    expect(snapshot.static.maxHitPointsPct).toBeLessThanOrEqual(0.40);
+    expect(snapshot.static.healingPct).toBeLessThanOrEqual(0.75);
+    expect(snapshot.static.damageTakenReductionPct).toBeLessThanOrEqual(0.15);
+    expect(profile.maxHitPointsMultiplier).toBeLessThanOrEqual(1.40);
+    expect(profile.damageTakenMultiplier).toBeGreaterThanOrEqual(0.85);
+    expect(profile.damageTakenMultiplier).toBeLessThan(1 - snapshot.static.damageTakenReductionPct);
+    expect(profile.healingMultiplier).toBeGreaterThan(1 + snapshot.static.healingPct);
+    expect(profile.mendTriggerHealthPercent).toBeLessThanOrEqual(0.85);
+  });
+
+  it('makes Sustain recovery observable without granting tree-generated skill XP', () => {
+    const progression = createInitialCombatProgression(100);
+    let state = createCombatDevelopmentState();
+    state = allocateByName(state, progression, 'Healing', [
+      'Field Medicine', 'Lingering Care', 'Sustained Treatment', 'Renewing Tide'
+    ]);
+    state = allocateByName(state, progression, 'Vitality', [
+      'Natural Recovery', 'Recuperation', 'Adaptive Recovery'
+    ]);
+    const snapshot = resolveCombatModifierSnapshot(state, progression, {
+      style: 'medium-melee',
+      technique: 'Power Strike',
+      aura: 'Battle Focus',
+      defensiveAbility: 'Mend',
+      playerHealthRatio: 1
+    });
+    const result = simulateSoloCombat(deterministicSustainInput(snapshot, 'sustain-observable', 64));
+    expect(result.metrics.sustain.mendCasts).toBeGreaterThan(0);
+    expect(
+      result.metrics.sustain.healingBySource['mend-hot']
+      + result.metrics.sustain.healingBySource.regeneration
+      + result.metrics.sustain.healingBySource['damage-recovery']
+    ).toBeGreaterThan(0);
+    expect(result.skillEvents.filter(event => event.skillId === 'Healing').length)
+      .toBe(result.metrics.sustain.mendCasts);
+  });
+
+  it('repeats Renewal Echo from effective Mend healing without applying healing bonuses twice', () => {
+    const progression = createInitialCombatProgression(100);
+    let state = createCombatDevelopmentState();
+    state = allocateByName(state, progression, 'Support Magic', [
+      'Soothing Field', 'Restorative Chorus', 'Recurrent Pattern', 'Renewal Echo'
+    ]);
+    const snapshot = resolveCombatModifierSnapshot(state, progression, {
+      style: 'medium-melee',
+      technique: 'Power Strike',
+      stance: 'Balanced',
+      aura: 'Battle Focus',
+      defensiveAbility: 'Mend',
+      playerHealthRatio: 1
+    });
+    const result = simulateSoloCombat(deterministicSustainInput(snapshot, 'renewal-echo-effective-healing', 35));
+    const firstMend = result.events.find(event => event.type === 'healing' && event.amount > 0);
+    expect(firstMend?.type).toBe('healing');
+    if (!firstMend || firstMend.type !== 'healing') return;
+    const echo = result.events
+      .filter(event =>
+        event.type === 'recovery'
+        && event.source === 'mend-echo'
+        && event.atMs > firstMend.atMs
+        && event.atMs <= firstMend.atMs + 3_000)
+      .reduce((sum, event) => sum + (event.type === 'recovery' ? event.amount : 0), 0);
+    expect(echo).toBeCloseTo(firstMend.amount * 0.30, 3);
+    const livingReserve = COMBAT_SKILL_TREES.Healing.tree!.nodes.find(node => node.name === 'Living Reserve')!;
+    const reserveEffects = livingReserve.effectIds!.map(effectId => COMBAT_TREE_EFFECT_DEFINITIONS[effectId]);
+    expect(reserveEffects).toContainEqual(expect.objectContaining({ kind:'reserve', retainUnused:true }));
   });
 });

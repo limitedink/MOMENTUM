@@ -27,6 +27,13 @@ import {
   STRENGTH_SKILL_TREE
 } from './offense-tree-definitions';
 import {
+  HEALING_SKILL_TREE,
+  REFLEXES_SKILL_TREE,
+  SUPPORT_MAGIC_SKILL_TREE,
+  SUSTAIN_TREE_EFFECT_DEFINITIONS,
+  VITALITY_SKILL_TREE
+} from './sustain-tree-definitions';
+import {
   DEFENSE_COMBAT_SKILL_IDS,
   OFFENSE_COMBAT_SKILL_IDS,
   SUSTAIN_COMBAT_SKILL_IDS,
@@ -35,6 +42,7 @@ import {
   type CombatEffectCondition,
   type CombatModifierSnapshot,
   type CombatModifierStat,
+  type CombatSustainProfile,
   type CombatSkillTreeCatalogEntry,
   type CombatTreeEffectDefinition
 } from './combat-development-types';
@@ -50,12 +58,19 @@ const OFFENSE_TREES = Object.freeze({
   'Offensive Magic': OFFENSIVE_MAGIC_SKILL_TREE
 });
 
+const SUSTAIN_TREES = Object.freeze({
+  'Support Magic': SUPPORT_MAGIC_SKILL_TREE,
+  Reflexes: REFLEXES_SKILL_TREE,
+  Healing: HEALING_SKILL_TREE,
+  Vitality: VITALITY_SKILL_TREE
+});
+
 const catalogEntries = COMBAT_SKILL_IDS.map((skillId): [CombatSkillId, CombatSkillTreeCatalogEntry] => {
   if ((OFFENSE_COMBAT_SKILL_IDS as readonly CombatSkillId[]).includes(skillId)) {
     return [skillId, { skillId, status: 'authored', release: 'v21.0', tree: OFFENSE_TREES[skillId as keyof typeof OFFENSE_TREES] }];
   }
   if ((SUSTAIN_COMBAT_SKILL_IDS as readonly CombatSkillId[]).includes(skillId)) {
-    return [skillId, { skillId, status: 'planned-sustain', release: 'v21.1', tree: null }];
+    return [skillId, { skillId, status: 'authored', release: 'v21.1', tree: SUSTAIN_TREES[skillId as keyof typeof SUSTAIN_TREES] }];
   }
   return [skillId, { skillId, status: 'planned-defense', release: 'v21.2', tree: null }];
 });
@@ -64,7 +79,10 @@ export const COMBAT_SKILL_TREES: Readonly<Record<CombatSkillId, CombatSkillTreeC
   Object.fromEntries(catalogEntries) as Record<CombatSkillId, CombatSkillTreeCatalogEntry>
 );
 
-export const COMBAT_TREE_EFFECT_DEFINITIONS = OFFENSE_TREE_EFFECT_DEFINITIONS;
+export const COMBAT_TREE_EFFECT_DEFINITIONS: Readonly<Record<string, CombatTreeEffectDefinition>> = Object.freeze({
+  ...OFFENSE_TREE_EFFECT_DEFINITIONS,
+  ...SUSTAIN_TREE_EFFECT_DEFINITIONS
+});
 
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
@@ -219,6 +237,8 @@ export interface CombatModifierContext {
   style?: string;
   technique?: string;
   stance?: string;
+  aura?: string;
+  defensiveAbility?: string;
   boss?: boolean;
   enemyWarded?: boolean;
   enemyHealthRatio?: number;
@@ -229,6 +249,7 @@ export interface CombatModifierContext {
   marked?: boolean;
   maximumShred?: boolean;
   isTechnique?: boolean;
+  overhealing?: boolean;
 }
 
 export function combatEffectConditionMatches(condition: CombatEffectCondition | undefined, context: CombatModifierContext): boolean {
@@ -236,6 +257,8 @@ export function combatEffectConditionMatches(condition: CombatEffectCondition | 
   if (condition.styles && (!context.style || !(condition.styles as readonly string[]).includes(context.style))) return false;
   if (condition.technique && condition.technique !== context.technique) return false;
   if (condition.stance && condition.stance !== context.stance) return false;
+  if (condition.aura && condition.aura !== context.aura) return false;
+  if (condition.defensiveAbility && condition.defensiveAbility !== context.defensiveAbility) return false;
   if (condition.boss !== undefined && condition.boss !== Boolean(context.boss)) return false;
   if (condition.enemyWarded !== undefined && condition.enemyWarded !== Boolean(context.enemyWarded)) return false;
   if (condition.enemyHealthBelow !== undefined && (context.enemyHealthRatio ?? 1) >= condition.enemyHealthBelow) return false;
@@ -248,6 +271,7 @@ export function combatEffectConditionMatches(condition: CombatEffectCondition | 
   if (condition.marked !== undefined && condition.marked !== Boolean(context.marked)) return false;
   if (condition.maximumShred !== undefined && condition.maximumShred !== Boolean(context.maximumShred)) return false;
   if (condition.bossOrWarded && !context.boss && !context.enemyWarded) return false;
+  if (condition.overhealing !== undefined && condition.overhealing !== Boolean(context.overhealing)) return false;
   return true;
 }
 
@@ -269,7 +293,14 @@ const EMPTY_STATIC: Record<CombatModifierStat, number> = {
   criticalArmourPenetration: 0,
   criticalWardPenetration: 0,
   techniqueHitChanceBonus: 0,
-  baseTechniqueCooldownPct: 0
+  baseTechniqueCooldownPct: 0,
+  maxHitPointsPct: 0,
+  healingPct: 0,
+  mendCooldownPct: 0,
+  mendThresholdBonus: 0,
+  auraDamageBonus: 0,
+  damageTakenReductionPct: 0,
+  regenerationPctPerSecond: 0
 };
 
 function capStaticModifiers(value: Record<CombatModifierStat, number>): Record<CombatModifierStat, number> {
@@ -279,7 +310,14 @@ function capStaticModifiers(value: Record<CombatModifierStat, number>): Record<C
     techniqueCooldownPct: Math.max(0, Math.min(0.40, value.techniqueCooldownPct)),
     criticalChance: Math.max(0, Math.min(0.60, value.criticalChance)),
     armourPenetration: Math.max(0, Math.min(60, value.armourPenetration)),
-    wardPenetration: Math.max(0, Math.min(60, value.wardPenetration))
+    wardPenetration: Math.max(0, Math.min(60, value.wardPenetration)),
+    maxHitPointsPct: Math.max(0, Math.min(0.40, value.maxHitPointsPct)),
+    healingPct: Math.max(0, Math.min(0.75, value.healingPct)),
+    mendCooldownPct: Math.max(0, Math.min(0.40, value.mendCooldownPct)),
+    mendThresholdBonus: Math.max(0, Math.min(0.10, value.mendThresholdBonus)),
+    auraDamageBonus: Math.max(0, Math.min(0.10, value.auraDamageBonus)),
+    damageTakenReductionPct: Math.max(0, Math.min(0.15, value.damageTakenReductionPct)),
+    regenerationPctPerSecond: Math.max(0, Math.min(0.01, value.regenerationPctPerSecond))
   };
 }
 
@@ -291,7 +329,7 @@ export function resolveCombatModifierSnapshot(
   const progression = normalizeCombatProgression(progressionValue);
   const state = normalizeCombatDevelopmentState(stateValue, progression);
   const effects: CombatTreeEffectDefinition[] = [];
-  for (const skillId of OFFENSE_COMBAT_SKILL_IDS) {
+  for (const skillId of COMBAT_SKILL_IDS) {
     const tree = COMBAT_SKILL_TREES[skillId].tree;
     if (!tree) continue;
     const owned = new Set(state.trees[skillId].ownedNodeIds);
@@ -315,6 +353,43 @@ export function resolveCombatModifierSnapshot(
   });
 }
 
+export function resolveCombatSustainProfile(
+  snapshot: CombatModifierSnapshot | undefined,
+  context: CombatModifierContext = {}
+): CombatSustainProfile {
+  const matchingEffects = snapshot?.effects.filter(effect =>
+    combatEffectConditionMatches(effect.condition, context)) ?? [];
+  const dynamicModifiers = { ...EMPTY_STATIC };
+  matchingEffects.forEach(effect => {
+    if (effect.kind === 'stat') dynamicModifiers[effect.stat] += effect.value;
+  });
+  const modifiers = capStaticModifiers(dynamicModifiers);
+  const reserveCap = matchingEffects
+    .filter((effect): effect is Extract<CombatTreeEffectDefinition, { kind: 'reserve' }> => effect.kind === 'reserve')
+    .reduce((maximum, effect) => Math.max(maximum, effect.capPctMaxHitPoints), 0);
+  const damageRecovery = matchingEffects
+    .filter((effect): effect is Extract<CombatTreeEffectDefinition, { kind: 'recovery' }> =>
+      effect.kind === 'recovery' && effect.recovery === 'damage-recovery')
+    .reduce((maximum, effect) => Math.max(maximum, effect.value), 0);
+  const fatalGuard = matchingEffects
+    .filter((effect): effect is Extract<CombatTreeEffectDefinition, { kind: 'emergency' }> =>
+      effect.kind === 'emergency' && Boolean(effect.fatalGuardPctMaxHitPoints))
+    .reduce((maximum, effect) => Math.max(maximum, effect.fatalGuardPctMaxHitPoints || 0), 0);
+
+  return Object.freeze({
+    maxHitPointsMultiplier: 1 + Math.max(0, Math.min(0.40, modifiers.maxHitPointsPct)),
+    healingMultiplier: 1 + Math.max(0, Math.min(0.75, modifiers.healingPct)),
+    mendCooldownMultiplier: 1 - Math.max(0, Math.min(0.40, modifiers.mendCooldownPct)),
+    mendTriggerHealthPercent: Math.min(0.85, 0.75 + Math.max(0, modifiers.mendThresholdBonus)),
+    battleFocusDamageBonus: Math.max(0, Math.min(0.10, modifiers.auraDamageBonus)),
+    damageTakenMultiplier: 1 - Math.max(0, Math.min(0.15, modifiers.damageTakenReductionPct)),
+    regenerationPctPerSecond: Math.max(0, Math.min(0.01, modifiers.regenerationPctPerSecond)),
+    recoveryReserveCapPct: Math.max(0, Math.min(0.20, reserveCap)),
+    damageRecoveryPct: Math.max(0, Math.min(0.20, damageRecovery)),
+    fatalGuardPct: Math.max(0, Math.min(0.15, fatalGuard))
+  });
+}
+
 export const MomentumCombatDevelopment = Object.freeze({
   trees: COMBAT_SKILL_TREES,
   effects: COMBAT_TREE_EFFECT_DEFINITIONS,
@@ -327,5 +402,6 @@ export const MomentumCombatDevelopment = Object.freeze({
   allocateNode: allocateCombatTreeNode,
   respecCost: combatTreeRespecCost,
   resetTree: resetCombatTree,
-  resolveModifiers: resolveCombatModifierSnapshot
+  resolveModifiers: resolveCombatModifierSnapshot,
+  resolveSustainProfile: resolveCombatSustainProfile
 });

@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 const root = process.cwd();
 const html = readFileSync(resolve(root, 'index.html'), 'utf8');
 const script = readFileSync(resolve(root, 'script.js'), 'utf8');
+const arena = readFileSync(resolve(root, 'arena.js'), 'utf8');
 const styles = readFileSync(resolve(root, 'styles.scss'), 'utf8');
 
 describe('Wayfinder Arsenal automated UI contract', () => {
@@ -52,5 +53,27 @@ describe('Wayfinder Arsenal automated UI contract', () => {
     expect(script).toContain("['accessories', ['amulet','belt','ring1','ring2','trinket1','trinket2','food']]");
     expect(script).toContain("LOOT_FRAMEWORK.validateEquipItem(instance, soloDeskCacheSlot).accepted");
     expect(script).toContain("soloDeskCacheSlot = slot === 'food' ? 'all' : slot");
+  });
+
+  it('previews tree allocation, requires explicit confirmation, and exposes the Survival Report', () => {
+    const dom = new JSDOM(html);
+    const document = dom.window.document;
+    expect(document.querySelector('#soloSurvivalReport')).toBeTruthy();
+    expect(document.querySelector('#soloSurvivalReportBody')).toBeTruthy();
+    expect(script).toContain('LIVE BUILD PROFILE');
+    expect(script).toContain('id="allocateCombatTreeNode"');
+    expect(script).toContain('selectedCombatTreeNodeId = button.dataset.combatTreeNode');
+    expect(script).toContain("['Support Magic','Reflexes','Healing','Vitality']");
+    expect(styles).toContain('.survival-report-grid { display:grid;');
+    expect(styles).toContain('.combat-tree-node.is-selected');
+  });
+
+  it('reuses representable Sustain modifiers in Arena without adding tree-generated skill events', () => {
+    expect(arena).toContain('window.MomentumCombatDevelopment?.resolveSustainProfile');
+    expect(arena).toContain('profile.mendTriggerHealthPercent');
+    expect(arena).toContain('profile.mendCooldownMultiplier');
+    expect(arena).toContain('profile.regenerationPctPerSecond');
+    expect(arena).toContain('fatalGuard.fatalGuardPct');
+    expect(arena).not.toMatch(/Indomitable[\s\S]{0,220}emitCombatSkillUse/);
   });
 });

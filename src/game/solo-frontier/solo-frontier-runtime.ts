@@ -41,7 +41,12 @@ import {
 } from '../loot';
 import { SOLO_FRONTIER_ENCOUNTER_RECOVERY_SECONDS, SOLO_FRONTIER_STAGE_COUNT, soloFrontierStage } from './solo-frontier-definitions';
 import { simulateSoloCombat } from './solo-combat-engine';
-import type { SoloCombatInput, SoloCombatResult } from './solo-frontier-types';
+import {
+  COMBAT_RECOVERY_SOURCES,
+  type CombatRecoverySource,
+  type SoloCombatInput,
+  type SoloCombatResult
+} from './solo-frontier-types';
 
 export const SOLO_FRONTIER_SAVE_VERSION = 21 as const;
 export const MOMENTUM_SAVE_VERSION = SOLO_FRONTIER_SAVE_VERSION;
@@ -104,6 +109,22 @@ export interface StrongestKeptDrop {
   score: number;
 }
 
+export interface SoloFrontierSustainDebrief {
+  healing: number;
+  overhealing: number;
+  healingBySource: Record<CombatRecoverySource, number>;
+  mendCasts: number;
+  reserveStored: number;
+  reserveReleased: number;
+  damageRecovered: number;
+  damagePrevented: number;
+  cooldownRemovedMs: number;
+  emergencyTriggers: number;
+  fatalGuards: number;
+  minimumHealthRatio: number;
+  timeBelowHalfMs: number;
+}
+
 export interface SoloFrontierDebrief {
   elapsedMs: number;
   priorOrder: SoloFrontierOrder;
@@ -123,6 +144,7 @@ export interface SoloFrontierDebrief {
   fullCacheSalvage: number;
   rarityCounts: Record<RarityId, number>;
   strongestKeptDrops: readonly StrongestKeptDrop[];
+  sustain: SoloFrontierSustainDebrief;
 }
 
 export interface SoloFrontierRuntimeState {
@@ -443,6 +465,8 @@ function inputForEncounter(options: SoloFrontierSimulationOptions, stage: number
       style: configured.activeWeapon.style,
       technique: configured.technique,
       stance: configured.stance,
+      aura: configured.aura,
+      defensiveAbility: configured.defensiveAbility,
       boss: (options.useConfiguredEnemy ? configured.enemy : soloFrontierStage(stage).enemy).kind === 'boss',
       enemyWarded: (options.useConfiguredEnemy ? configured.enemy : soloFrontierStage(stage).enemy).ward > 0,
       playerHealthRatio: 1,
@@ -490,6 +514,28 @@ function emptyRarityCounts(): Record<RarityId, number> {
   return Object.fromEntries(RARITY_IDS.map(rarity => [rarity, 0])) as Record<RarityId, number>;
 }
 
+function emptyHealingBySource(): Record<CombatRecoverySource, number> {
+  return Object.fromEntries(COMBAT_RECOVERY_SOURCES.map(source => [source, 0])) as Record<CombatRecoverySource, number>;
+}
+
+function emptySustainDebrief(): SoloFrontierSustainDebrief {
+  return {
+    healing: 0,
+    overhealing: 0,
+    healingBySource: emptyHealingBySource(),
+    mendCasts: 0,
+    reserveStored: 0,
+    reserveReleased: 0,
+    damageRecovered: 0,
+    damagePrevented: 0,
+    cooldownRemovedMs: 0,
+    emergencyTriggers: 0,
+    fatalGuards: 0,
+    minimumHealthRatio: 1,
+    timeBelowHalfMs: 0
+  };
+}
+
 function createDebrief(order: SoloFrontierOrder): SoloFrontierDebrief {
   return {
     elapsedMs: 0,
@@ -509,7 +555,8 @@ function createDebrief(order: SoloFrontierOrder): SoloFrontierDebrief {
     filterSalvage: 0,
     fullCacheSalvage: 0,
     rarityCounts: emptyRarityCounts(),
-    strongestKeptDrops: []
+    strongestKeptDrops: [],
+    sustain: emptySustainDebrief()
   };
 }
 
@@ -517,6 +564,8 @@ function normalizeDebrief(value: unknown, order: SoloFrontierOrder, progression:
   const source = isRecord(value) ? value : {};
   const fallback = createDebrief(order);
   const sourceSkillXp = isRecord(source.skillXp) ? source.skillXp : {};
+  const sourceSustain = isRecord(source.sustain) ? source.sustain : {};
+  const sourceHealingBySource = isRecord(sourceSustain.healingBySource) ? sourceSustain.healingBySource : {};
   return {
     ...fallback,
     ...source,
@@ -540,7 +589,25 @@ function normalizeDebrief(value: unknown, order: SoloFrontierOrder, progression:
     rarityCounts: normalizeRarityCounts(source.rarityCounts),
     strongestKeptDrops: Array.isArray(source.strongestKeptDrops)
       ? source.strongestKeptDrops.filter(isRecord) as unknown as StrongestKeptDrop[]
-      : []
+      : [],
+    sustain: {
+      healing: finiteNonNegative(sourceSustain.healing),
+      overhealing: finiteNonNegative(sourceSustain.overhealing),
+      healingBySource: Object.fromEntries(COMBAT_RECOVERY_SOURCES.map(recoverySource => [
+        recoverySource,
+        finiteNonNegative(sourceHealingBySource[recoverySource])
+      ])) as Record<CombatRecoverySource, number>,
+      mendCasts: finiteNonNegative(sourceSustain.mendCasts),
+      reserveStored: finiteNonNegative(sourceSustain.reserveStored),
+      reserveReleased: finiteNonNegative(sourceSustain.reserveReleased),
+      damageRecovered: finiteNonNegative(sourceSustain.damageRecovered),
+      damagePrevented: finiteNonNegative(sourceSustain.damagePrevented),
+      cooldownRemovedMs: finiteNonNegative(sourceSustain.cooldownRemovedMs),
+      emergencyTriggers: finiteNonNegative(sourceSustain.emergencyTriggers),
+      fatalGuards: finiteNonNegative(sourceSustain.fatalGuards),
+      minimumHealthRatio: Math.min(1, finiteNonNegative(sourceSustain.minimumHealthRatio, 1)),
+      timeBelowHalfMs: finiteNonNegative(sourceSustain.timeBelowHalfMs)
+    }
   } as SoloFrontierDebrief;
 }
 
@@ -658,7 +725,11 @@ function copyDebrief(debrief: SoloFrontierDebrief): SoloFrontierDebrief {
     goldBySource: { ...debrief.goldBySource },
     keptDrops: [...debrief.keptDrops],
     rarityCounts: { ...debrief.rarityCounts },
-    strongestKeptDrops: [...debrief.strongestKeptDrops]
+    strongestKeptDrops: [...debrief.strongestKeptDrops],
+    sustain: {
+      ...debrief.sustain,
+      healingBySource: { ...debrief.sustain.healingBySource }
+    }
   };
 }
 
@@ -666,6 +737,34 @@ function addCombatXpToDebrief(debrief: SoloFrontierDebrief, xpBySkill: Record<Co
   const skillXp = { ...debrief.skillXp };
   COMBAT_SKILL_IDS.forEach(skillId => { skillXp[skillId] += finiteNonNegative(xpBySkill[skillId]); });
   return { ...debrief, skillXp };
+}
+
+function addSustainToDebrief(
+  debrief: SoloFrontierDebrief,
+  sustain: SoloCombatResult['metrics']['sustain']
+): SoloFrontierDebrief {
+  const healingBySource = { ...debrief.sustain.healingBySource };
+  COMBAT_RECOVERY_SOURCES.forEach(source => {
+    healingBySource[source] += finiteNonNegative(sustain.healingBySource[source]);
+  });
+  return {
+    ...debrief,
+    sustain: {
+      healing: debrief.sustain.healing + finiteNonNegative(sustain.healing),
+      overhealing: debrief.sustain.overhealing + finiteNonNegative(sustain.overhealing),
+      healingBySource,
+      mendCasts: debrief.sustain.mendCasts + finiteNonNegative(sustain.mendCasts),
+      reserveStored: debrief.sustain.reserveStored + finiteNonNegative(sustain.reserveStored),
+      reserveReleased: debrief.sustain.reserveReleased + finiteNonNegative(sustain.reserveReleased),
+      damageRecovered: debrief.sustain.damageRecovered + finiteNonNegative(sustain.damageRecovered),
+      damagePrevented: debrief.sustain.damagePrevented + finiteNonNegative(sustain.damagePrevented),
+      cooldownRemovedMs: debrief.sustain.cooldownRemovedMs + finiteNonNegative(sustain.cooldownRemovedMs),
+      emergencyTriggers: debrief.sustain.emergencyTriggers + finiteNonNegative(sustain.emergencyTriggers),
+      fatalGuards: debrief.sustain.fatalGuards + finiteNonNegative(sustain.fatalGuards),
+      minimumHealthRatio: Math.min(debrief.sustain.minimumHealthRatio, finiteNonNegative(sustain.minimumHealthRatio, 1)),
+      timeBelowHalfMs: debrief.sustain.timeBelowHalfMs + finiteNonNegative(sustain.timeBelowHalfMs)
+    }
+  };
 }
 
 function addGoldToDebrief(debrief: SoloFrontierDebrief, source: FrontierLedgerSource, amount: number): SoloFrontierDebrief {
@@ -767,7 +866,10 @@ function applyEncounter(
     totalVictories: state.totalVictories + (result.outcome === 'victory' ? 1 : 0),
     totalDeaths: state.totalDeaths + (result.outcome === 'defeat' ? 1 : 0)
   };
-  let nextDebrief = addCombatXpToDebrief(debrief, progression.xpBySkill);
+  let nextDebrief = addSustainToDebrief(
+    addCombatXpToDebrief(debrief, progression.xpBySkill),
+    result.metrics.sustain
+  );
   let firstClear = false;
   if (result.outcome === 'defeat') {
     const wall = wallState(nextState, stage, result, atMs);

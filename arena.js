@@ -66,6 +66,38 @@
     return Math.max(0, Number(run?.combatBuild?.combatSkills?.[skillId]) || 0);
   }
 
+  const EMPTY_SUSTAIN_PROFILE = Object.freeze({
+    maxHitPointsMultiplier:1,
+    healingMultiplier:1,
+    mendCooldownMultiplier:1,
+    mendTriggerHealthPercent:0.75,
+    battleFocusDamageBonus:0,
+    damageTakenMultiplier:1,
+    regenerationPctPerSecond:0,
+    recoveryReserveCapPct:0,
+    damageRecoveryPct:0,
+    fatalGuardPct:0
+  });
+
+  function sustainProfile(overrides = {}) {
+    if (!run) return EMPTY_SUSTAIN_PROFILE;
+    const resolver = window.MomentumCombatDevelopment?.resolveSustainProfile;
+    if (typeof resolver !== 'function') return EMPTY_SUSTAIN_PROFILE;
+    return resolver(run.combatBuild?.combatModifiers, {
+      style:run.weapon?.style,
+      technique:run.combatBuild?.technique,
+      stance:run.combatBuild?.stance,
+      aura:run.aura,
+      defensiveAbility:run.defensiveAbility,
+      boss:true,
+      enemyWarded:Boolean(run.combatBuild?.enemy?.ward > 0),
+      enemyHealthRatio:run.boss ? run.boss.hp / Math.max(1, run.boss.maxHp) : 1,
+      playerHealthRatio:run.you ? run.you.hp / Math.max(1, run.you.maxHp) : 1,
+      baseInterval:run.weapon?.attackInterval,
+      ...overrides
+    });
+  }
+
   function emitCombatSkillUse(skillId, amount) {
     if (!run || !amount || amount <= 0) return;
     const event = { type:'combat-skill-used', skillId, amount:Math.max(0.001, Number(amount) || 0) };
@@ -89,12 +121,14 @@
   function tryDefensiveAbility(force = false) {
     if (!run || !run.defensiveAbility || performance.now() < run.defensiveReadyAt) return false;
     if (run.defensiveAbility === 'Mend') {
-      if (!force && run.you.hp / run.you.maxHp > 0.75) return false;
-      const healing = Math.round(24 * (1 + 0.006 * combatSkill('Healing')));
+      const profile = sustainProfile();
+      if (!force && run.you.hp / run.you.maxHp > profile.mendTriggerHealthPercent) return false;
+      const healing = Math.round(24 * (1 + 0.006 * combatSkill('Healing')) * profile.healingMultiplier);
       const applied = Math.min(run.you.maxHp - run.you.hp, healing);
       if (applied <= 0) return false;
       run.you.hp = Math.min(run.you.maxHp, run.you.hp + applied);
-      run.defensiveReadyAt = performance.now() + 10_000;
+      run.defensiveReadyAt = performance.now() + 10_000 * profile.mendCooldownMultiplier;
+      run.stats.sustainHealing += applied;
       emit('ability', { ability:'Mend', automatic:true });
       emitCombatSkillUse('Healing', applied);
       return true;
@@ -114,7 +148,10 @@
     const mitigation = damageType === 'magical'
       ? Number(run.combatStats?.magicalMitigation || 0)
       : Number(run.combatStats?.armourMitigation || 0);
-    return Math.max(0, amount * (1 - Math.max(0, Math.min(0.9, mitigation))));
+    const postMitigation = Math.max(0, amount * (1 - Math.max(0, Math.min(0.9, mitigation))));
+    const postSustain = postMitigation * sustainProfile().damageTakenMultiplier;
+    run.stats.sustainPrevented += Math.max(0, postMitigation - postSustain);
+    return Math.max(0, postSustain);
   }
 
   function hasDirective(id) {
@@ -204,6 +241,15 @@
       run.you.hp = 1;
       run.shake = 8;
       spawnImpact(run.you.x, run.you.y, '#ffffff', 20);
+    }
+
+    const fatalGuard = sustainProfile();
+    if (run.you.hp <= 0 && fatalGuard.fatalGuardPct > 0 && !run.sustainFatalGuardUsed) {
+      run.sustainFatalGuardUsed = true;
+      run.stats.sustainFatalGuardTriggered = true;
+      run.you.hp = Math.min(run.you.maxHp, 1 + run.you.maxHp * fatalGuard.fatalGuardPct);
+      emit('ability', { ability:'Indomitable', automatic:true });
+      spawnImpact(run.you.x, run.you.y, '#ffc857', 20);
     }
 
     if (run.you.hp > 0 && hasTalent('fieldRation') && run.you.hp / run.you.maxHp < 0.35) {
@@ -584,14 +630,24 @@
 
   function updateRecovery(dt) {
     const you = run.you;
-    if (!hasTalent('fortifiedRecovery') || run.fortifiedRecoveryUsed || you.recoveryTimer <= 0) return;
-    you.recoveryTimer = Math.max(0, you.recoveryTimer - dt);
-    if (you.recoveryTimer === 0 && you.hp < you.maxHp) {
-      you.hp = Math.min(you.maxHp, you.hp + 25);
-      run.fortifiedRecoveryUsed = true;
-      run.stats.fortifiedRecoveryTriggered = true;
-      emit('talent', { talentId:'fortifiedRecovery' });
-      spawnImpact(you.x, you.y, '#62e6a7', 14);
+    const profile = sustainProfile();
+    if (profile.regenerationPctPerSecond > 0 && you.hp > 0 && you.hp < you.maxHp) {
+      const applied = Math.min(
+        you.maxHp - you.hp,
+        you.maxHp * profile.regenerationPctPerSecond * profile.healingMultiplier * dt
+      );
+      you.hp += applied;
+      run.stats.sustainHealing += applied;
+    }
+    if (hasTalent('fortifiedRecovery') && !run.fortifiedRecoveryUsed && you.recoveryTimer > 0) {
+      you.recoveryTimer = Math.max(0, you.recoveryTimer - dt);
+      if (you.recoveryTimer === 0 && you.hp < you.maxHp) {
+        you.hp = Math.min(you.maxHp, you.hp + 25);
+        run.fortifiedRecoveryUsed = true;
+        run.stats.fortifiedRecoveryTriggered = true;
+        emit('talent', { talentId:'fortifiedRecovery' });
+        spawnImpact(you.x, you.y, '#62e6a7', 14);
+      }
     }
   }
 
@@ -778,6 +834,7 @@
         hp:run.you.hp, foodUsed:run.foodUsed,
         openingAttackUsed:run.openingAttackUsed, executionerUsed:run.executionerUsed,
         secondWindUsed:run.secondWindUsed, fortifiedRecoveryUsed:run.fortifiedRecoveryUsed,
+        sustainFatalGuardUsed:run.sustainFatalGuardUsed,
         totalStartedAt:run.totalStartedAt
       }
     };
@@ -968,6 +1025,7 @@
       executionerUsed: Boolean(config.carryState?.executionerUsed),
       secondWindUsed: Boolean(config.carryState?.secondWindUsed),
       fortifiedRecoveryUsed: Boolean(config.carryState?.fortifiedRecoveryUsed),
+      sustainFatalGuardUsed: Boolean(config.carryState?.sustainFatalGuardUsed),
       shake: 0,
       startedAt: now,
       totalStartedAt: config.carryState?.totalStartedAt || now,
@@ -985,12 +1043,17 @@
         openingAttackTriggered: false,
         executionerTriggered: false,
         secondWindTriggered: false,
-        fortifiedRecoveryTriggered: false
+        fortifiedRecoveryTriggered: false,
+        sustainHealing:0,
+        sustainPrevented:0,
+        sustainFatalGuardTriggered:false
       }
     };
 
     if (run.aura === 'Battle Focus') {
-      run.auraDamageMultiplier = 1 + 0.10 * (1 + 0.005 * combatSkill('Support Magic'));
+      run.auraDamageMultiplier = 1
+        + 0.10 * (1 + 0.005 * combatSkill('Support Magic'))
+        + sustainProfile().battleFocusDamageBonus;
       emit('aura', { aura:run.aura, damageBonus:run.auraDamageMultiplier - 1, automatic:true });
       emitCombatSkillUse('Support Magic', 1);
     }
