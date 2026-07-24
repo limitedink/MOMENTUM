@@ -135,13 +135,13 @@ function allocateByName(
 }
 
 describe('v21 combat development', () => {
-  it('registers all 17 skills and authors eight Offense plus four Sustain trees', () => {
+  it('registers all 17 skills and authors the v21.2 Light and Medium Defense trees', () => {
     expect(Object.keys(COMBAT_SKILL_TREES)).toEqual([...COMBAT_SKILL_IDS]);
     expect(OFFENSE_COMBAT_SKILL_IDS).toHaveLength(8);
     expect(SUSTAIN_COMBAT_SKILL_IDS).toHaveLength(4);
     const referencedEffectIds: string[] = [];
 
-    for (const skillId of [...OFFENSE_COMBAT_SKILL_IDS, ...SUSTAIN_COMBAT_SKILL_IDS]) {
+    for (const skillId of COMBAT_SKILL_IDS.filter(skillId => COMBAT_SKILL_TREES[skillId].tree)) {
       const entry = COMBAT_SKILL_TREES[skillId];
       const tree = entry.tree!;
       expect(entry.status).toBe('authored');
@@ -164,9 +164,9 @@ describe('v21 combat development', () => {
       }
     }
 
-    expect(Object.values(COMBAT_SKILL_TREES).filter(entry => entry.status === 'authored')).toHaveLength(12);
+    expect(Object.values(COMBAT_SKILL_TREES).filter(entry => entry.status === 'authored')).toHaveLength(14);
     expect(Object.values(COMBAT_SKILL_TREES).filter(entry => entry.release === 'v21.1')).toHaveLength(4);
-    expect(Object.values(COMBAT_SKILL_TREES).filter(entry => entry.status === 'planned-defense')).toHaveLength(5);
+    expect(Object.values(COMBAT_SKILL_TREES).filter(entry => entry.status === 'planned-defense')).toHaveLength(3);
     expect(new Set(referencedEffectIds).size).toBe(referencedEffectIds.length);
     expect(new Set(Object.keys(COMBAT_TREE_EFFECT_DEFINITIONS))).toEqual(new Set(referencedEffectIds));
   });

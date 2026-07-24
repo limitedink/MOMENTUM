@@ -75,6 +75,7 @@ export interface CombatEffectCondition {
   enemyHealthAbove?: number;
   playerHealthAbove?: number;
   playerHealthBelow?: number;
+  isTechnique?: boolean;
   minimumHitChance?: number;
   minimumBaseInterval?: number;
   burning?: boolean;
@@ -175,6 +176,8 @@ export type CombatTreeEffectDefinition =
     kind: 'stat';
     stat: CombatModifierStat;
     value: number;
+    family?: string;
+    priority?: number;
     condition?: CombatEffectCondition;
   }
   | {
@@ -189,6 +192,7 @@ export type CombatTreeEffectDefinition =
     count?: number;
     family?: string;
     priority?: number;
+    cooldownSeconds?: number;
     scale?: 'overheal-pct-max-hit-points';
     minimum?: number;
     maximum?: number;

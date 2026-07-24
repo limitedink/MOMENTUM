@@ -34,6 +34,11 @@ import {
   VITALITY_SKILL_TREE
 } from './sustain-tree-definitions';
 import {
+  DEFENSE_TREE_EFFECT_DEFINITIONS,
+  LIGHT_ARMOUR_SKILL_TREE,
+  MEDIUM_ARMOUR_SKILL_TREE
+} from './defense-tree-definitions';
+import {
   DEFENSE_COMBAT_SKILL_IDS,
   OFFENSE_COMBAT_SKILL_IDS,
   SUSTAIN_COMBAT_SKILL_IDS,
@@ -70,12 +75,20 @@ const SUSTAIN_TREES = Object.freeze({
   Vitality: VITALITY_SKILL_TREE
 });
 
+const DEFENSE_TREES = Object.freeze({
+  'Light Armour Proficiency': LIGHT_ARMOUR_SKILL_TREE,
+  'Medium Armour Proficiency': MEDIUM_ARMOUR_SKILL_TREE
+});
+
 const catalogEntries = COMBAT_SKILL_IDS.map((skillId): [CombatSkillId, CombatSkillTreeCatalogEntry] => {
   if ((OFFENSE_COMBAT_SKILL_IDS as readonly CombatSkillId[]).includes(skillId)) {
     return [skillId, { skillId, status: 'authored', release: 'v21.0', tree: OFFENSE_TREES[skillId as keyof typeof OFFENSE_TREES] }];
   }
   if ((SUSTAIN_COMBAT_SKILL_IDS as readonly CombatSkillId[]).includes(skillId)) {
     return [skillId, { skillId, status: 'authored', release: 'v21.1', tree: SUSTAIN_TREES[skillId as keyof typeof SUSTAIN_TREES] }];
+  }
+  if (skillId in DEFENSE_TREES) {
+    return [skillId, { skillId, status: 'authored', release: 'v21.2', tree: DEFENSE_TREES[skillId as keyof typeof DEFENSE_TREES] }];
   }
   return [skillId, { skillId, status: 'planned-defense', release: 'v21.2', tree: null }];
 });
@@ -86,7 +99,8 @@ export const COMBAT_SKILL_TREES: Readonly<Record<CombatSkillId, CombatSkillTreeC
 
 export const COMBAT_TREE_EFFECT_DEFINITIONS: Readonly<Record<string, CombatTreeEffectDefinition>> = Object.freeze({
   ...OFFENSE_TREE_EFFECT_DEFINITIONS,
-  ...SUSTAIN_TREE_EFFECT_DEFINITIONS
+  ...SUSTAIN_TREE_EFFECT_DEFINITIONS,
+  ...DEFENSE_TREE_EFFECT_DEFINITIONS
 });
 
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -277,6 +291,7 @@ export function combatEffectConditionMatches(condition: CombatEffectCondition | 
   if (condition.enemyHealthAbove !== undefined && (context.enemyHealthRatio ?? 1) <= condition.enemyHealthAbove) return false;
   if (condition.playerHealthAbove !== undefined && (context.playerHealthRatio ?? 1) <= condition.playerHealthAbove) return false;
   if (condition.playerHealthBelow !== undefined && (context.playerHealthRatio ?? 1) >= condition.playerHealthBelow) return false;
+  if (condition.isTechnique !== undefined && condition.isTechnique !== Boolean(context.isTechnique)) return false;
   if (condition.minimumHitChance !== undefined && (context.displayedHitChance ?? 0) < condition.minimumHitChance) return false;
   if (condition.minimumBaseInterval !== undefined && (context.baseInterval ?? 0) < condition.minimumBaseInterval) return false;
   if (condition.burning !== undefined && condition.burning !== Boolean(context.burning)) return false;
@@ -284,10 +299,12 @@ export function combatEffectConditionMatches(condition: CombatEffectCondition | 
   if (condition.maximumShred !== undefined && condition.maximumShred !== Boolean(context.maximumShred)) return false;
   if (condition.bossOrWarded && !context.boss && !context.enemyWarded) return false;
   if (condition.overhealing !== undefined && condition.overhealing !== Boolean(context.overhealing)) return false;
-  if (condition.armourClass !== undefined && condition.armourClass !== context.armourClass) return false;
+  if (condition.armourClass !== undefined && context.armourClass !== undefined && condition.armourClass !== context.armourClass) return false;
   if (condition.minimumArmourPieces !== undefined) {
-    const matchingPieces = context.armourClass && context.armourPieceCounts
-      ? context.armourPieceCounts[context.armourClass]
+    const matchingPieces = condition.armourClass && context.armourPieceCounts
+      ? context.armourPieceCounts[condition.armourClass]
+      : context.armourClass && context.armourPieceCounts
+        ? context.armourPieceCounts[context.armourClass]
       : context.matchingArmourPieces;
     if ((matchingPieces ?? 0) < condition.minimumArmourPieces) return false;
   }
@@ -387,8 +404,19 @@ export function resolveCombatModifierSnapshot(
     }
   }
   const staticModifiers = { ...EMPTY_STATIC };
-  for (const effect of effects) {
-    if (effect.kind !== 'stat' || !combatEffectConditionMatches(effect.condition, context)) continue;
+  const activeStaticEffects = effects.filter((effect): effect is Extract<CombatTreeEffectDefinition, { kind: 'stat' }> =>
+    effect.kind === 'stat' && combatEffectConditionMatches(effect.condition, context));
+  const staticFamilies = new Map<string, Extract<CombatTreeEffectDefinition, { kind: 'stat' }>>();
+  const independentStaticEffects: Extract<CombatTreeEffectDefinition, { kind: 'stat' }>[] = [];
+  activeStaticEffects.forEach(effect => {
+    if (!effect.family) {
+      independentStaticEffects.push(effect);
+      return;
+    }
+    const current = staticFamilies.get(effect.family);
+    if (!current || (effect.priority || 0) > (current.priority || 0)) staticFamilies.set(effect.family, effect);
+  });
+  for (const effect of [...independentStaticEffects, ...staticFamilies.values()]) {
     staticModifiers[effect.stat] += effect.value;
   }
   return Object.freeze({
@@ -472,11 +500,33 @@ export function resolveCombatDefenseProfile(
   const magicalEffects = defenseEffectsForContext(snapshot, { ...baseContext, damageType: 'magical' });
 
   const genericEffects = [...baseEffects, ...physicalEffects, ...magicalEffects];
-  const uniqueGenericEffects = [...new Map(genericEffects.map(effect => [effect.id, effect])).values()];
-  const staticValue = (stat: CombatModifierStat): number => sumDefenseStat(uniqueGenericEffects, stat);
+  const uniqueGenericEffects = [...new Map(genericEffects
+    .filter(effect => effect.condition?.armourClass === undefined)
+    .map(effect => [effect.id, effect])).values()];
+  const chooseFamilies = (effects: readonly CombatStatEffect[]): CombatStatEffect[] => {
+    const independent: CombatStatEffect[] = [];
+    const families = new Map<string, CombatStatEffect>();
+    effects.forEach(effect => {
+      if (!effect.family) {
+        independent.push(effect);
+        return;
+      }
+      const current = families.get(effect.family);
+      if (!current || (effect.priority || 0) > (current.priority || 0)) families.set(effect.family, effect);
+    });
+    return [...independent, ...families.values()];
+  };
+  const selectedGenericEffects = chooseFamilies(uniqueGenericEffects);
+  const selectedArmourEffects = ARMOUR_CLASSES.flatMap(armourClass => chooseFamilies(
+    [...new Map(classEffects[armourClass].map(effect => [effect.id, effect])).values()]
+      .filter(effect => effect.condition?.armourClass === armourClass)
+  ));
+  const selectedAllDefenseEffects = [...selectedGenericEffects, ...selectedArmourEffects];
+  const staticValue = (stat: CombatModifierStat): number => sumDefenseStat(selectedAllDefenseEffects, stat);
   const armourMultiplierByClass = Object.fromEntries(ARMOUR_CLASSES.map(armourClass => {
-    const effects = [...new Map(classEffects[armourClass].map(effect => [effect.id, effect])).values()];
-    return [armourClass, 1 + Math.min(0.50, Math.max(0, sumDefenseStat(effects, 'armourPct')) + staticValue('armourPct'))];
+    const effects = chooseFamilies([...new Map(classEffects[armourClass].map(effect => [effect.id, effect])).values()]);
+    const classOnly = effects.filter(effect => effect.condition?.armourClass === armourClass);
+    return [armourClass, 1 + Math.min(0.50, Math.max(0, sumDefenseStat(classOnly, 'armourPct') + sumDefenseStat(selectedGenericEffects, 'armourPct')))];
   })) as Record<ArmourClass, number>;
   const wardPct = Math.min(0.60, Math.max(0, staticValue('wardPct')));
   const evasionBonus = Math.min(30, Math.max(0, staticValue('evasionFlat')));

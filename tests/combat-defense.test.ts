@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  COMBAT_SKILL_TREES,
+  allocateCombatTreeNode,
   createCombatDevelopmentState,
   resolveCombatDefenseProfile,
   resolveCombatModifierSnapshot,
@@ -78,6 +80,20 @@ describe('v21.2 Defense modifier platform', () => {
     expect(profile.wardPenetrationResistance).toBe(0.5);
     expect(profile.barrierStrengthMultiplier).toBe(2);
     expect(profile.defensiveCooldownMultiplier).toBe(0.6);
+  });
+
+  it('keeps Light and Medium allocations visible while activating them only at 2/4/6 matching pieces', () => {
+    const progression = createInitialCombatProgression(100);
+    let development = createCombatDevelopmentState();
+    const tree = COMBAT_SKILL_TREES['Light Armour Proficiency'].tree!;
+    for (const name of ['Unburdened', 'Soft Step', 'Ghost Line']) {
+      const node = tree.nodes.find(candidate => candidate.name === name)!;
+      development = allocateCombatTreeNode(development, progression, 'Light Armour Proficiency', node.id).state;
+    }
+    const snapshot = resolveCombatModifierSnapshot(development, progression, { armourPieceCounts: { light: 2, medium: 0, heavy: 0 } });
+    expect(resolveCombatDefenseProfile(snapshot, { armourPieceCounts: { light: 2, medium: 0, heavy: 0 } }).evasionBonus).toBe(8);
+    expect(resolveCombatDefenseProfile(snapshot, { armourPieceCounts: { light: 4, medium: 0, heavy: 0 } }).enemyHitChanceReduction).toBe(0.02);
+    expect(resolveCombatDefenseProfile(snapshot, { armourPieceCounts: { light: 6, medium: 0, heavy: 0 } }).enemyHitChanceReduction).toBe(0.02);
   });
 
   it('resolves ordered conversion, glance, guard, adaptation and retaliation deterministically', () => {

@@ -317,6 +317,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
   const modifierEffects = input.combatModifiers?.effects ?? [];
   const initialModifiers = input.combatModifiers?.static;
   const effectUses = new Map<string, number>();
+  const effectLastTriggeredAt = new Map<string, number>();
   const triggerCharges = new Map<string, number>();
   let actionCount = 0;
   let techniqueCount = 0;
@@ -512,10 +513,12 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     consume = false
   ): Extract<CombatTreeEffectDefinition, { kind: 'trigger' }>[] => {
     const matches = strongestByFamily(activeEffects('trigger', context)
-      .filter(effect => effect.outcome === outcome && triggerSatisfied(effect, context, critical)));
+      .filter(effect => effect.outcome === outcome && triggerSatisfied(effect, context, critical))
+      .filter(effect => !effect.cooldownSeconds || durationMs >= (effectLastTriggeredAt.get(effect.id) ?? Number.NEGATIVE_INFINITY) + effect.cooldownSeconds * 1_000));
     if (consume) matches.forEach(effect => {
       if (effect.trigger === 'after-damage' && effect.limit && effect.limit > 1) return;
       effectUses.set(effect.id, (effectUses.get(effect.id) || 0) + 1);
+      effectLastTriggeredAt.set(effect.id, durationMs);
     });
     return matches;
   };
