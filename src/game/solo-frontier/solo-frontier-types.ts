@@ -148,7 +148,21 @@ export type SoloCombatEvent =
   | (SequencedCombatEvent & { type: 'encounter-started'; stage: number; playerHitPoints: number; enemyHitPoints: number })
   | (SequencedCombatEvent & { type: 'aura-activated'; ability: AuraId; damageBonus: number })
   | (SequencedCombatEvent & { type: 'ability-used'; actor: 'player'; ability: TechniqueId | DefensiveAbilityId; effect: 'attack' | 'heal' | 'barrier' })
-  | (SequencedCombatEvent & { type: 'attack'; actor: 'player' | 'enemy'; action: string; hit: boolean; critical: boolean; damageType: DamageType; rawDamage: number; damage: number; targetHitPoints: number })
+  | (SequencedCombatEvent & {
+    type: 'attack';
+    actor: 'player' | 'enemy';
+    action: string;
+    hit: boolean;
+    critical: boolean;
+    damageType: DamageType;
+    rawDamage: number;
+    damage: number;
+    targetHitPoints: number;
+    attackTag?: EnemyAttackTag;
+    convertedMiss?: boolean;
+    glanced?: boolean;
+    guardReduction?: number;
+  })
   | (SequencedCombatEvent & { type: 'healing'; ability: 'Mend'; amount: number; overhealing: number; playerHitPoints: number })
   | (SequencedCombatEvent & { type: 'recovery'; source: CombatRecoverySource; amount: number; overhealing: number; playerHitPoints: number })
   | (SequencedCombatEvent & { type: 'barrier'; ability: 'Arcane Barrier'; granted: number; absorbed: number; remaining: number })
@@ -185,6 +199,23 @@ export interface SoloCombatMetrics {
     magicalRate: number;
     preventedByArmourOrWard: number;
     barrierAbsorbed: number;
+  };
+  defense: {
+    physicalAttempts: number;
+    magicalAttempts: number;
+    naturalMisses: number;
+    convertedMisses: number;
+    glancingHits: number;
+    glancingPrevented: number;
+    guardPrevented: number;
+    defensePrevented: number;
+    armourPrevented: number;
+    wardPrevented: number;
+    penetrationResisted: number;
+    barrierAbsorption: number;
+    barrierBreaks: number;
+    retaliationDamage: number;
+    procCounts: Record<string, number>;
   };
   sustain: {
     healing: number;

@@ -101,19 +101,19 @@ export const SOLO_THREAT_PROFILES: Readonly<Record<SoloThreatProfileId, SoloEnem
     attackStep('magical', 0.90, 2, 'arcane')
   ]),
   initiate: threat('initiate', 'Initiate', 'A boss cycle that alternates light pressure with a heavy armour-breaking blow.', 1, [
-    attackStep('physical', 0.80, 5, 'rapid'),
-    attackStep('physical', 0.80, 5, 'rapid'),
-    attackStep('physical', 1.40, -5, 'heavy', { armourPenetrationPct: 0.10 })
+    attackStep('physical', 0.80, 0, 'standard'),
+    attackStep('physical', 0.80, 0, 'standard'),
+    attackStep('physical', 1.40, 0, 'heavy', { armourPenetrationPct: 0.10 })
   ]),
   vanguard: threat('vanguard', 'Vanguard', 'A mixed boss cycle of physical, magical and heavy pressure.', 0.95, [
-    attackStep('physical', 0.85, 5, 'rapid'),
-    attackStep('magical', 0.85, 2, 'arcane'),
-    attackStep('physical', 1.15, -5, 'heavy', { armourPenetrationPct: 0.15 })
+    attackStep('physical', 0.85, 0, 'standard'),
+    attackStep('magical', 0.85, 0, 'arcane'),
+    attackStep('physical', 1.15, 0, 'heavy', { armourPenetrationPct: 0.15 })
   ]),
   apex: threat('apex', 'Apex', 'A four-step boss cycle combining rapid, arcane and penetrating attacks.', 0.95, [
-    attackStep('physical', 0.80, 8, 'rapid'),
-    attackStep('magical', 0.80, 4, 'arcane'),
-    attackStep('physical', 1.10, -5, 'heavy', { armourPenetrationPct: 0.20 }),
+    attackStep('physical', 0.80, 0, 'standard'),
+    attackStep('magical', 0.80, 0, 'arcane'),
+    attackStep('physical', 1.10, 0, 'heavy', { armourPenetrationPct: 0.20 }),
     attackStep('magical', 1.10, 0, 'arcane', { wardPenetrationPct: 0.20 })
   ])
 });

@@ -1,5 +1,11 @@
 import type { CombatSkillId } from '../combat-progression';
-import { combatEffectConditionMatches, type CombatModifierContext, type CombatTreeEffectDefinition } from '../combat-development';
+import {
+  combatEffectConditionMatches,
+  resolveCombatDefenseProfile,
+  type CombatDefenseProfile,
+  type CombatModifierContext,
+  type CombatTreeEffectDefinition
+} from '../combat-development';
 import {
   SOLO_COMBAT_TIMEOUT_SECONDS,
   SOLO_FRONTIER_BALANCE,
@@ -12,6 +18,7 @@ import {
   DEFENSIVE_ABILITY_IDS,
   TECHNIQUE_IDS,
   type ArmourClass,
+  type EnemyAttackTag,
   type CombatRecoverySource,
   type DamageType,
   type DerivedSoloPlayerStats,
@@ -20,6 +27,7 @@ import {
   type SoloCombatInput,
   type SoloCombatMetrics,
   type SoloCombatResult,
+  type SoloEnemyAttackStep,
   type SoloEnemyDefinition,
   type SoloEnemyThreat,
   type SoloCombatTermination,
@@ -127,17 +135,38 @@ function weaponAccuracySkill(input: SoloCombatInput): number {
   return skill(input, 'Offensive Magic');
 }
 
-function proficientArmour(input: SoloCombatInput): number {
+function armourPieceCounts(input: SoloCombatInput): Readonly<Record<ArmourClass, number>> {
+  return input.equippedStats.armourPieces.reduce((counts, piece) => ({
+    ...counts,
+    [piece.armourClass]: counts[piece.armourClass] + 1
+  }), { light: 0, medium: 0, heavy: 0 } as Record<ArmourClass, number>);
+}
+
+function defenseContextForInput(input: SoloCombatInput): CombatModifierContext {
+  return {
+    style: input.activeWeapon.style,
+    technique: TECHNIQUE_IDS.find(candidate => candidate === input.technique),
+    stance: input.stance,
+    aura: AURA_IDS.find(candidate => candidate === input.aura),
+    defensiveAbility: DEFENSIVE_ABILITY_IDS.find(candidate => candidate === input.defensiveAbility),
+    boss: input.enemy.kind === 'boss',
+    enemyWarded: input.enemy.ward > 0,
+    armourPieceCounts: armourPieceCounts(input)
+  };
+}
+
+function proficientArmour(input: SoloCombatInput, defenseProfile: CombatDefenseProfile): number {
   return input.equippedStats.armourPieces.reduce((total, piece) => {
     const baseArmour = finiteNonNegative(piece.armour);
     const proficiency = skill(input, ARMOUR_SKILLS[piece.armourClass]);
-    return total + baseArmour * (1 + 0.005 * proficiency);
+    return total + baseArmour * (1 + 0.005 * proficiency) * defenseProfile.armourMultiplierByClass[piece.armourClass];
   }, 0);
 }
 
 /** Derives stats without observing or mutating any renderer or persistence state. */
 export function deriveSoloPlayerStats(input: SoloCombatInput): DerivedSoloPlayerStats {
   const stage = Math.max(1, Math.floor(finiteNonNegative(input.stage) || 1));
+  const defenseProfile = resolveCombatDefenseProfile(input.combatModifiers, defenseContextForInput(input));
   const baseStance = STANCE_MODIFIERS[input.stance] ?? STANCE_MODIFIERS.Balanced;
   const modifiers = input.combatModifiers?.static;
   const stanceBonus = finiteNonNegative(modifiers?.stanceBonusPct);
@@ -156,9 +185,9 @@ export function deriveSoloPlayerStats(input: SoloCombatInput): DerivedSoloPlayer
     + finiteNonNegative(input.activeWeapon.accuracy)
     + weaponAccuracySkill(input)
     + finiteNonNegative(modifiers?.accuracyFlat);
-  const evasion = finiteNonNegative(input.equippedStats.evasion) + skill(input, 'Evasion');
-  const armour = proficientArmour(input) * stance.armour;
-  const ward = finiteNonNegative(input.equippedStats.ward) * stance.ward;
+  const evasion = finiteNonNegative(input.equippedStats.evasion) + skill(input, 'Evasion') + defenseProfile.evasionBonus;
+  const armour = proficientArmour(input, defenseProfile) * stance.armour;
+  const ward = finiteNonNegative(input.equippedStats.ward) * stance.ward * defenseProfile.wardMultiplier;
   const damage = (finiteNonNegative(input.activeWeapon.damage) + finiteNonNegative(input.equippedStats.damage))
     * weaponMultiplier(input)
     * weaponStyleDamageMultiplier(input.activeWeapon.style)
@@ -192,7 +221,11 @@ export function deriveSoloPlayerStats(input: SoloCombatInput): DerivedSoloPlayer
     criticalChance: round(criticalChance),
     criticalMultiplier: round(criticalMultiplier),
     playerHitChance: round(playerHitChance),
-    enemyHitChance: round(calculateHitChance(input.enemy.accuracy, evasion)),
+    enemyHitChance: round(clamp(
+      calculateHitChance(input.enemy.accuracy, evasion) - defenseProfile.enemyHitChanceReduction,
+      0.20,
+      0.98
+    )),
     armourMitigation: round(calculateArmourMitigation(armour, stage)),
     magicalMitigation: round(calculateMagicalMitigation(ward, stage))
   });
@@ -244,6 +277,10 @@ function enemyThreatFor(enemy: SoloEnemyDefinition): SoloEnemyThreat {
   return threat;
 }
 
+function hasEnemyThreatMetadata(enemy: SoloEnemyDefinition): boolean {
+  return Boolean(enemy.threat && Array.isArray(enemy.threat.attackCycle) && enemy.threat.attackCycle.length > 0);
+}
+
 function diagnoseDefeat(
   termination: SoloCombatTermination,
   input: SoloCombatInput,
@@ -268,6 +305,8 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
 
   const derivedStats = deriveSoloPlayerStats(input);
   const enemyThreat = enemyThreatFor(input.enemy);
+  const usesThreatMetadata = hasEnemyThreatMetadata(input.enemy);
+  const defenseProfile = resolveCombatDefenseProfile(input.combatModifiers, defenseContextForInput(input));
   const enemyMaxHitPoints = Math.max(1, finiteNonNegative(input.enemy.hitPoints));
   let playerHitPoints = derivedStats.maxHitPoints;
   let enemyHitPoints = enemyMaxHitPoints;
@@ -301,6 +340,17 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
   let emergencyAttackSpeedPct = 0;
   let automaticDefensiveSuppressed = false;
   let enemyAttackIndex = 0;
+  let previousEnemyDamageType: DamageType | null = null;
+  const evasionStreaks = new Map<string, number>();
+  const adaptiveHits = new Map<string, number>();
+  let barrierResponseAttackDamagePct = 0;
+  let barrierResponseMagicalReductionPct = 0;
+  let barrierResponseAttackCharges = 0;
+  let barrierResponseMagicalCharges = 0;
+  let barrierResponseReadyTechnique = false;
+  let barrierResponseGuaranteeCritical = false;
+  let barrierResponseGuaranteeHit = false;
+  let barrierResponseReadyAt = 0;
   interface DotTick { effectId: string; dot: 'bleed' | 'burn'; nextAt: number; tickDamage: number; remaining: number; }
   interface RecoveryTick {
     effectId: string;
@@ -344,7 +394,21 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     playerAttempts: 0,
     playerHits: 0,
     enemyAttempts: 0,
-    enemyHits: 0
+    enemyHits: 0,
+    physicalAttempts: 0,
+    magicalAttempts: 0,
+    naturalMisses: 0,
+    convertedMisses: 0,
+    glancingHits: 0,
+    glancingPrevented: 0,
+    guardPrevented: 0,
+    defensePrevented: 0,
+    armourPrevented: 0,
+    wardPrevented: 0,
+    penetrationResisted: 0,
+    retaliationDamage: 0,
+    barrierBreaks: 0,
+    defenseProcCounts: {} as Record<string, number>
   };
 
   const emit = (atMs: number, event: UnsequencedCombatEvent): SoloCombatEvent => {
@@ -374,6 +438,8 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     playerHealthRatio: playerHitPoints / derivedStats.maxHitPoints,
     displayedHitChance: derivedStats.playerHitChance,
     baseInterval: input.activeWeapon.attackInterval,
+    armourPieceCounts: armourPieceCounts(input),
+    barrierActive: barrier > 0,
     burning: dotTicks.some(tick => tick.dot === 'burn' && tick.remaining > 0),
     marked: targetMarked,
     maximumShred: armourShredPct >= 0.20 || armourShredFlat >= 10,
@@ -388,6 +454,12 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
   ): Extract<CombatTreeEffectDefinition, { kind: TKind }>[] => modifierEffects
     .filter((effect): effect is Extract<CombatTreeEffectDefinition, { kind: TKind }> =>
       effect.kind === kind && combatEffectConditionMatches(effect.condition, context));
+
+  type DefenseEffect = Extract<CombatTreeEffectDefinition, { kind: 'defense' }>;
+  const activeDefenseEffects = (context: CombatModifierContext): DefenseEffect[] => activeEffects('defense', context);
+  const recordDefenseProc = (effectId: string): void => {
+    counters.defenseProcCounts[effectId] = (counters.defenseProcCounts[effectId] || 0) + 1;
+  };
 
   const statTotal = (statId: Extract<CombatTreeEffectDefinition, { kind: 'stat' }>['stat'], context: CombatModifierContext): number =>
     activeEffects('stat', context).filter(effect => effect.stat === statId).reduce((sum, effect) => sum + effect.value, 0);
@@ -450,6 +522,93 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
 
   const specialActive = (specialId: Extract<CombatTreeEffectDefinition, { kind: 'special' }>['special'], context: CombatModifierContext): boolean =>
     activeEffects('special', context).some(effect => effect.special === specialId);
+
+  const defenseFamilyWinners = <T extends DefenseEffect>(effects: T[]): T[] => {
+    const selected = new Map<string, T>();
+    const independent: T[] = [];
+    effects.forEach(effect => {
+      const family = 'family' in effect ? effect.family : undefined;
+      const priority = 'priority' in effect ? effect.priority || 0 : 0;
+      if (!family) {
+        independent.push(effect);
+        return;
+      }
+      const current = selected.get(family);
+      const currentPriority = current && 'priority' in current ? current.priority || 0 : 0;
+      if (!current
+        || priority > currentPriority
+        || (priority === currentPriority
+          && ('reductionPct' in effect ? effect.reductionPct : 0) > ('reductionPct' in current ? current.reductionPct : 0))) {
+        selected.set(family, effect);
+      }
+    });
+    return [...independent, ...selected.values()];
+  };
+
+  const defenseScheduleMatches = (
+    effect: Extract<DefenseEffect, { defense: 'glance' | 'guard' | 'avoidance' }>,
+    attempt: number,
+    playerHealthRatio: number
+  ): boolean => {
+    if ('first' in effect && effect.first !== undefined && attempt > effect.first) return false;
+    if ('every' in effect && effect.every !== undefined) {
+      const every = effect.defense === 'avoidance' ? Math.max(5, effect.every) : Math.max(1, effect.every);
+      if (attempt % every !== 0) return false;
+    }
+    if ('threshold' in effect && effect.threshold !== undefined && playerHealthRatio > effect.threshold) return false;
+    if ('charges' in effect && effect.charges !== undefined && (effectUses.get(effect.id) || 0) >= effect.charges) return false;
+    return true;
+  };
+
+  const evasionStreakBonus = (context: CombatModifierContext): number => activeDefenseEffects(context)
+    .filter((effect): effect is Extract<DefenseEffect, { defense: 'evasion-streak' }> => effect.defense === 'evasion-streak')
+    .reduce((sum, effect) => sum + Math.min(effect.maxStacks, evasionStreaks.get(effect.id) || 0) * effect.evasionPerStack, 0);
+
+  const evasionStreakAttackBonus = (
+    context: CombatModifierContext,
+    field: 'damageBonusPct' | 'attackSpeedPct'
+  ): number => activeDefenseEffects(context)
+    .filter((effect): effect is Extract<DefenseEffect, { defense: 'evasion-streak' }> => effect.defense === 'evasion-streak')
+    .reduce((sum, effect) => sum + Math.min(effect.maxStacks, evasionStreaks.get(effect.id) || 0) * (effect[field] || 0), 0);
+
+  const evasionStreakGuarantee = (
+    context: CombatModifierContext,
+    field: 'guaranteeHit' | 'guaranteeCritical'
+  ): boolean => activeDefenseEffects(context)
+    .filter((effect): effect is Extract<DefenseEffect, { defense: 'evasion-streak' }> => effect.defense === 'evasion-streak')
+    .some(effect => Boolean(effect[field]) && (evasionStreaks.get(effect.id) || 0) > 0);
+
+  const updateEvasionStreaks = (context: CombatModifierContext, hit: boolean): void => {
+    activeDefenseEffects(context)
+      .filter((effect): effect is Extract<DefenseEffect, { defense: 'evasion-streak' }> => effect.defense === 'evasion-streak')
+      .forEach(effect => {
+        const current = evasionStreaks.get(effect.id) || 0;
+        if (!hit) {
+          evasionStreaks.set(effect.id, Math.min(effect.maxStacks, current + 1));
+        } else if (effect.hitBehavior === 'remove-two') {
+          evasionStreaks.set(effect.id, Math.max(0, current - 2));
+        } else {
+          evasionStreaks.set(effect.id, 0);
+        }
+      });
+  };
+
+  const adaptiveReductionFor = (context: CombatModifierContext, damageType: DamageType): number => {
+    if (!previousEnemyDamageType) return 0;
+    const candidates = activeDefenseEffects(context)
+      .filter((effect): effect is Extract<DefenseEffect, { defense: 'adaptive' }> => effect.defense === 'adaptive')
+      .filter(effect => {
+        const same = previousEnemyDamageType === damageType;
+        return (effect.mode === 'same' && same) || (effect.mode === 'opposite' && !same) || (effect.mode === 'change' && !same);
+      })
+      .filter(effect => (adaptiveHits.get(effect.id) || 0) < effect.hits);
+    const selected = defenseFamilyWinners(candidates)
+      .sort((left, right) => right.reductionPct - left.reductionPct || (right.priority || 0) - (left.priority || 0))[0];
+    if (!selected || selected.defense !== 'adaptive') return 0;
+    adaptiveHits.set(selected.id, (adaptiveHits.get(selected.id) || 0) + 1);
+    recordDefenseProc(selected.id);
+    return Math.min(0.20, Math.max(0, selected.reductionPct));
+  };
 
   const recordHealthBand = (atMs: number): void => {
     const ratio = clamp(playerHitPoints / Math.max(1, derivedStats.maxHitPoints), 0, 1);
@@ -626,7 +785,11 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     const result = applyRecovery(atMs, treeGenerated ? 'emergency' : 'mend', healing, true, true);
 
     if (consumeCooldown) {
-      const cooldownReduction = clamp(statTotal('mendCooldownPct', context), 0, 0.40);
+      const cooldownReduction = clamp(
+        statTotal('mendCooldownPct', context) + (1 - defenseProfile.defensiveCooldownMultiplier),
+        0,
+        0.40
+      );
       defensiveReadyAt = atMs + STARTER_ABILITY_TUNING.Mend.cooldownSeconds * 1_000 * (1 - cooldownReduction);
     }
 
@@ -689,10 +852,19 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       return;
     }
     if (barrier > 0) return;
-    const granted = Math.round(STARTER_ABILITY_TUNING['Arcane Barrier'].baseBarrier * (1 + 0.006 * skill(input, 'Warding')));
+    const granted = Math.round(
+      STARTER_ABILITY_TUNING['Arcane Barrier'].baseBarrier
+      * (1 + 0.006 * skill(input, 'Warding'))
+      * defenseProfile.barrierStrengthMultiplier
+    );
     barrier = granted;
     counters.barrierGranted += granted;
-    defensiveReadyAt = atMs + STARTER_ABILITY_TUNING['Arcane Barrier'].cooldownSeconds * 1_000;
+    const barrierCooldownReduction = clamp(
+      (1 - defenseProfile.defensiveCooldownMultiplier) + (1 - defenseProfile.barrierCooldownMultiplier),
+      0,
+      0.40
+    );
+    defensiveReadyAt = atMs + STARTER_ABILITY_TUNING['Arcane Barrier'].cooldownSeconds * 1_000 * (1 - barrierCooldownReduction);
     emit(atMs, { type: 'ability-used', actor: 'player', ability: defensiveAbility, effect: 'barrier' });
     emit(atMs, { type: 'barrier', ability: defensiveAbility, granted, absorbed: 0, remaining: barrier });
     emitSkillUse(atMs, 'Warding', 1);
@@ -720,6 +892,10 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
   const playerAttack = (atMs: number): void => {
     nextPlayerIntervalReduction = 0;
     const hadMendCharges = triggerCharges.size > 0;
+    if (barrierResponseReadyTechnique) {
+      techniqueReadyAt = Math.min(techniqueReadyAt, atMs);
+      barrierResponseReadyTechnique = false;
+    }
     const useTechnique = atMs >= techniqueReadyAt;
     const action = useTechnique ? effectiveTechnique : BASIC_ATTACK;
     actionCount += 1;
@@ -779,7 +955,9 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       );
       const guaranteedHit = triggered('guarantee-hit', context, false, true).length > 0
         || specialActive('second-miss-converts', context) && consecutiveMisses >= 1
-        || activeEffects('special', context).some(effect => effect.special === 'miss-conversion-every' && counters.playerAttempts % Math.max(1, effect.value) === 0);
+        || activeEffects('special', context).some(effect => effect.special === 'miss-conversion-every' && counters.playerAttempts % Math.max(1, effect.value) === 0)
+        || barrierResponseGuaranteeHit
+        || evasionStreakGuarantee(context, 'guaranteeHit');
       const hit = guaranteedHit || random() < dynamicHitChance;
       if (!hit) {
         emit(atMs, { type: 'attack', actor: 'player', action, hit: false, critical: false, damageType: weaponDamageType(input), rawDamage: 0, damage: 0, targetHitPoints: enemyHitPoints });
@@ -806,7 +984,9 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
         0.60
       );
       const guaranteeCriticalEffects = triggered('guarantee-critical', context, false, true);
-      const guaranteeCritical = guaranteeCriticalEffects.length > 0;
+      const guaranteeCritical = guaranteeCriticalEffects.length > 0
+        || barrierResponseGuaranteeCritical
+        || evasionStreakGuarantee(context, 'guaranteeCritical');
       const critical = guaranteeCritical || random() < dynamicCriticalChance;
       let actionMultiplier = 1;
       let armourIgnored = 0;
@@ -825,6 +1005,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       const streakEffect = activeEffects('streak', context).sort((left, right) => right.maxStacks - left.maxStacks || right.damagePerStack - left.damagePerStack)[0];
       const streakDamage = streakEffect ? Math.min(consecutiveHits, streakEffect.maxStacks) * streakEffect.damagePerStack : 0;
       const techniqueDamage = useTechnique ? statTotal('techniqueDamagePct', context) : 0;
+      const defenseStreakDamage = evasionStreakAttackBonus(context, 'damageBonusPct');
       const markDamage = targetMarked
         ? activeEffects('mark', context).reduce((best, effect) => Math.max(best, effect.damagePct + (input.enemy.kind === 'boss' ? effect.bossDamagePct || 0 : 0)), 0)
         : 0;
@@ -842,7 +1023,8 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
         * auraDamageMultiplier
         * actionMultiplier
         * dynamicDamageRatio
-        * (1 + techniqueDamage + triggerDamage + streakDamage + markDamage)
+        * (1 + techniqueDamage + triggerDamage + streakDamage + markDamage + defenseStreakDamage
+          + (useTechnique ? barrierResponseAttackDamagePct : 0))
         * extraProjectileScale
         * (critical ? currentCriticalMultiplier : 1);
       const penetration = damageType === 'magical'
@@ -910,16 +1092,36 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       .sort((left, right) => right.attackSpeedPerStack - left.attackSpeedPerStack || right.maxStacks - left.maxStacks)[0];
     const tempoSpeed = tempoEffect ? reflexTempoStacks * tempoEffect.attackSpeedPerStack : 0;
     const emergencySpeed = emergencyAttackSpeedCharges > 0 ? emergencyAttackSpeedPct : 0;
+    const defenseStreakSpeed = evasionStreakAttackBonus(modifierContext(action), 'attackSpeedPct');
     const conditionalSpeed = statTotal('attackSpeedPct', modifierContext(action))
       - (Number(initialModifiers?.attackSpeedPct) || 0);
-    nextPlayerIntervalReduction = actionIntervalBonus + tempoSpeed + emergencySpeed + conditionalSpeed;
+    nextPlayerIntervalReduction = actionIntervalBonus + tempoSpeed + emergencySpeed + defenseStreakSpeed + conditionalSpeed;
     if (emergencyAttackSpeedCharges > 0) emergencyAttackSpeedCharges -= 1;
+    activeDefenseEffects(modifierContext(action))
+      .filter((effect): effect is Extract<DefenseEffect, { defense: 'evasion-streak' }> => effect.defense === 'evasion-streak')
+      .forEach(effect => {
+        const current = evasionStreaks.get(effect.id) || 0;
+        if (effect.consumeStacks) evasionStreaks.set(effect.id, Math.max(0, current - effect.consumeStacks));
+      });
+    if (barrierResponseAttackCharges > 0) barrierResponseAttackCharges -= 1;
+    if (barrierResponseAttackCharges <= 0) {
+      barrierResponseAttackDamagePct = 0;
+      barrierResponseMagicalReductionPct = 0;
+      barrierResponseMagicalCharges = 0;
+      barrierResponseGuaranteeCritical = false;
+      barrierResponseGuaranteeHit = false;
+    }
     if (hadMendCharges) consumeAfterMendCharges();
   };
 
   const timeoutMs = SOLO_COMBAT_TIMEOUT_SECONDS * 1_000;
   const playerIntervalMs = Math.max(50, Math.round(derivedStats.attackInterval * 1_000));
-  const enemyIntervalMs = Math.max(50, Math.round(finiteNonNegative(input.enemy.attackInterval) * Math.max(0.05, enemyThreat.intervalMultiplier) * 1_000));
+  const enemyIntervalMs = Math.max(
+    50,
+    Math.round(finiteNonNegative(input.enemy.attackInterval)
+      * (usesThreatMetadata ? Math.max(0.05, enemyThreat.intervalMultiplier) : 1)
+      * 1_000)
+  );
   const regenerationPctPerSecond = clamp(statTotal('regenerationPctPerSecond', modifierContext()), 0, 0.01);
   let nextPlayerAt = 0;
   let nextEnemyAt = enemyIntervalMs;
@@ -935,19 +1137,67 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
   const enemyAttack = (atMs: number): void => {
     automaticDefensiveSuppressed = false;
     counters.enemyAttempts += 1;
-    const attackStep = enemyThreat.attackCycle[enemyAttackIndex % enemyThreat.attackCycle.length] || SOLO_THREAT_PROFILES.standard.attackCycle[0];
+    const legacyAttackStep: SoloEnemyAttackStep = {
+      damageType: input.enemy.damageType,
+      damageMultiplier: 1,
+      accuracyFlat: 0,
+      tag: 'standard'
+    };
+    const attackStep = usesThreatMetadata
+      ? enemyThreat.attackCycle[enemyAttackIndex % enemyThreat.attackCycle.length] || SOLO_THREAT_PROFILES.standard.attackCycle[0]
+      : legacyAttackStep;
     enemyAttackIndex += 1;
+    const damageType = attackStep?.damageType || input.enemy.damageType;
+    const attackTag: EnemyAttackTag = attackStep?.tag || 'standard';
+    if (damageType === 'magical') counters.magicalAttempts += 1;
+    else counters.physicalAttempts += 1;
+    const attackContext = modifierContext(effectiveTechnique, {
+      damageType,
+      enemyAttackTag: attackTag,
+      barrierActive: barrier > 0,
+      barrierBroken: false
+    });
     const enemyHitChance = calculateHitChance(
       finiteNonNegative(input.enemy.accuracy) + (Number.isFinite(Number(attackStep?.accuracyFlat)) ? Number(attackStep?.accuracyFlat) : 0),
-      derivedStats.evasion
+      derivedStats.evasion + evasionStreakBonus(attackContext)
     );
-    const hit = random() < enemyHitChance;
+    const adjustedEnemyHitChance = clamp(enemyHitChance - defenseProfile.enemyHitChanceReduction, 0.20, 0.98);
+    const hit = random() < adjustedEnemyHitChance;
     if (!hit) {
-      emit(atMs, { type: 'attack', actor: 'enemy', action: 'Basic Attack', hit: false, critical: false, damageType: attackStep?.damageType || input.enemy.damageType, rawDamage: 0, damage: 0, targetHitPoints: playerHitPoints });
+      counters.naturalMisses += 1;
+      emit(atMs, {
+        type: 'attack', actor: 'enemy', action: 'Basic Attack', hit: false, critical: false,
+        damageType, rawDamage: 0, damage: 0, targetHitPoints: playerHitPoints, attackTag
+      });
       emitSkillUse(atMs, 'Evasion', 1);
       emitSkillUse(atMs, 'Reflexes', 0.5);
       afterEnemyMiss = true;
-      const context = modifierContext();
+      updateEvasionStreaks(attackContext, false);
+      const context = modifierContext(undefined, { damageType, enemyAttackTag: attackTag, barrierActive: barrier > 0 });
+      const ready = triggered('ready-technique', context, false, true);
+      if (ready.length) {
+        counters.cooldownRemovedMs += Math.max(0, techniqueReadyAt - atMs);
+        techniqueReadyAt = atMs;
+      }
+      accelerateNextPlayerAttack(atMs, context);
+      return;
+    }
+    const avoidanceCandidates = defenseFamilyWinners(activeDefenseEffects(attackContext)
+      .filter((effect): effect is Extract<DefenseEffect, { defense: 'avoidance' }> => effect.defense === 'avoidance')
+      .filter(effect => defenseScheduleMatches(effect, counters.enemyAttempts, playerHitPoints / derivedStats.maxHitPoints)));
+    const avoidance = avoidanceCandidates
+      .sort((left, right) => (right.priority || 0) - (left.priority || 0))[0];
+    if (avoidance?.defense === 'avoidance') {
+      counters.convertedMisses += 1;
+      effectUses.set(avoidance.id, (effectUses.get(avoidance.id) || 0) + 1);
+      recordDefenseProc(avoidance.id);
+      updateEvasionStreaks(attackContext, false);
+      emit(atMs, {
+        type: 'attack', actor: 'enemy', action: 'Basic Attack', hit: false, critical: false,
+        damageType, rawDamage: 0, damage: 0, targetHitPoints: playerHitPoints, attackTag, convertedMiss: true
+      });
+      afterEnemyMiss = true;
+      const context = modifierContext(undefined, { damageType, enemyAttackTag: attackTag, barrierActive: barrier > 0 });
       const ready = triggered('ready-technique', context, false, true);
       if (ready.length) {
         counters.cooldownRemovedMs += Math.max(0, techniqueReadyAt - atMs);
@@ -961,33 +1211,131 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     const rawDamage = finiteNonNegative(input.enemy.damage) * damageMultiplier;
     const previousHitPoints = playerHitPoints;
     const previousRatio = previousHitPoints / Math.max(1, derivedStats.maxHitPoints);
-    const preDamageContext = modifierContext(effectiveTechnique);
-    const damageType = attackStep?.damageType || input.enemy.damageType;
-    const penetration = damageType === 'magical'
+    const preDamageContext = modifierContext(effectiveTechnique, { damageType, enemyAttackTag: attackTag, barrierActive: barrier > 0 });
+    const penetrationBeforeResistance = damageType === 'magical'
       ? clamp(finiteNonNegative(attackStep?.wardPenetrationPct), 0, 0.60)
       : clamp(finiteNonNegative(attackStep?.armourPenetrationPct), 0, 0.60);
+    const penetrationResistance = damageType === 'magical'
+      ? defenseProfile.wardPenetrationResistance
+      : defenseProfile.armourPenetrationResistance;
+    const penetration = penetrationBeforeResistance * (1 - penetrationResistance);
+    counters.penetrationResisted += penetrationBeforeResistance - penetration;
+    const glanceCandidates = defenseFamilyWinners(activeDefenseEffects(preDamageContext)
+      .filter((effect): effect is Extract<DefenseEffect, { defense: 'glance' }> => effect.defense === 'glance')
+      .filter(effect => defenseScheduleMatches(effect, counters.enemyAttempts, playerHitPoints / derivedStats.maxHitPoints)));
+    const guardCandidates = defenseFamilyWinners(activeDefenseEffects(preDamageContext)
+      .filter((effect): effect is Extract<DefenseEffect, { defense: 'guard' }> => effect.defense === 'guard')
+      .filter(effect => (effect.damageType === undefined || effect.damageType === damageType)
+        && (effect.enemyAttackTag === undefined || effect.enemyAttackTag === attackTag)
+        && defenseScheduleMatches(effect, counters.enemyAttempts, playerHitPoints / derivedStats.maxHitPoints)));
+    const glance = glanceCandidates.sort((left, right) => right.reductionPct - left.reductionPct)[0];
+    const guard = guardCandidates.sort((left, right) => right.reductionPct - left.reductionPct)[0];
+    const glanceReduction = glance?.defense === 'glance' ? Math.min(0.50, Math.max(0, glance.reductionPct)) : 0;
+    const guardReduction = guard?.defense === 'guard' ? Math.min(0.50, Math.max(0, guard.reductionPct)) : 0;
+    const totalGuardReduction = Math.min(0.50, glanceReduction + guardReduction);
+    if (glance) {
+      counters.glancingHits += 1;
+      recordDefenseProc(glance.id);
+      if (glance.charges !== undefined) effectUses.set(glance.id, (effectUses.get(glance.id) || 0) + 1);
+    }
+    if (guard) {
+      recordDefenseProc(guard.id);
+      if (guard.first !== undefined && guard.first > 0) effectUses.set(guard.id, (effectUses.get(guard.id) || 0) + 1);
+    }
+    const guardedRawDamage = rawDamage * (1 - totalGuardReduction);
+    counters.glancingPrevented += rawDamage * glanceReduction;
+    counters.guardPrevented += rawDamage * guardReduction;
     const mitigation = damageType === 'magical'
       ? calculateMagicalMitigation(derivedStats.ward * (1 - penetration), stage)
       : calculateArmourMitigation(derivedStats.armour * (1 - penetration), stage);
-    const postMitigationBeforeSustain = rawDamage > 0 ? Math.max(1, Math.round(rawDamage * (1 - mitigation))) : 0;
+    const postMitigationBeforeDefense = guardedRawDamage > 0 ? Math.max(1, Math.round(guardedRawDamage * (1 - mitigation))) : 0;
+    const adaptiveReduction = adaptiveReductionFor(preDamageContext, damageType);
+    const barrierResponseReduction = damageType === 'magical' && barrierResponseMagicalCharges > 0
+      ? barrierResponseMagicalReductionPct
+      : 0;
+    const staticDefenseReduction = damageType === 'magical'
+      ? 1 - defenseProfile.magicalDamageMultiplier
+      : 1 - defenseProfile.physicalDamageMultiplier;
+    const defenseReduction = Math.min(0.20, staticDefenseReduction + adaptiveReduction + barrierResponseReduction);
+    if (barrierResponseReduction > 0) barrierResponseMagicalCharges -= 1;
+    const postMitigationBeforeSustain = postMitigationBeforeDefense > 0
+      ? Math.max(1, Math.round(postMitigationBeforeDefense * (1 - defenseReduction)))
+      : 0;
+    counters.defensePrevented += Math.max(0, postMitigationBeforeDefense - postMitigationBeforeSustain);
+    if (damageType === 'magical') counters.wardPrevented += Math.max(0, guardedRawDamage - postMitigationBeforeDefense);
+    else counters.armourPrevented += Math.max(0, guardedRawDamage - postMitigationBeforeDefense);
     const sustainReduction = clamp(statTotal('damageTakenReductionPct', preDamageContext), 0, 0.15);
     const postMitigation = postMitigationBeforeSustain > 0
       ? Math.max(1, Math.round(postMitigationBeforeSustain * (1 - sustainReduction)))
       : 0;
     const prevented = Math.max(0, rawDamage - postMitigation);
     const sustainPrevented = Math.max(0, postMitigationBeforeSustain - postMitigation);
-    counters.preventedByMitigation += Math.max(0, rawDamage - postMitigationBeforeSustain);
+    counters.preventedByMitigation += Math.max(0, guardedRawDamage - postMitigationBeforeDefense);
     counters.sustainPrevented += sustainPrevented;
+    const barrierBefore = barrier;
     const absorbed = Math.min(barrier, postMitigation);
     barrier -= absorbed;
     counters.barrierAbsorbed += absorbed;
+    const barrierBroke = barrierBefore > 0 && barrier <= 0;
+    if (barrierBroke) {
+      counters.barrierBreaks += 1;
+      const breakContext = modifierContext(effectiveTechnique, {
+        damageType,
+        enemyAttackTag: attackTag,
+        barrierActive: false,
+        barrierBroken: true
+      });
+      const response = defenseFamilyWinners(activeDefenseEffects(breakContext)
+        .filter((effect): effect is Extract<DefenseEffect, { defense: 'barrier-response' }> =>
+          effect.defense === 'barrier-response' && effect.trigger === 'break'))
+        .sort((left, right) => (right.priority || 0) - (left.priority || 0))[0];
+      if (response && atMs >= barrierResponseReadyAt) {
+        recordDefenseProc(response.id);
+        barrierResponseReadyAt = atMs + Math.max(0, response.cooldownSeconds || 0) * 1_000;
+        barrierResponseAttackDamagePct = Math.max(barrierResponseAttackDamagePct, response.nextAttackDamagePct || 0);
+        barrierResponseMagicalReductionPct = Math.max(barrierResponseMagicalReductionPct, response.nextMagicalReductionPct || 0);
+        barrierResponseAttackCharges = Math.max(barrierResponseAttackCharges, response.nextAttackCount || 1);
+        barrierResponseMagicalCharges = Math.max(
+          barrierResponseMagicalCharges,
+          response.nextMagicalReductionPct ? response.nextAttackCount || 1 : 0
+        );
+        barrierResponseReadyTechnique ||= Boolean(response.readiesTechnique);
+        barrierResponseGuaranteeCritical ||= Boolean(response.guaranteeCritical);
+        barrierResponseGuaranteeHit ||= Boolean(response.guaranteeHit);
+      }
+    }
     const damage = Math.min(playerHitPoints, postMitigation - absorbed);
     playerHitPoints = Math.max(0, round(playerHitPoints - damage));
     counters.damageTaken += damage;
     const damagedHitPoints = playerHitPoints;
     recordHealthBand(atMs);
-    emit(atMs, { type: 'attack', actor: 'enemy', action: 'Basic Attack', hit: true, critical: false, damageType, rawDamage, damage, targetHitPoints: damagedHitPoints });
+    emit(atMs, {
+      type: 'attack', actor: 'enemy', action: 'Basic Attack', hit: true, critical: false,
+      damageType, rawDamage, damage, targetHitPoints: damagedHitPoints, attackTag,
+      glanced: Boolean(glance), guardReduction: totalGuardReduction
+    });
     if (absorbed > 0) emit(atMs, { type: 'barrier', ability: 'Arcane Barrier', granted: 0, absorbed, remaining: barrier });
+
+    updateEvasionStreaks(preDamageContext, true);
+    previousEnemyDamageType = damageType;
+    const retaliation = activeDefenseEffects(preDamageContext)
+      .filter((effect): effect is Extract<DefenseEffect, { defense: 'retaliation' }> =>
+        effect.defense === 'retaliation' && effect.source === 'armour-prevented')
+      .sort((left, right) => right.damagePct - left.damagePct)[0];
+    const armourPreventedThisAttack = damageType === 'physical'
+      ? Math.max(0, guardedRawDamage - postMitigationBeforeDefense)
+      : 0;
+    if (retaliation && armourPreventedThisAttack > 0 && enemyHitPoints > 0) {
+      const retaliationRaw = Math.min(
+        armourPreventedThisAttack * Math.max(0, retaliation.damagePct),
+        Math.max(0, derivedStats.damage) * Math.max(0, retaliation.capPctDerivedHit)
+      );
+      if (retaliationRaw > 0) {
+        recordDefenseProc(retaliation.id);
+        const reflected = applySecondaryDamage(atMs, 'Armour Retaliation', retaliationRaw, 'physical', 0);
+        counters.retaliationDamage += reflected;
+      }
+    }
 
     if (damage > 0) {
       afterDamage = true;
@@ -1180,7 +1528,14 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       physicalDealt: round(counters.physicalDealt),
       magicalDealt: round(counters.magicalDealt),
       taken: round(counters.damageTaken),
-      prevented: round(counters.preventedByMitigation + counters.sustainPrevented + counters.barrierAbsorbed)
+      prevented: round(
+        counters.glancingPrevented
+        + counters.guardPrevented
+        + counters.preventedByMitigation
+        + counters.defensePrevented
+        + counters.sustainPrevented
+        + counters.barrierAbsorbed
+      )
     },
     hitRate: {
       playerAttempts: counters.playerAttempts,
@@ -1195,6 +1550,25 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       magicalRate: derivedStats.magicalMitigation,
       preventedByArmourOrWard: round(counters.preventedByMitigation),
       barrierAbsorbed: round(counters.barrierAbsorbed)
+    },
+    defense: {
+      physicalAttempts: counters.physicalAttempts,
+      magicalAttempts: counters.magicalAttempts,
+      naturalMisses: counters.naturalMisses,
+      convertedMisses: counters.convertedMisses,
+      glancingHits: counters.glancingHits,
+      glancingPrevented: round(counters.glancingPrevented),
+      guardPrevented: round(counters.guardPrevented),
+      defensePrevented: round(counters.defensePrevented),
+      armourPrevented: round(counters.armourPrevented),
+      wardPrevented: round(counters.wardPrevented),
+      penetrationResisted: round(counters.penetrationResisted),
+      barrierAbsorption: round(counters.barrierAbsorbed),
+      barrierBreaks: counters.barrierBreaks,
+      retaliationDamage: round(counters.retaliationDamage),
+      procCounts: Object.fromEntries(
+        Object.entries(counters.defenseProcCounts).map(([effectId, count]) => [effectId, count])
+      )
     },
     sustain: {
       healing: round(counters.healing),

@@ -125,6 +125,24 @@ export interface SoloFrontierSustainDebrief {
   timeBelowHalfMs: number;
 }
 
+export interface SoloFrontierDefenseDebrief {
+  physicalAttempts: number;
+  magicalAttempts: number;
+  naturalMisses: number;
+  convertedMisses: number;
+  glancingHits: number;
+  glancingPrevented: number;
+  guardPrevented: number;
+  defensePrevented: number;
+  armourPrevented: number;
+  wardPrevented: number;
+  penetrationResisted: number;
+  barrierAbsorption: number;
+  barrierBreaks: number;
+  retaliationDamage: number;
+  procCounts: Record<string, number>;
+}
+
 export interface SoloFrontierDebrief {
   elapsedMs: number;
   priorOrder: SoloFrontierOrder;
@@ -145,6 +163,7 @@ export interface SoloFrontierDebrief {
   rarityCounts: Record<RarityId, number>;
   strongestKeptDrops: readonly StrongestKeptDrop[];
   sustain: SoloFrontierSustainDebrief;
+  defense: SoloFrontierDefenseDebrief;
 }
 
 export interface SoloFrontierRuntimeState {
@@ -536,6 +555,26 @@ function emptySustainDebrief(): SoloFrontierSustainDebrief {
   };
 }
 
+function emptyDefenseDebrief(): SoloFrontierDefenseDebrief {
+  return {
+    physicalAttempts: 0,
+    magicalAttempts: 0,
+    naturalMisses: 0,
+    convertedMisses: 0,
+    glancingHits: 0,
+    glancingPrevented: 0,
+    guardPrevented: 0,
+    defensePrevented: 0,
+    armourPrevented: 0,
+    wardPrevented: 0,
+    penetrationResisted: 0,
+    barrierAbsorption: 0,
+    barrierBreaks: 0,
+    retaliationDamage: 0,
+    procCounts: {}
+  };
+}
+
 function createDebrief(order: SoloFrontierOrder): SoloFrontierDebrief {
   return {
     elapsedMs: 0,
@@ -556,7 +595,8 @@ function createDebrief(order: SoloFrontierOrder): SoloFrontierDebrief {
     fullCacheSalvage: 0,
     rarityCounts: emptyRarityCounts(),
     strongestKeptDrops: [],
-    sustain: emptySustainDebrief()
+    sustain: emptySustainDebrief(),
+    defense: emptyDefenseDebrief()
   };
 }
 
@@ -566,6 +606,8 @@ function normalizeDebrief(value: unknown, order: SoloFrontierOrder, progression:
   const sourceSkillXp = isRecord(source.skillXp) ? source.skillXp : {};
   const sourceSustain = isRecord(source.sustain) ? source.sustain : {};
   const sourceHealingBySource = isRecord(sourceSustain.healingBySource) ? sourceSustain.healingBySource : {};
+  const sourceDefense = isRecord(source.defense) ? source.defense : {};
+  const sourceDefenseProcCounts = isRecord(sourceDefense.procCounts) ? sourceDefense.procCounts : {};
   return {
     ...fallback,
     ...source,
@@ -607,6 +649,23 @@ function normalizeDebrief(value: unknown, order: SoloFrontierOrder, progression:
       fatalGuards: finiteNonNegative(sourceSustain.fatalGuards),
       minimumHealthRatio: Math.min(1, finiteNonNegative(sourceSustain.minimumHealthRatio, 1)),
       timeBelowHalfMs: finiteNonNegative(sourceSustain.timeBelowHalfMs)
+    },
+    defense: {
+      physicalAttempts: finiteNonNegative(sourceDefense.physicalAttempts),
+      magicalAttempts: finiteNonNegative(sourceDefense.magicalAttempts),
+      naturalMisses: finiteNonNegative(sourceDefense.naturalMisses),
+      convertedMisses: finiteNonNegative(sourceDefense.convertedMisses),
+      glancingHits: finiteNonNegative(sourceDefense.glancingHits),
+      glancingPrevented: finiteNonNegative(sourceDefense.glancingPrevented),
+      guardPrevented: finiteNonNegative(sourceDefense.guardPrevented),
+      defensePrevented: finiteNonNegative(sourceDefense.defensePrevented),
+      armourPrevented: finiteNonNegative(sourceDefense.armourPrevented),
+      wardPrevented: finiteNonNegative(sourceDefense.wardPrevented),
+      penetrationResisted: finiteNonNegative(sourceDefense.penetrationResisted),
+      barrierAbsorption: finiteNonNegative(sourceDefense.barrierAbsorption),
+      barrierBreaks: finiteNonNegative(sourceDefense.barrierBreaks),
+      retaliationDamage: finiteNonNegative(sourceDefense.retaliationDamage),
+      procCounts: Object.fromEntries(Object.entries(sourceDefenseProcCounts).map(([effectId, count]) => [effectId, finiteNonNegative(count)]))
     }
   } as SoloFrontierDebrief;
 }
@@ -729,6 +788,10 @@ function copyDebrief(debrief: SoloFrontierDebrief): SoloFrontierDebrief {
     sustain: {
       ...debrief.sustain,
       healingBySource: { ...debrief.sustain.healingBySource }
+    },
+    defense: {
+      ...debrief.defense,
+      procCounts: { ...debrief.defense.procCounts }
     }
   };
 }
@@ -763,6 +826,36 @@ function addSustainToDebrief(
       fatalGuards: debrief.sustain.fatalGuards + finiteNonNegative(sustain.fatalGuards),
       minimumHealthRatio: Math.min(debrief.sustain.minimumHealthRatio, finiteNonNegative(sustain.minimumHealthRatio, 1)),
       timeBelowHalfMs: debrief.sustain.timeBelowHalfMs + finiteNonNegative(sustain.timeBelowHalfMs)
+    }
+  };
+}
+
+function addDefenseToDebrief(
+  debrief: SoloFrontierDebrief,
+  defense: SoloCombatResult['metrics']['defense']
+): SoloFrontierDebrief {
+  const procCounts = { ...debrief.defense.procCounts };
+  Object.entries(defense.procCounts).forEach(([effectId, count]) => {
+    procCounts[effectId] = finiteNonNegative(procCounts[effectId]) + finiteNonNegative(count);
+  });
+  return {
+    ...debrief,
+    defense: {
+      physicalAttempts: debrief.defense.physicalAttempts + finiteNonNegative(defense.physicalAttempts),
+      magicalAttempts: debrief.defense.magicalAttempts + finiteNonNegative(defense.magicalAttempts),
+      naturalMisses: debrief.defense.naturalMisses + finiteNonNegative(defense.naturalMisses),
+      convertedMisses: debrief.defense.convertedMisses + finiteNonNegative(defense.convertedMisses),
+      glancingHits: debrief.defense.glancingHits + finiteNonNegative(defense.glancingHits),
+      glancingPrevented: debrief.defense.glancingPrevented + finiteNonNegative(defense.glancingPrevented),
+      guardPrevented: debrief.defense.guardPrevented + finiteNonNegative(defense.guardPrevented),
+      defensePrevented: debrief.defense.defensePrevented + finiteNonNegative(defense.defensePrevented),
+      armourPrevented: debrief.defense.armourPrevented + finiteNonNegative(defense.armourPrevented),
+      wardPrevented: debrief.defense.wardPrevented + finiteNonNegative(defense.wardPrevented),
+      penetrationResisted: debrief.defense.penetrationResisted + finiteNonNegative(defense.penetrationResisted),
+      barrierAbsorption: debrief.defense.barrierAbsorption + finiteNonNegative(defense.barrierAbsorption),
+      barrierBreaks: debrief.defense.barrierBreaks + finiteNonNegative(defense.barrierBreaks),
+      retaliationDamage: debrief.defense.retaliationDamage + finiteNonNegative(defense.retaliationDamage),
+      procCounts
     }
   };
 }
@@ -870,6 +963,7 @@ function applyEncounter(
     addCombatXpToDebrief(debrief, progression.xpBySkill),
     result.metrics.sustain
   );
+  nextDebrief = addDefenseToDebrief(nextDebrief, result.metrics.defense);
   let firstClear = false;
   if (result.outcome === 'defeat') {
     const wall = wallState(nextState, stage, result, atMs);

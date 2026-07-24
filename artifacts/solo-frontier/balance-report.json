@@ -17,18 +17,18 @@
       "stage": 15,
       "winRate": 1,
       "medianClearSeconds": 1.758,
-      "medianHealthRemaining": 319.06,
-      "medianDamageTaken": 0,
+      "medianHealthRemaining": 276.06,
+      "medianDamageTaken": 43,
       "medianMitigation": 0.185834,
-      "medianEnemyHitRate": 0
+      "medianEnemyHitRate": 1
     },
     {
       "build": "firearm",
       "stage": 15,
       "winRate": 1,
       "medianClearSeconds": 1.995,
-      "medianHealthRemaining": 257.06,
-      "medianDamageTaken": 62,
+      "medianHealthRemaining": 276.06,
+      "medianDamageTaken": 43,
       "medianMitigation": 0.185834,
       "medianEnemyHitRate": 1
     },
@@ -37,38 +37,38 @@
       "stage": 15,
       "winRate": 1,
       "medianClearSeconds": 1.656,
-      "medianHealthRemaining": 319.06,
-      "medianDamageTaken": 0,
+      "medianHealthRemaining": 276.06,
+      "medianDamageTaken": 43,
       "medianMitigation": 0.185834,
-      "medianEnemyHitRate": 0
+      "medianEnemyHitRate": 1
     },
     {
       "build": "magic",
       "stage": 15,
       "winRate": 1,
       "medianClearSeconds": 1.84,
-      "medianHealthRemaining": 319.06,
-      "medianDamageTaken": 0,
+      "medianHealthRemaining": 305.06,
+      "medianDamageTaken": 14,
       "medianMitigation": 0.185834,
-      "medianEnemyHitRate": 0
+      "medianEnemyHitRate": 1
     },
     {
       "build": "light-armour",
       "stage": 15,
       "winRate": 1,
       "medianClearSeconds": 2.208,
-      "medianHealthRemaining": 239.39,
-      "medianDamageTaken": 0,
+      "medianHealthRemaining": 193.39,
+      "medianDamageTaken": 46,
       "medianMitigation": 0.12793,
-      "medianEnemyHitRate": 0
+      "medianEnemyHitRate": 1
     },
     {
       "build": "medium-armour",
       "stage": 15,
       "winRate": 1,
       "medianClearSeconds": 2.456,
-      "medianHealthRemaining": 258.06,
-      "medianDamageTaken": 61,
+      "medianHealthRemaining": 277.06,
+      "medianDamageTaken": 42,
       "medianMitigation": 0.202305,
       "medianEnemyHitRate": 1
     },
@@ -77,8 +77,8 @@
       "stage": 15,
       "winRate": 1,
       "medianClearSeconds": 2.7,
-      "medianHealthRemaining": 343.16,
-      "medianDamageTaken": 53,
+      "medianHealthRemaining": 359.16,
+      "medianDamageTaken": 37,
       "medianMitigation": 0.299453,
       "medianEnemyHitRate": 1
     },
@@ -87,18 +87,18 @@
       "stage": 15,
       "winRate": 1,
       "medianClearSeconds": 2.815,
-      "medianHealthRemaining": 290.06,
-      "medianDamageTaken": 29,
+      "medianHealthRemaining": 307.06,
+      "medianDamageTaken": 12,
       "medianMitigation": 0.233325,
-      "medianEnemyHitRate": 1
+      "medianEnemyHitRate": 0.5
     },
     {
       "build": "initiate-checkpoint",
       "stage": 15,
       "winRate": 1,
       "medianClearSeconds": 3.912,
-      "medianHealthRemaining": 208.66,
-      "medianDamageTaken": 63,
+      "medianHealthRemaining": 210.66,
+      "medianDamageTaken": 88,
       "medianMitigation": 0.173351,
       "medianEnemyHitRate": 1
     },
@@ -139,18 +139,18 @@
       "stage": 20,
       "winRate": 1,
       "medianClearSeconds": 14.168,
-      "medianHealthRemaining": 294.16,
-      "medianDamageTaken": 240,
+      "medianHealthRemaining": 275.16,
+      "medianDamageTaken": 242,
       "medianMitigation": 0.290411,
       "medianEnemyHitRate": 0.5
     },
     {
       "build": "apex-checkpoint",
       "stage": 30,
-      "winRate": 0.8235294117647058,
+      "winRate": 0.5490196078431373,
       "medianClearSeconds": 35.552,
-      "medianHealthRemaining": 177.03,
-      "medianDamageTaken": 497,
+      "medianHealthRemaining": 82.03,
+      "medianDamageTaken": 628,
       "medianMitigation": 0.310131,
       "medianEnemyHitRate": 0.333333
     }
@@ -159,9 +159,9 @@
     "firstLootMedianMinutes": 5.029166666666667,
     "firstLootWithinTenMinutesRate": 0.6666666666666666,
     "farmEightHourMedianKeptItems": 16,
-    "stage10Hours": 2.463047222222222,
-    "stage20Hours": 60.699621666666665,
-    "stage30Hours": 276.479775
+    "stage10Hours": 2.4609638888888887,
+    "stage20Hours": 60.43628833333334,
+    "stage30Hours": 276.2164416666667
   },
   "offenseTrees": [
     {
@@ -2884,183 +2884,183 @@
       "stage": 5,
       "build": "starter",
       "encounters": 30,
-      "medianEncounterSeconds": 8.25,
-      "cumulativeHours": 0.26493055555555556
+      "medianEncounterSeconds": 8,
+      "cumulativeHours": 0.26284722222222223
     },
     {
       "stage": 6,
       "build": "starter",
       "encounters": 30,
       "medianEncounterSeconds": 8.75,
-      "cumulativeHours": 0.33784722222222224
+      "cumulativeHours": 0.33576388888888886
     },
     {
       "stage": 7,
       "build": "starter",
       "encounters": 30,
       "medianEncounterSeconds": 9,
-      "cumulativeHours": 0.4128472222222222
+      "cumulativeHours": 0.4107638888888889
     },
     {
       "stage": 8,
       "build": "initiate-checkpoint",
       "encounters": 600,
       "medianEncounterSeconds": 5.978,
-      "cumulativeHours": 1.4091805555555554
+      "cumulativeHours": 1.407097222222222
     },
     {
       "stage": 9,
       "build": "initiate-checkpoint",
       "encounters": 600,
       "medianEncounterSeconds": 6.304,
-      "cumulativeHours": 2.459847222222222
+      "cumulativeHours": 2.4577638888888886
     },
     {
       "stage": 10,
       "build": "initiate-checkpoint",
       "encounters": 1,
       "medianEncounterSeconds": 11.52,
-      "cumulativeHours": 2.463047222222222
+      "cumulativeHours": 2.4609638888888887
     },
     {
       "stage": 11,
       "build": "firearm",
       "encounters": 3300,
       "medianEncounterSeconds": 5.855,
-      "cumulativeHours": 7.830130555555556
+      "cumulativeHours": 7.828047222222223
     },
     {
       "stage": 12,
       "build": "firearm",
       "encounters": 3300,
       "medianEncounterSeconds": 6.14,
-      "cumulativeHours": 13.45846388888889
+      "cumulativeHours": 13.456380555555556
     },
     {
       "stage": 13,
       "build": "firearm",
       "encounters": 3300,
       "medianEncounterSeconds": 6.425,
-      "cumulativeHours": 19.348047222222224
+      "cumulativeHours": 19.34596388888889
     },
     {
       "stage": 14,
       "build": "firearm",
       "encounters": 3300,
       "medianEncounterSeconds": 6.71,
-      "cumulativeHours": 25.498880555555555
+      "cumulativeHours": 25.496797222222224
     },
     {
       "stage": 15,
       "build": "firearm",
       "encounters": 3300,
       "medianEncounterSeconds": 6.995,
-      "cumulativeHours": 31.91096388888889
+      "cumulativeHours": 31.908880555555555
     },
     {
       "stage": 16,
       "build": "firearm",
       "encounters": 3300,
       "medianEncounterSeconds": 7.279999999999999,
-      "cumulativeHours": 38.584297222222226
+      "cumulativeHours": 38.58221388888889
     },
     {
       "stage": 17,
       "build": "firearm",
       "encounters": 3300,
       "medianEncounterSeconds": 7.5649999999999995,
-      "cumulativeHours": 45.518880555555555
+      "cumulativeHours": 45.51679722222222
     },
     {
       "stage": 18,
       "build": "firearm",
       "encounters": 3300,
       "medianEncounterSeconds": 7.85,
-      "cumulativeHours": 52.71471388888889
+      "cumulativeHours": 52.712630555555556
     },
     {
       "stage": 19,
       "build": "firearm",
       "encounters": 3300,
-      "medianEncounterSeconds": 8.705,
-      "cumulativeHours": 60.694297222222225
+      "medianEncounterSeconds": 8.42,
+      "cumulativeHours": 60.43096388888889
     },
     {
       "stage": 20,
       "build": "vanguard-checkpoint",
       "encounters": 1,
       "medianEncounterSeconds": 19.168,
-      "cumulativeHours": 60.699621666666665
+      "cumulativeHours": 60.43628833333334
     },
     {
       "stage": 21,
       "build": "apex-checkpoint",
       "encounters": 8000,
       "medianEncounterSeconds": 8.168,
-      "cumulativeHours": 78.85073277777776
+      "cumulativeHours": 78.58739944444444
     },
     {
       "stage": 22,
       "build": "apex-checkpoint",
       "encounters": 8000,
       "medianEncounterSeconds": 8.872,
-      "cumulativeHours": 98.56628833333333
+      "cumulativeHours": 98.302955
     },
     {
       "stage": 23,
       "build": "apex-checkpoint",
       "encounters": 8000,
       "medianEncounterSeconds": 9.224,
-      "cumulativeHours": 119.0640661111111
+      "cumulativeHours": 118.80073277777777
     },
     {
       "stage": 24,
       "build": "apex-checkpoint",
       "encounters": 8000,
       "medianEncounterSeconds": 9.928,
-      "cumulativeHours": 141.12628833333332
+      "cumulativeHours": 140.862955
     },
     {
       "stage": 25,
       "build": "apex-checkpoint",
       "encounters": 8000,
       "medianEncounterSeconds": 10.632,
-      "cumulativeHours": 164.75295500000001
+      "cumulativeHours": 164.48962166666666
     },
     {
       "stage": 26,
       "build": "apex-checkpoint",
       "encounters": 8000,
       "medianEncounterSeconds": 11.336,
-      "cumulativeHours": 189.9440661111111
+      "cumulativeHours": 189.6807327777778
     },
     {
       "stage": 27,
       "build": "apex-checkpoint",
       "encounters": 8000,
       "medianEncounterSeconds": 11.687999999999999,
-      "cumulativeHours": 215.91739944444444
+      "cumulativeHours": 215.65406611111112
     },
     {
       "stage": 28,
       "build": "apex-checkpoint",
       "encounters": 8000,
       "medianEncounterSeconds": 13.096,
-      "cumulativeHours": 245.01962166666667
+      "cumulativeHours": 244.75628833333334
     },
     {
       "stage": 29,
       "build": "apex-checkpoint",
       "encounters": 8000,
       "medianEncounterSeconds": 14.152,
-      "cumulativeHours": 276.46851055555555
+      "cumulativeHours": 276.20517722222223
     },
     {
       "stage": 30,
       "build": "apex-checkpoint",
       "encounters": 1,
       "medianEncounterSeconds": 40.552,
-      "cumulativeHours": 276.479775
+      "cumulativeHours": 276.2164416666667
     }
   ],
   "starterRoute": [
@@ -3099,8 +3099,8 @@
       "stage": 4,
       "winRate": 1,
       "medianClearSeconds": 2.5,
-      "medianHealthRemaining": 65,
-      "medianDamageTaken": 37,
+      "medianHealthRemaining": 76,
+      "medianDamageTaken": 26,
       "medianMitigation": 0,
       "medianEnemyHitRate": 1
     },
@@ -3108,9 +3108,9 @@
       "build": "starter",
       "stage": 5,
       "winRate": 1,
-      "medianClearSeconds": 3.25,
-      "medianHealthRemaining": 61,
-      "medianDamageTaken": 41,
+      "medianClearSeconds": 3,
+      "medianHealthRemaining": 45,
+      "medianDamageTaken": 57,
       "medianMitigation": 0,
       "medianEnemyHitRate": 1
     },
@@ -3137,20 +3137,20 @@
     {
       "build": "starter",
       "stage": 8,
-      "winRate": 0.5238095238095238,
-      "medianClearSeconds": 4,
-      "medianHealthRemaining": 46,
-      "medianDamageTaken": 56,
+      "winRate": 0.9047619047619048,
+      "medianClearSeconds": 4.5,
+      "medianHealthRemaining": 2,
+      "medianDamageTaken": 100,
       "medianMitigation": 0,
       "medianEnemyHitRate": 1
     },
     {
       "build": "starter",
       "stage": 9,
-      "winRate": 0.14285714285714285,
-      "medianClearSeconds": 5,
-      "medianHealthRemaining": 0,
-      "medianDamageTaken": 102,
+      "winRate": 0.7142857142857143,
+      "medianClearSeconds": 5.25,
+      "medianHealthRemaining": 15,
+      "medianDamageTaken": 87,
       "medianMitigation": 0,
       "medianEnemyHitRate": 1
     },
@@ -3167,8 +3167,8 @@
     {
       "build": "starter",
       "stage": 11,
-      "winRate": 0.047619047619047616,
-      "medianClearSeconds": 6.75,
+      "winRate": 0.09523809523809523,
+      "medianClearSeconds": 7.25,
       "medianHealthRemaining": 0,
       "medianDamageTaken": 102,
       "medianMitigation": 0,
@@ -3177,8 +3177,8 @@
     {
       "build": "starter",
       "stage": 12,
-      "winRate": 0.14285714285714285,
-      "medianClearSeconds": 7,
+      "winRate": 0.2857142857142857,
+      "medianClearSeconds": 7.5,
       "medianHealthRemaining": 0,
       "medianDamageTaken": 102,
       "medianMitigation": 0,

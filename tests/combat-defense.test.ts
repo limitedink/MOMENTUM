@@ -1,0 +1,136 @@
+import { describe, expect, it } from 'vitest';
+import {
+  createCombatDevelopmentState,
+  resolveCombatDefenseProfile,
+  resolveCombatModifierSnapshot,
+  type CombatModifierSnapshot,
+  type CombatTreeEffectDefinition
+} from '../src/game/combat-development';
+import { COMBAT_SKILL_IDS, createInitialCombatProgression } from '../src/game/combat-progression';
+import { normalizeSoloFrontierState, type SoloCombatInput } from '../src/game/solo-frontier';
+import { simulateSoloCombat } from '../src/game/solo-frontier/solo-combat-engine';
+
+function emptySnapshot(effects: readonly CombatTreeEffectDefinition[] = []): CombatModifierSnapshot {
+  const snapshot = resolveCombatModifierSnapshot(createCombatDevelopmentState(), createInitialCombatProgression());
+  return { ...snapshot, effects, effectIds: effects.map(effect => effect.id) };
+}
+
+function defenseInput(combatModifiers: CombatModifierSnapshot, overrides: Partial<SoloCombatInput> = {}): SoloCombatInput {
+  return {
+    combatSkills: Object.fromEntries(COMBAT_SKILL_IDS.map(skillId => [skillId, 100])) as SoloCombatInput['combatSkills'],
+    equippedStats: {
+      hitPoints: 100,
+      accuracy: 30,
+      evasion: 0,
+      ward: 10,
+      armourPieces: Array.from({ length: 6 }, (_, index) => ({ id: `heavy-${index}`, armourClass: 'heavy' as const, armour: 20 }))
+    },
+    activeWeapon: { id: 'defense-test-weapon', name: 'Defense Test Weapon', style: 'medium-melee', damage: 5, accuracy: 30, attackInterval: 0.5 },
+    stance: 'Balanced',
+    technique: 'Power Strike',
+    defensiveAbility: 'none',
+    aura: 'none',
+    enemy: {
+      id: 'defense-test-enemy',
+      name: 'Defense Test Enemy',
+      kind: 'regular',
+      hitPoints: 100_000,
+      damage: 35,
+      armour: 0,
+      ward: 0,
+      evasion: 0,
+      accuracy: 1_000,
+      attackInterval: 0.2,
+      damageType: 'physical'
+    },
+    stage: 20,
+    seed: 'defense-engine-test',
+    combatModifiers,
+    ...overrides
+  };
+}
+
+describe('v21.2 Defense modifier platform', () => {
+  it('resolves armour conditions and enforces static Defense caps', () => {
+    const effects: CombatTreeEffectDefinition[] = [
+      { id: 'heavy-armour', skillId: 'Heavy Armour Proficiency', kind: 'stat', stat: 'armourPct', value: 0.60, condition: { armourClass: 'heavy', minimumArmourPieces: 6 } },
+      { id: 'ward-cap', skillId: 'Warding', kind: 'stat', stat: 'wardPct', value: 0.90 },
+      { id: 'evasion-cap', skillId: 'Evasion', kind: 'stat', stat: 'evasionFlat', value: 50 },
+      { id: 'hit-reduction-cap', skillId: 'Evasion', kind: 'stat', stat: 'enemyHitChanceReduction', value: 0.30 },
+      { id: 'physical-cap', skillId: 'Heavy Armour Proficiency', kind: 'stat', stat: 'physicalDamageReductionPct', value: 0.40 },
+      { id: 'magical-cap', skillId: 'Warding', kind: 'stat', stat: 'magicalDamageReductionPct', value: 0.40 },
+      { id: 'armour-resistance-cap', skillId: 'Heavy Armour Proficiency', kind: 'stat', stat: 'armourPenetrationResistancePct', value: 0.90 },
+      { id: 'ward-resistance-cap', skillId: 'Warding', kind: 'stat', stat: 'wardPenetrationResistancePct', value: 0.90 },
+      { id: 'barrier-cap', skillId: 'Warding', kind: 'stat', stat: 'barrierStrengthPct', value: 2 },
+      { id: 'cooldown-cap', skillId: 'Warding', kind: 'stat', stat: 'defensiveCooldownPct', value: 0.90 }
+    ];
+    const profile = resolveCombatDefenseProfile(emptySnapshot(effects), {
+      armourPieceCounts: { light: 0, medium: 0, heavy: 6 }
+    });
+    expect(profile.armourMultiplierByClass.heavy).toBe(1.5);
+    expect(profile.armourMultiplierByClass.light).toBe(1);
+    expect(profile.wardMultiplier).toBe(1.6);
+    expect(profile.evasionBonus).toBe(30);
+    expect(profile.enemyHitChanceReduction).toBe(0.1);
+    expect(profile.physicalDamageMultiplier).toBe(0.8);
+    expect(profile.magicalDamageMultiplier).toBe(0.8);
+    expect(profile.armourPenetrationResistance).toBe(0.5);
+    expect(profile.wardPenetrationResistance).toBe(0.5);
+    expect(profile.barrierStrengthMultiplier).toBe(2);
+    expect(profile.defensiveCooldownMultiplier).toBe(0.6);
+  });
+
+  it('resolves ordered conversion, glance, guard, adaptation and retaliation deterministically', () => {
+    const effects: CombatTreeEffectDefinition[] = [
+      { id: 'periodic-avoidance', skillId: 'Evasion', kind: 'defense', defense: 'avoidance', every: 5, charges: 3 },
+      { id: 'opening-glance', skillId: 'Light Armour Proficiency', kind: 'defense', defense: 'glance', first: 1, reductionPct: 0.25 },
+      { id: 'periodic-guard', skillId: 'Medium Armour Proficiency', kind: 'defense', defense: 'guard', every: 5, reductionPct: 0.25, damageType: 'physical' },
+      { id: 'same-type-adaptation', skillId: 'Medium Armour Proficiency', kind: 'defense', defense: 'adaptive', mode: 'same', reductionPct: 0.20, hits: 2 },
+      { id: 'armour-retaliation', skillId: 'Heavy Armour Proficiency', kind: 'defense', defense: 'retaliation', source: 'armour-prevented', damagePct: 0.25, capPctDerivedHit: 0.10 }
+    ];
+    const modifiers = emptySnapshot(effects);
+    const first = simulateSoloCombat(defenseInput(modifiers));
+    const replay = simulateSoloCombat(defenseInput(modifiers));
+    expect(first.events).toEqual(replay.events);
+    expect(first.metrics).toEqual(replay.metrics);
+    expect(first.metrics.defense.naturalMisses).toBe(0);
+    expect(first.metrics.defense.convertedMisses).toBeGreaterThan(0);
+    expect(first.metrics.defense.glancingHits).toBeGreaterThan(0);
+    expect(first.metrics.defense.glancingPrevented).toBeGreaterThan(0);
+    expect(first.metrics.defense.guardPrevented).toBeGreaterThan(0);
+    expect(first.metrics.defense.defensePrevented).toBeGreaterThan(0);
+    expect(first.metrics.defense.retaliationDamage).toBeGreaterThan(0);
+    expect(first.events.some(event => event.type === 'attack' && event.actor === 'enemy' && event.convertedMiss)).toBe(true);
+    expect(first.events.some(event => event.type === 'attack' && event.actor === 'enemy' && event.glanced)).toBe(true);
+  });
+
+  it('records barrier breaks and applies a non-recursive barrier response', () => {
+    const effects: CombatTreeEffectDefinition[] = [
+      { id: 'barrier-response', skillId: 'Warding', kind: 'defense', defense: 'barrier-response', trigger: 'break', nextAttackDamagePct: 0.30, nextAttackCount: 1, readiesTechnique: true, guaranteeHit: true, guaranteeCritical: true }
+    ];
+    const result = simulateSoloCombat(defenseInput(emptySnapshot(effects), {
+      defensiveAbility: 'Arcane Barrier',
+      enemy: {
+        ...defenseInput(emptySnapshot()).enemy,
+        damage: 100,
+        attackInterval: 0.25,
+        hitPoints: 10_000
+      }
+    }));
+    expect(result.metrics.defense.barrierBreaks).toBeGreaterThan(0);
+    expect(result.metrics.defense.procCounts['barrier-response']).toBeGreaterThan(0);
+    expect(result.metrics.sustain.barrierAbsorbed).toBeGreaterThan(0);
+  });
+
+  it('normalizes old v21 debriefs without changing the save version', () => {
+    const state = normalizeSoloFrontierState({
+      version: 21,
+      order: 'paused',
+      combatProgression: Object.fromEntries(COMBAT_SKILL_IDS.map(skillId => [skillId, { level: 1, xp: 0 }])),
+      debrief: { elapsedMs: 10, sustain: {} }
+    });
+    expect(state.version).toBe(21);
+    expect(state.debrief?.defense.naturalMisses).toBe(0);
+    expect(state.debrief?.defense.procCounts).toEqual({});
+  });
+});

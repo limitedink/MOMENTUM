@@ -46,6 +46,11 @@ import {
   type CombatSkillTreeCatalogEntry,
   type CombatTreeEffectDefinition
 } from './combat-development-types';
+import type {
+  ArmourClass,
+  DamageType,
+  EnemyAttackTag
+} from '../solo-frontier/solo-frontier-types';
 
 const OFFENSE_TREES = Object.freeze({
   Strength: STRENGTH_SKILL_TREE,
@@ -250,6 +255,13 @@ export interface CombatModifierContext {
   maximumShred?: boolean;
   isTechnique?: boolean;
   overhealing?: boolean;
+  armourClass?: ArmourClass;
+  matchingArmourPieces?: number;
+  armourPieceCounts?: Readonly<Record<ArmourClass, number>>;
+  damageType?: DamageType;
+  enemyAttackTag?: EnemyAttackTag;
+  barrierActive?: boolean;
+  barrierBroken?: boolean;
 }
 
 export function combatEffectConditionMatches(condition: CombatEffectCondition | undefined, context: CombatModifierContext): boolean {
@@ -272,6 +284,17 @@ export function combatEffectConditionMatches(condition: CombatEffectCondition | 
   if (condition.maximumShred !== undefined && condition.maximumShred !== Boolean(context.maximumShred)) return false;
   if (condition.bossOrWarded && !context.boss && !context.enemyWarded) return false;
   if (condition.overhealing !== undefined && condition.overhealing !== Boolean(context.overhealing)) return false;
+  if (condition.armourClass !== undefined && condition.armourClass !== context.armourClass) return false;
+  if (condition.minimumArmourPieces !== undefined) {
+    const matchingPieces = context.armourClass && context.armourPieceCounts
+      ? context.armourPieceCounts[context.armourClass]
+      : context.matchingArmourPieces;
+    if ((matchingPieces ?? 0) < condition.minimumArmourPieces) return false;
+  }
+  if (condition.damageType !== undefined && condition.damageType !== context.damageType) return false;
+  if (condition.enemyAttackTag !== undefined && condition.enemyAttackTag !== context.enemyAttackTag) return false;
+  if (condition.barrierActive !== undefined && condition.barrierActive !== Boolean(context.barrierActive)) return false;
+  if (condition.barrierBroken !== undefined && condition.barrierBroken !== Boolean(context.barrierBroken)) return false;
   return true;
 }
 
@@ -300,7 +323,18 @@ const EMPTY_STATIC: Record<CombatModifierStat, number> = {
   mendThresholdBonus: 0,
   auraDamageBonus: 0,
   damageTakenReductionPct: 0,
-  regenerationPctPerSecond: 0
+  regenerationPctPerSecond: 0,
+  armourPct: 0,
+  wardPct: 0,
+  evasionFlat: 0,
+  enemyHitChanceReduction: 0,
+  physicalDamageReductionPct: 0,
+  magicalDamageReductionPct: 0,
+  armourPenetrationResistancePct: 0,
+  wardPenetrationResistancePct: 0,
+  defensiveCooldownPct: 0,
+  barrierStrengthPct: 0,
+  barrierCooldownPct: 0
 };
 
 function capStaticModifiers(value: Record<CombatModifierStat, number>): Record<CombatModifierStat, number> {
@@ -317,7 +351,18 @@ function capStaticModifiers(value: Record<CombatModifierStat, number>): Record<C
     mendThresholdBonus: Math.max(0, Math.min(0.10, value.mendThresholdBonus)),
     auraDamageBonus: Math.max(0, Math.min(0.10, value.auraDamageBonus)),
     damageTakenReductionPct: Math.max(0, Math.min(0.15, value.damageTakenReductionPct)),
-    regenerationPctPerSecond: Math.max(0, Math.min(0.01, value.regenerationPctPerSecond))
+    regenerationPctPerSecond: Math.max(0, Math.min(0.01, value.regenerationPctPerSecond)),
+    armourPct: Math.max(0, Math.min(0.50, value.armourPct)),
+    wardPct: Math.max(0, Math.min(0.60, value.wardPct)),
+    evasionFlat: Math.max(0, Math.min(30, value.evasionFlat)),
+    enemyHitChanceReduction: Math.max(0, Math.min(0.10, value.enemyHitChanceReduction)),
+    physicalDamageReductionPct: Math.max(0, Math.min(0.20, value.physicalDamageReductionPct)),
+    magicalDamageReductionPct: Math.max(0, Math.min(0.20, value.magicalDamageReductionPct)),
+    armourPenetrationResistancePct: Math.max(0, Math.min(0.50, value.armourPenetrationResistancePct)),
+    wardPenetrationResistancePct: Math.max(0, Math.min(0.50, value.wardPenetrationResistancePct)),
+    defensiveCooldownPct: Math.max(0, Math.min(0.40, value.defensiveCooldownPct)),
+    barrierStrengthPct: Math.max(0, Math.min(1, value.barrierStrengthPct)),
+    barrierCooldownPct: Math.max(0, Math.min(0.40, value.barrierCooldownPct))
   };
 }
 
@@ -390,6 +435,75 @@ export function resolveCombatSustainProfile(
   });
 }
 
+const ARMOUR_CLASSES: readonly ArmourClass[] = ['light', 'medium', 'heavy'];
+type CombatStatEffect = Extract<CombatTreeEffectDefinition, { kind: 'stat' }>;
+
+const defenseEffectsForContext = (
+  snapshot: CombatModifierSnapshot | undefined,
+  context: CombatModifierContext
+): CombatStatEffect[] => snapshot?.effects.filter((effect): effect is CombatStatEffect =>
+  effect.kind === 'stat' && combatEffectConditionMatches(effect.condition, context)) ?? [];
+
+const sumDefenseStat = (
+  effects: readonly CombatStatEffect[],
+  stat: CombatModifierStat
+): number => effects.reduce((sum, effect) => sum + (effect.stat === stat ? effect.value : 0), 0);
+
+/**
+ * Resolves the static portion of Defense once so Solo, live previews and Arena
+ * can consume the same caps and armour-weight conditions.
+ */
+export function resolveCombatDefenseProfile(
+  snapshot: CombatModifierSnapshot | undefined,
+  context: CombatModifierContext = {}
+): import('./combat-development-types').CombatDefenseProfile {
+  const pieceCounts = context.armourPieceCounts ?? { light: 0, medium: 0, heavy: 0 };
+  const baseContext: CombatModifierContext = { ...context, armourPieceCounts: pieceCounts };
+  const baseEffects = defenseEffectsForContext(snapshot, baseContext);
+  const classEffects = Object.fromEntries(ARMOUR_CLASSES.map(armourClass => [
+    armourClass,
+    defenseEffectsForContext(snapshot, {
+      ...baseContext,
+      armourClass,
+      matchingArmourPieces: pieceCounts[armourClass]
+    })
+  ])) as unknown as Record<ArmourClass, readonly CombatStatEffect[]>;
+  const physicalEffects = defenseEffectsForContext(snapshot, { ...baseContext, damageType: 'physical' });
+  const magicalEffects = defenseEffectsForContext(snapshot, { ...baseContext, damageType: 'magical' });
+
+  const genericEffects = [...baseEffects, ...physicalEffects, ...magicalEffects];
+  const uniqueGenericEffects = [...new Map(genericEffects.map(effect => [effect.id, effect])).values()];
+  const staticValue = (stat: CombatModifierStat): number => sumDefenseStat(uniqueGenericEffects, stat);
+  const armourMultiplierByClass = Object.fromEntries(ARMOUR_CLASSES.map(armourClass => {
+    const effects = [...new Map(classEffects[armourClass].map(effect => [effect.id, effect])).values()];
+    return [armourClass, 1 + Math.min(0.50, Math.max(0, sumDefenseStat(effects, 'armourPct')) + staticValue('armourPct'))];
+  })) as Record<ArmourClass, number>;
+  const wardPct = Math.min(0.60, Math.max(0, staticValue('wardPct')));
+  const evasionBonus = Math.min(30, Math.max(0, staticValue('evasionFlat')));
+  const enemyHitChanceReduction = Math.min(0.10, Math.max(0, staticValue('enemyHitChanceReduction')));
+  const physicalReduction = Math.min(0.20, Math.max(0, staticValue('physicalDamageReductionPct')));
+  const magicalReduction = Math.min(0.20, Math.max(0, staticValue('magicalDamageReductionPct')));
+  const armourResistance = Math.min(0.50, Math.max(0, staticValue('armourPenetrationResistancePct')));
+  const wardResistance = Math.min(0.50, Math.max(0, staticValue('wardPenetrationResistancePct')));
+  const defensiveCooldown = Math.min(0.40, Math.max(0, staticValue('defensiveCooldownPct')));
+  const barrierStrength = Math.min(1, Math.max(0, staticValue('barrierStrengthPct')));
+  const barrierCooldown = Math.min(0.40, Math.max(0, staticValue('barrierCooldownPct')));
+
+  return Object.freeze({
+    armourMultiplierByClass: Object.freeze(armourMultiplierByClass),
+    wardMultiplier: 1 + wardPct,
+    evasionBonus,
+    enemyHitChanceReduction,
+    physicalDamageMultiplier: 1 - physicalReduction,
+    magicalDamageMultiplier: 1 - magicalReduction,
+    armourPenetrationResistance: armourResistance,
+    wardPenetrationResistance: wardResistance,
+    defensiveCooldownMultiplier: 1 - defensiveCooldown,
+    barrierStrengthMultiplier: 1 + barrierStrength,
+    barrierCooldownMultiplier: 1 - barrierCooldown
+  });
+}
+
 export const MomentumCombatDevelopment = Object.freeze({
   trees: COMBAT_SKILL_TREES,
   effects: COMBAT_TREE_EFFECT_DEFINITIONS,
@@ -403,5 +517,6 @@ export const MomentumCombatDevelopment = Object.freeze({
   respecCost: combatTreeRespecCost,
   resetTree: resetCombatTree,
   resolveModifiers: resolveCombatModifierSnapshot,
-  resolveSustainProfile: resolveCombatSustainProfile
+  resolveSustainProfile: resolveCombatSustainProfile,
+  resolveDefenseProfile: resolveCombatDefenseProfile
 });

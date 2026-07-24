@@ -1,8 +1,11 @@
 import type { CombatProgressionState, CombatSkillId } from '../combat-progression';
 import type { SkillTreeDefinition, SkillTreeState } from '../skills/skill-types';
 import type {
+  ArmourClass,
   AuraId,
   DefensiveAbilityId,
+  DamageType,
+  EnemyAttackTag,
   SoloCombatStance,
   TechniqueId,
   WeaponStyle
@@ -55,6 +58,12 @@ export interface CombatDevelopmentAdvanceResult {
 }
 
 export interface CombatEffectCondition {
+  armourClass?: ArmourClass;
+  minimumArmourPieces?: number;
+  damageType?: DamageType;
+  enemyAttackTag?: EnemyAttackTag;
+  barrierActive?: boolean;
+  barrierBroken?: boolean;
   styles?: readonly WeaponStyle[];
   technique?: TechniqueId;
   stance?: SoloCombatStance;
@@ -100,7 +109,18 @@ export type CombatModifierStat =
   | 'mendThresholdBonus'
   | 'auraDamageBonus'
   | 'damageTakenReductionPct'
-  | 'regenerationPctPerSecond';
+  | 'regenerationPctPerSecond'
+  | 'armourPct'
+  | 'wardPct'
+  | 'evasionFlat'
+  | 'enemyHitChanceReduction'
+  | 'physicalDamageReductionPct'
+  | 'magicalDamageReductionPct'
+  | 'armourPenetrationResistancePct'
+  | 'wardPenetrationResistancePct'
+  | 'defensiveCooldownPct'
+  | 'barrierStrengthPct'
+  | 'barrierCooldownPct';
 
 export type CombatTrigger =
   | 'first-hit'
@@ -267,12 +287,125 @@ export type CombatTreeEffectDefinition =
     family?: string;
     priority?: number;
     condition?: CombatEffectCondition;
+  }
+  | {
+    id: string;
+    skillId: CombatSkillId;
+    kind: 'defense';
+    defense: 'glance';
+    reductionPct: number;
+    first?: number;
+    every?: number;
+    threshold?: number;
+    charges?: number;
+    family?: string;
+    priority?: number;
+    condition?: CombatEffectCondition;
+  }
+  | {
+    id: string;
+    skillId: CombatSkillId;
+    kind: 'defense';
+    defense: 'guard';
+    reductionPct: number;
+    damageType?: DamageType;
+    enemyAttackTag?: EnemyAttackTag;
+    first?: number;
+    every?: number;
+    family?: string;
+    priority?: number;
+    condition?: CombatEffectCondition;
+  }
+  | {
+    id: string;
+    skillId: CombatSkillId;
+    kind: 'defense';
+    defense: 'avoidance';
+    every?: number;
+    threshold?: number;
+    charges: number;
+    family?: string;
+    priority?: number;
+    condition?: CombatEffectCondition;
+  }
+  | {
+    id: string;
+    skillId: CombatSkillId;
+    kind: 'defense';
+    defense: 'adaptive';
+    mode: 'same' | 'opposite' | 'change';
+    reductionPct: number;
+    hits: number;
+    family?: string;
+    priority?: number;
+    condition?: CombatEffectCondition;
+  }
+  | {
+    id: string;
+    skillId: CombatSkillId;
+    kind: 'defense';
+    defense: 'evasion-streak';
+    evasionPerStack: number;
+    maxStacks: number;
+    hitBehavior: 'clear' | 'remove-two';
+    damageBonusPct?: number;
+    attackSpeedPct?: number;
+    consumeStacks?: number;
+    guaranteeHit?: boolean;
+    guaranteeCritical?: boolean;
+    techniqueDamagePct?: number;
+    family?: string;
+    priority?: number;
+    condition?: CombatEffectCondition;
+  }
+  | {
+    id: string;
+    skillId: CombatSkillId;
+    kind: 'defense';
+    defense: 'retaliation';
+    source: 'armour-prevented';
+    damagePct: number;
+    capPctDerivedHit: number;
+    family?: string;
+    priority?: number;
+    condition?: CombatEffectCondition;
+  }
+  | {
+    id: string;
+    skillId: CombatSkillId;
+    kind: 'defense';
+    defense: 'barrier-response';
+    trigger: 'break';
+    nextAttackDamagePct?: number;
+    nextMagicalReductionPct?: number;
+    nextAttackCount?: number;
+    readiesTechnique?: boolean;
+    guaranteeCritical?: boolean;
+    guaranteeHit?: boolean;
+    cooldownSeconds?: number;
+    family?: string;
+    priority?: number;
+    condition?: CombatEffectCondition;
   };
 
 export interface CombatModifierSnapshot {
   effectIds: readonly string[];
   effects: readonly CombatTreeEffectDefinition[];
   static: Readonly<Record<CombatModifierStat, number>>;
+}
+
+export interface CombatDefenseProfile {
+  armourMultiplierByClass: Readonly<Record<ArmourClass, number>>;
+  wardMultiplier: number;
+  evasionBonus: number;
+  enemyHitChanceReduction: number;
+  physicalDamageMultiplier: number;
+  magicalDamageMultiplier: number;
+  armourPenetrationResistance: number;
+  wardPenetrationResistance: number;
+  defensiveCooldownMultiplier: number;
+  barrierStrengthMultiplier: number;
+  barrierCooldownMultiplier: number;
 }
 
 export interface CombatSustainProfile {
