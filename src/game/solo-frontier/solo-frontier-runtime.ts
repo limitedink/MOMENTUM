@@ -713,6 +713,7 @@ function addLootToDebrief(
       ? [state.frontierExchange.activeContract.category]
       : soloFrontierStage(stage).advertisedTargetSlots,
     targetSlotWeight: state.frontierExchange.activeContract ? 0.70 : 0.60,
+    targetArmourWeight: state.frontierExchange.activeContract?.armourWeight,
     now: atMs
   }, soloFrontierRandom(`${seed}:loot`));
 

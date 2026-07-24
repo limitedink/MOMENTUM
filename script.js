@@ -376,6 +376,7 @@ const soloCacheCount = document.getElementById('soloCacheCount');
 const soloCacheSummary = document.getElementById('soloCacheSummary');
 const soloCacheRarityFilter = document.getElementById('soloCacheRarityFilter');
 const soloCacheSlotFilter = document.getElementById('soloCacheSlotFilter');
+const soloCacheArmourWeightFilter = document.getElementById('soloCacheArmourWeightFilter');
 const soloCacheSort = document.getElementById('soloCacheSort');
 const soloCacheFavouritesOnly = document.getElementById('soloCacheFavouritesOnly');
 const soloCachePageControls = document.getElementById('soloCachePageControls');
@@ -408,6 +409,7 @@ const soloQaClearCache = document.getElementById('soloQaClearCache');
 let selectedCombatTreeSkill = null;
 let selectedCombatTreeNodeId = null;
 let selectedExchangeCategory = 'gun';
+let selectedExchangeArmourWeight = 'any';
 
 // Attach confetti to our overlay canvas
 const confettiCanvas = document.getElementById('confettiCanvas');
@@ -703,6 +705,7 @@ let soloDeskDebriefSnapshot = null;
 let soloDeskForceDefeat = false;
 let soloDeskCacheRarity = 'common';
 let soloDeskCacheSlot = 'all';
+let soloDeskCacheArmourWeight = 'all';
 let soloDeskCacheSort = 'power';
 let soloDeskCacheFavouritesOnly = false;
 let soloDeskCachePage = 0;
@@ -1989,20 +1992,28 @@ function renderFrontierExchange(state) {
     state = soloFrontierRuntime.getState();
   }
   const categories = FRONTIER_EXCHANGE_FRAMEWORK.COMBAT_GEAR_CATEGORIES;
+  const armourCategories = new Set(FRONTIER_EXCHANGE_FRAMEWORK.ARMOUR_GEAR_CATEGORIES || ['helm','chest','gloves','pants','boots','cloak']);
   const requisitionCost = FRONTIER_EXCHANGE_FRAMEWORK.requisitionPrice(state.highestClearedStage);
   const contractCost = FRONTIER_EXCHANGE_FRAMEWORK.targetContractPrice(state.highestClearedStage);
   const contract = exchange.activeContract;
   const contractPercent = contract ? Math.min(100, contract.successfulMs / contract.requiredMs * 100) : 0;
   frontierExchangeSummary.textContent = `${Math.floor(gold)} Gold · earned ${exchange.ledger.earned} · spent ${exchange.ledger.spent}`;
+  const selectedArmourCategory = armourCategories.has(selectedExchangeCategory);
+  if (!selectedArmourCategory) selectedExchangeArmourWeight = 'any';
+  const contractLabel = contract ? `${soloDeskSlotLabel(contract.category)}${contract.armourWeight ? ` · ${contract.armourWeight}` : ''} contract` : '';
   frontierExchange.innerHTML = `<div class="exchange-wallet"><span>AVAILABLE GOLD</span><strong>${Math.floor(gold)}</strong><small>Earned ${exchange.ledger.earned} · spent ${exchange.ledger.spent}</small></div>
-    <section class="exchange-services"><h4>Permanent services</h4><label><span>Exact gear category</span><select class="btn" id="exchangeCategory">${categories.map(category => `<option value="${category}" ${category === selectedExchangeCategory ? 'selected' : ''}>${soloDeskSlotLabel(category)}</option>`).join('')}</select></label><div class="exchange-service-actions"><button class="btn" data-exchange-action="requisition">Requisition · ${requisitionCost} Gold</button><button class="btn" data-exchange-action="contract" ${contract || exchange.pendingContractReward ? 'disabled' : ''}>Target contract · ${contractCost} Gold</button></div>${contract ? `<div class="exchange-contract"><strong>${soloDeskSlotLabel(contract.category)} contract</strong><span>${(contract.successfulMs / 3_600_000).toFixed(2)} / 8 successful hours</span><div class="combat-skill-meter"><i style="width:${contractPercent}%"></i></div><button class="btn btn-quiet" data-exchange-action="cancel-contract">Cancel · no refund</button></div>` : ''}${exchange.pendingContractReward ? `<div class="exchange-contract is-complete">${itemVisualMarkup(exchange.pendingContractReward,state.lootCache,'exchange-reward')}<strong>Rare+ contract reward held</strong><button class="btn btn-primary" data-exchange-action="claim-contract">Claim reward</button></div>` : ''}</section>
+    <section class="exchange-services"><h4>Permanent services</h4><label><span>Exact gear category</span><select class="btn" id="exchangeCategory">${categories.map(category => `<option value="${category}" ${category === selectedExchangeCategory ? 'selected' : ''}>${soloDeskSlotLabel(category)}</option>`).join('')}</select></label><label><span>Armour weight</span><select class="btn" id="exchangeArmourWeight" ${selectedArmourCategory ? '' : 'disabled'}><option value="any" ${selectedExchangeArmourWeight === 'any' ? 'selected' : ''}>Any weight</option><option value="light" ${selectedExchangeArmourWeight === 'light' ? 'selected' : ''}>Light</option><option value="medium" ${selectedExchangeArmourWeight === 'medium' ? 'selected' : ''}>Medium</option><option value="heavy" ${selectedExchangeArmourWeight === 'heavy' ? 'selected' : ''}>Heavy</option></select></label><div class="exchange-service-actions"><button class="btn" data-exchange-action="requisition">Requisition · ${requisitionCost} Gold</button><button class="btn" data-exchange-action="contract" ${contract || exchange.pendingContractReward ? 'disabled' : ''}>Target contract · ${contractCost} Gold</button></div>${contract ? `<div class="exchange-contract"><strong>${contractLabel}</strong><span>${(contract.successfulMs / 3_600_000).toFixed(2)} / 8 successful hours</span><div class="combat-skill-meter"><i style="width:${contractPercent}%"></i></div><button class="btn btn-quiet" data-exchange-action="cancel-contract">Cancel · no refund</button></div>` : ''}${exchange.pendingContractReward ? `<div class="exchange-contract is-complete">${itemVisualMarkup(exchange.pendingContractReward,state.lootCache,'exchange-reward')}<strong>Rare+ contract reward held</strong><button class="btn btn-primary" data-exchange-action="claim-contract">Claim reward</button></div>` : ''}</section>
     <section class="daily-stock"><h4>Daily stock · ${exchange.storeDay}</h4><div>${exchange.dailyOffers.map(offer => {
       const purchased = exchange.purchasedOfferIds.includes(offer.id);
       return `<article class="daily-offer">${offer.kind === 'item' ? itemVisualMarkup(offer.item,state.lootCache,'daily-offer-icon') : resourceIconMarkup(offer.kind === 'food' ? (ITEMS[offer.foodId]?.name === 'Cooked Fish' ? 'Cooked Fish' : `${ITEMS[offer.foodId]?.name}s`) : offer.resource,'daily-offer-icon')}<span><strong>${dailyOfferLabel(offer)}</strong><small>${offer.price} Gold · one purchase</small></span><button class="btn btn-small" data-daily-offer="${offer.id}" ${purchased ? 'disabled' : ''}>${purchased ? 'Purchased' : 'Buy'}</button></article>`;
     }).join('')}</div></section>`;
-  frontierExchange.querySelector('#exchangeCategory')?.addEventListener('change', event => { selectedExchangeCategory = event.target.value; });
-  frontierExchange.querySelector('[data-exchange-action="requisition"]')?.addEventListener('click', () => applyFrontierTransaction(FRONTIER_EXCHANGE_FRAMEWORK.purchaseRequisition(exchange, frontierWallet(), state.lootCache, selectedExchangeCategory, state.highestClearedStage, `${state.seed}:requisition:${Date.now()}`, Date.now())));
-  frontierExchange.querySelector('[data-exchange-action="contract"]')?.addEventListener('click', () => applyFrontierTransaction(FRONTIER_EXCHANGE_FRAMEWORK.startTargetContract(exchange, frontierWallet(), state.lootCache, selectedExchangeCategory, state.highestClearedStage, Date.now())));
+  frontierExchange.querySelector('#exchangeCategory')?.addEventListener('change', event => { selectedExchangeCategory = event.target.value; if (!armourCategories.has(selectedExchangeCategory)) selectedExchangeArmourWeight = 'any'; renderFrontierExchange(soloDeskState()); });
+  frontierExchange.querySelector('#exchangeArmourWeight')?.addEventListener('change', event => { selectedExchangeArmourWeight = event.target.value; });
+  const currentExchangeTarget = () => selectedExchangeArmourWeight === 'any'
+    ? selectedExchangeCategory
+    : { category: selectedExchangeCategory, armourWeight: selectedExchangeArmourWeight };
+  frontierExchange.querySelector('[data-exchange-action="requisition"]')?.addEventListener('click', () => applyFrontierTransaction(FRONTIER_EXCHANGE_FRAMEWORK.purchaseRequisition(exchange, frontierWallet(), state.lootCache, currentExchangeTarget(), state.highestClearedStage, `${state.seed}:requisition:${Date.now()}`, Date.now())));
+  frontierExchange.querySelector('[data-exchange-action="contract"]')?.addEventListener('click', () => applyFrontierTransaction(FRONTIER_EXCHANGE_FRAMEWORK.startTargetContract(exchange, frontierWallet(), state.lootCache, currentExchangeTarget(), state.highestClearedStage, Date.now())));
   frontierExchange.querySelector('[data-exchange-action="cancel-contract"]')?.addEventListener('click', () => {
     soloFrontierRuntime.hydrate({ ...state, frontierExchange:FRONTIER_EXCHANGE_FRAMEWORK.cancelTargetContract(exchange) });
     syncSoloFrontierProjection(); saveGame(); renderSoloFrontierDesk();
@@ -2018,6 +2029,7 @@ function soloDeskCacheVisibleItems(state) {
     const inspection = soloDeskInspection(instance);
     if (equippedIds.has(instance.instanceId)) return false;
     if (!inspection || soloDeskRarityIndex(instance.rarity) < minimum) return false;
+    if (soloDeskCacheArmourWeight !== 'all' && (inspection.definition.kind !== 'armour' || inspection.definition.weight !== soloDeskCacheArmourWeight)) return false;
     if (soloDeskCacheFavouritesOnly && !state.lootCache.favoriteIds.includes(instance.instanceId)) return false;
     if (soloDeskCacheSlot !== 'all') {
       const broadFilters = new Set(['weapon','armour','ring','trinket','accessory']);
@@ -2072,6 +2084,7 @@ function renderSoloCache(state) {
     : count >= capacity ? 'FULL · new drops become Salvage' : `${count} retained · ${Math.max(0, capacity - count)} open slots`;
   soloCacheRarityFilter.value = soloDeskCacheRarity;
   soloCacheSlotFilter.value = soloDeskCacheSlot;
+  soloCacheArmourWeightFilter.value = soloDeskCacheArmourWeight;
   soloCacheSort.value = soloDeskCacheSort;
   soloCacheFavouritesOnly.checked = soloDeskCacheFavouritesOnly;
   const visible = soloDeskCacheVisibleItems(state);
@@ -2421,7 +2434,7 @@ function createSaveData() {
     skillSpecializations:{ ...skillSpecializations },
     specializationProgress:{ ...specializationProgress },
     settings:{ ...gameSettings },
-    soloDesk:{ stance:soloDeskStance, technique:soloDeskTechnique, defensive:soloDeskDefensiveAbility, aura:soloDeskAura, cacheRarity:soloDeskCacheRarity, cacheSlot:soloDeskCacheSlot, cacheSort:soloDeskCacheSort, favouritesOnly:soloDeskCacheFavouritesOnly },
+    soloDesk:{ stance:soloDeskStance, technique:soloDeskTechnique, defensive:soloDeskDefensiveAbility, aura:soloDeskAura, cacheRarity:soloDeskCacheRarity, cacheSlot:soloDeskCacheSlot, cacheArmourWeight:soloDeskCacheArmourWeight, cacheSort:soloDeskCacheSort, favouritesOnly:soloDeskCacheFavouritesOnly },
     claimedOperations:[...claimedOperations],
     crafting:{ selectedRecipe:craftingSelectedRecipe },
     salvageMaterials,
@@ -2527,6 +2540,7 @@ function loadGame() {
       if (['none', 'Battle Focus'].includes(savedDesk.aura)) soloDeskAura = savedDesk.aura;
       if (LOOT_FRAMEWORK?.rarities?.some(rarity => rarity.id === savedDesk.cacheRarity)) soloDeskCacheRarity = savedDesk.cacheRarity;
       if (['all', 'weapon', 'armour', 'ring', 'trinket', 'accessory', 'melee', 'gun', 'ranged', 'magic', 'helm', 'chest', 'gloves', 'pants', 'boots', 'cloak', 'belt', 'amulet', 'ring1', 'ring2', 'trinket1', 'trinket2'].includes(savedDesk.cacheSlot)) soloDeskCacheSlot = savedDesk.cacheSlot;
+      if (['all', 'light', 'medium', 'heavy'].includes(savedDesk.cacheArmourWeight)) soloDeskCacheArmourWeight = savedDesk.cacheArmourWeight;
       if (['power', 'rarity', 'newest', 'slot'].includes(savedDesk.cacheSort)) soloDeskCacheSort = savedDesk.cacheSort;
       soloDeskCacheFavouritesOnly = Boolean(savedDesk.favouritesOnly);
       claimedOperations.clear();
@@ -4811,6 +4825,12 @@ soloCacheRarityFilter?.addEventListener('change', () => {
   soloDeskCacheMutation(cache);
 });
 soloCacheSlotFilter?.addEventListener('change', () => { soloDeskCacheSlot = soloCacheSlotFilter.value; soloDeskCachePage = 0; renderSoloFrontierDesk(); });
+soloCacheArmourWeightFilter?.addEventListener('change', () => {
+  soloDeskCacheArmourWeight = soloCacheArmourWeightFilter.value;
+  soloDeskCachePage = 0;
+  const cache = LOOT_FRAMEWORK.setLootFilters(soloDeskState().lootCache, { armourWeight: soloDeskCacheArmourWeight === 'all' ? null : soloDeskCacheArmourWeight });
+  soloDeskCacheMutation(cache);
+});
 soloCacheSort?.addEventListener('change', () => { soloDeskCacheSort = soloCacheSort.value; soloDeskCachePage = 0; renderSoloFrontierDesk(); });
 soloCacheFavouritesOnly?.addEventListener('change', () => { soloDeskCacheFavouritesOnly = soloCacheFavouritesOnly.checked; soloDeskCachePage = 0; renderSoloFrontierDesk(); });
 soloCachePrevPage?.addEventListener('click', () => { soloDeskCachePage = Math.max(0, soloDeskCachePage - 1); renderSoloCache(soloDeskState()); });

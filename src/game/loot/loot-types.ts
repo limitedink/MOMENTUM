@@ -155,6 +155,8 @@ export interface LootFilters {
   /** `common` (or null) means every normal drop passes by default. */
   globalMinimumRarity: RarityId | null;
   perSlotMinimumRarity: Partial<Record<EquipmentSlotId | AccessorySlotId, RarityId | null>>;
+  /** UI-only acquisition filter; it never rejects or salvages an incoming drop. */
+  armourWeight: ArmourWeight | null;
 }
 
 export interface LootCacheState {
@@ -246,6 +248,8 @@ export interface LootSourceContext {
   targetSlots?: readonly LootSlot[];
   /** Overrides the normal 60% target bucket, used by active contracts. */
   targetSlotWeight?: number;
+  /** Optional exact armour-weight target. Omitted preserves legacy selection. */
+  targetArmourWeight?: ArmourWeight;
 }
 
 export interface LootResolution {

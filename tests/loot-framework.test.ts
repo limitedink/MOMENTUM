@@ -7,7 +7,7 @@ import {
   SKILL_TOOL_DEFINITIONS
 } from '../src/game/loot';
 import { CRAFTING_RECIPES } from '../src/game/skills/definitions';
-import { inspectItem, rollLoot, salvageItem, updateCollectionProgress, validateEquipItem } from '../src/game/loot/loot-registry';
+import { createLootFilters, inspectItem, itemMatchesArmourWeight, rollLoot, salvageItem, updateCollectionProgress, validateEquipItem } from '../src/game/loot/loot-registry';
 
 const context = {
   sourceType: 'arenaBoss' as const,
@@ -70,5 +70,14 @@ describe('loot framework', () => {
     expect(PARTY_BOSS_LOOT_TABLE.sourceType).toBe('partyBoss');
     expect(SKILL_TOOL_DEFINITIONS.map(tool => tool.id)).toEqual(['guitar', 'drums', 'piano', 'harp']);
     expect(CRAFTING_RECIPES.filter(recipe => recipe.skillToolId).map(recipe => recipe.skillToolId)).toEqual(['guitar', 'drums', 'piano', 'harp']);
+  });
+
+  it('normalizes the armour-weight inventory filter without making it a drop-rejection rule', () => {
+    const filters = createLootFilters({ armourWeight: 'heavy' });
+    expect(filters.armourWeight).toBe('heavy');
+    const heavy = rollLoot({ ...context, sourceType: 'soloFrontier', sourceId: 'solo-frontier:stage-5', targetSlots: ['chest'], targetSlotWeight: 1, targetArmourWeight: 'heavy' }, () => 0).item!;
+    const light = rollLoot({ ...context, sourceType: 'soloFrontier', sourceId: 'solo-frontier:stage-5', targetSlots: ['chest'], targetSlotWeight: 1, targetArmourWeight: 'light' }, () => 0).item!;
+    expect(itemMatchesArmourWeight(heavy, 'heavy')).toBe(true);
+    expect(itemMatchesArmourWeight(light, 'heavy')).toBe(false);
   });
 });

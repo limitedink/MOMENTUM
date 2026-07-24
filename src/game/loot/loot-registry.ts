@@ -13,6 +13,7 @@ import type {
   AffixDefinition,
   AffixRoll,
   ArmourSlotId,
+  ArmourWeight,
   EquipmentLoadout,
   EquipmentSlotId,
   EquippedStatsSnapshot,
@@ -48,7 +49,8 @@ export const AFFIX_TIER_BANDS = Object.freeze([
 
 export const DEFAULT_LOOT_FILTERS: LootFilters = Object.freeze({
   globalMinimumRarity: 'common',
-  perSlotMinimumRarity: {}
+  perSlotMinimumRarity: {},
+  armourWeight: null
 });
 
 function clamp(value: number, min: number, max: number): number {
@@ -160,6 +162,7 @@ function pickLootDefinition(
   definitions: readonly ItemDefinition[],
   targetSlots: readonly LootSlot[] | undefined,
   targetSlotWeight: number,
+  targetArmourWeight: ArmourWeight | undefined,
   random: () => number
 ): ItemDefinition {
   const candidates = definitionIds
@@ -169,7 +172,7 @@ function pickLootDefinition(
   if (!targetSlots?.length) return candidates[Math.floor(randomUnit(random) * candidates.length)];
 
   const targetSet = new Set(targetSlots);
-  const targeted = candidates.filter(item => targetSet.has(item.slot));
+  const targeted = candidates.filter(item => targetSet.has(item.slot) && (!targetArmourWeight || item.weight === targetArmourWeight));
   const untargeted = candidates.filter(item => !targetSet.has(item.slot));
   if (!targeted.length || !untargeted.length) return candidates[Math.floor(randomUnit(random) * candidates.length)];
   // Advertised slots get 60% of the source's slot-selection weight. This is
@@ -238,7 +241,7 @@ export function rollLoot(
   }
 
   const rarity = rollRarity(table, random, context.minimumRarity);
-  const definition = pickLootDefinition(table.itemDefinitionIds, definitions, context.targetSlots, context.targetSlotWeight ?? 0.60, random);
+  const definition = pickLootDefinition(table.itemDefinitionIds, definitions, context.targetSlots, context.targetSlotWeight ?? 0.60, context.targetArmourWeight, random);
   const itemLevel = clamp(Math.floor(finiteNumber(context.itemLevel, context.sourceTier * 10 + Math.floor(context.playerLevel / 5))), 1, 30);
   const now = context.now || Date.now();
   const instance: ItemInstance = {
@@ -485,8 +488,21 @@ function cloneFilters(value: Partial<LootFilters> | null | undefined): LootFilte
     : {};
   return {
     globalMinimumRarity: value?.globalMinimumRarity === undefined ? DEFAULT_LOOT_FILTERS.globalMinimumRarity : value.globalMinimumRarity,
-    perSlotMinimumRarity: perSlot
+    perSlotMinimumRarity: perSlot,
+    armourWeight: value?.armourWeight === 'light' || value?.armourWeight === 'medium' || value?.armourWeight === 'heavy'
+      ? value.armourWeight
+      : DEFAULT_LOOT_FILTERS.armourWeight
   };
+}
+
+export function itemMatchesArmourWeight(
+  instance: ItemInstance,
+  armourWeight: ArmourWeight | null | undefined,
+  definitions: readonly ItemDefinition[] = COMBAT_LOOT_DEFINITIONS
+): boolean {
+  if (!armourWeight) return true;
+  const definition = definitions.find(item => item.id === instance.definitionId);
+  return definition?.kind === 'armour' && definition.weight === armourWeight;
 }
 
 export function createLootFilters(value: Partial<LootFilters> = {}): LootFilters {

@@ -6,12 +6,14 @@ import {
   claimTargetContractReward,
   createFrontierExchangeState,
   normalizeFrontierExchangeState,
+  normalizeFrontierGearTarget,
   purchaseArenaDisciplineRespec,
   purchaseDailyStock,
   purchaseRequisition,
   purchaseTreeRespec,
   refreshDailyStock,
-  startTargetContract
+  startTargetContract,
+  rollFrontierGear
 } from '../src/game/frontier-exchange';
 import { createLootCache, getItemDefinition, type ItemInstance } from '../src/game/loot';
 import type { FrontierWallet } from '../src/game/frontier-exchange';
@@ -91,6 +93,43 @@ describe('v21 Frontier Exchange', () => {
     expect(['common', 'uncommon', 'rare', 'epic']).toContain(delivered.item?.rarity);
   });
 
+  it('targets an exact armour slot and weight without changing legacy no-weight rolls', () => {
+    const target = { category: 'chest' as const, armourWeight: 'heavy' as const };
+    expect(normalizeFrontierGearTarget(target)).toEqual(target);
+    expect(normalizeFrontierGearTarget({ category: 'gun', armourWeight: 'heavy' })).toBeNull();
+
+    const exact = purchaseRequisition(createFrontierExchangeState(), wallet(1_000), createLootCache(), target, 10, 'weighted-requisition', 1);
+    expect(exact.accepted).toBe(true);
+    expect(getItemDefinition(exact.item!.definitionId)).toMatchObject({ slot: 'chest', weight: 'heavy' });
+
+    const legacyA = rollFrontierGear({ category: 'chest', itemLevel: 10, sourceId: 'legacy-roll', seed: 'same-seed', now: 1, rarityWeights: { common: 1 } });
+    const legacyB = rollFrontierGear({ category: 'chest', itemLevel: 10, sourceId: 'legacy-roll', seed: 'same-seed', now: 1, rarityWeights: { common: 1 } });
+    expect(legacyB).toEqual(legacyA);
+    expect(getItemDefinition(legacyA.definitionId)?.slot).toBe('chest');
+  });
+
+  it('rejects invalid weighted services atomically and normalizes old contracts to Any weight', () => {
+    const exchange = createFrontierExchangeState();
+    const cache = createLootCache();
+    const invalidRequisition = purchaseRequisition(exchange, wallet(1_000), cache, { category: 'gun', armourWeight: 'heavy' }, 10, 'invalid', 1);
+    expect(invalidRequisition.accepted).toBe(false);
+    expect(invalidRequisition.wallet).toEqual(wallet(1_000));
+    expect(invalidRequisition.cache).toEqual(cache);
+    expect(invalidRequisition.exchange).toEqual(exchange);
+
+    const old = normalizeFrontierExchangeState({
+      ...exchange,
+      activeContract: { id: 'old-contract', category: 'chest', startedAt: 1, successfulMs: 0, requiredMs: TARGET_CONTRACT_REQUIRED_MS, itemLevel: 10 }
+    });
+    expect(old.activeContract).toEqual(expect.objectContaining({ category: 'chest' }));
+    expect(old.activeContract).not.toHaveProperty('armourWeight');
+    const weighted = startTargetContract(exchange, wallet(1_000), cache, { category: 'chest', armourWeight: 'light' }, 10, 123);
+    expect(weighted.accepted).toBe(true);
+    expect(weighted.exchange.activeContract).toMatchObject({ category: 'chest', armourWeight: 'light', id: 'contract:123:chest:light' });
+    const reloaded = normalizeFrontierExchangeState(JSON.parse(JSON.stringify(weighted.exchange)));
+    expect(reloaded).toEqual(weighted.exchange);
+  });
+
   it('progresses contracts only through successful time and holds Rare+ rewards for a full cache', () => {
     const cache = createLootCache({ items: Array.from({ length: 35 }, (_, index) => item(`full-${index}`)) });
     const started = startTargetContract(createFrontierExchangeState(), wallet(2_000), cache, 'ranged', 20, 100);
@@ -114,6 +153,18 @@ describe('v21 Frontier Exchange', () => {
     expect(claimed.accepted).toBe(true);
     expect(claimed.exchange.pendingContractReward).toBeNull();
     expect(claimed.cache.items).toContainEqual(completed.pendingContractReward);
+  });
+
+  it('routes a completed weighted contract to the requested slot and weight and preserves a pending full-cache reward', () => {
+    const started = startTargetContract(createFrontierExchangeState(), wallet(1_000), createLootCache(), { category: 'cloak', armourWeight: 'medium' }, 10, 100);
+    expect(started.accepted).toBe(true);
+    const completed = advanceTargetContract(started.exchange, TARGET_CONTRACT_REQUIRED_MS, 'weighted-contract', 200);
+    expect(completed.pendingContractReward).toBeTruthy();
+    expect(getItemDefinition(completed.pendingContractReward!.definitionId)).toMatchObject({ slot: 'cloak', weight: 'medium' });
+    const full = createLootCache({ items: Array.from({ length: 35 }, (_, index) => item(`weighted-full-${index}`)) });
+    const blocked = claimTargetContractReward(completed, started.wallet, full);
+    expect(blocked.accepted).toBe(false);
+    expect(blocked.exchange.pendingContractReward).toEqual(completed.pendingContractReward);
   });
 
   it('does not refund a cancelled contract and permits each daily offer once', () => {

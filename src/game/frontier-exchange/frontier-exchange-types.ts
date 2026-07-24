@@ -1,4 +1,4 @@
-import type { ItemInstance, LootCacheState, LootSlot, RarityId } from '../loot';
+import type { ArmourSlotId, ArmourWeight, ItemInstance, LootCacheState, LootSlot, RarityId } from '../loot';
 
 export const COMBAT_GEAR_CATEGORIES = [
   'melee', 'gun', 'ranged', 'magic',
@@ -7,6 +7,15 @@ export const COMBAT_GEAR_CATEGORIES = [
 ] as const satisfies readonly LootSlot[];
 
 export type CombatGearCategory = (typeof COMBAT_GEAR_CATEGORIES)[number];
+export const ARMOUR_GEAR_CATEGORIES = ['helm', 'chest', 'gloves', 'pants', 'boots', 'cloak'] as const satisfies readonly ArmourSlotId[];
+export type FrontierArmourCategory = (typeof ARMOUR_GEAR_CATEGORIES)[number];
+
+export interface FrontierGearTarget {
+  category: CombatGearCategory;
+  armourWeight?: ArmourWeight;
+}
+
+export type FrontierGearTargetInput = CombatGearCategory | FrontierGearTarget;
 export type FrontierLedgerSource =
   | 'solo-time'
   | 'boss-first-clear'
@@ -25,6 +34,8 @@ export interface FrontierGoldLedger {
 export interface TargetContractState {
   id: string;
   category: CombatGearCategory;
+  /** Undefined means Any weight for legacy and unrestricted contracts. */
+  armourWeight?: ArmourWeight;
   startedAt: number;
   successfulMs: number;
   requiredMs: number;
@@ -88,6 +99,7 @@ export interface FrontierGoldAwardResult {
 
 export interface FrontierGearRollOptions {
   category: CombatGearCategory;
+  armourWeight?: ArmourWeight;
   itemLevel: number;
   sourceId: string;
   seed: string;

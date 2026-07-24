@@ -11,9 +11,12 @@ import type { CombatDevelopmentState } from '../combat-development';
 import { combatTreeRespecCost, resetCombatTree } from '../combat-development';
 import type { CombatSkillId } from '../combat-progression';
 import {
+  ARMOUR_GEAR_CATEGORIES,
   COMBAT_GEAR_CATEGORIES,
   type CombatGearCategory,
   type DailyStoreOffer,
+  type FrontierGearTarget,
+  type FrontierGearTargetInput,
   type FrontierExchangeState,
   type FrontierGearRollOptions,
   type FrontierGoldAwardResult,
@@ -23,6 +26,7 @@ import {
   type FrontierWallet,
   type TargetContractState
 } from './frontier-exchange-types';
+import type { ArmourWeight } from '../loot';
 
 export const TARGET_CONTRACT_REQUIRED_MS = 8 * 60 * 60 * 1_000;
 
@@ -52,6 +56,35 @@ function category(value: unknown): CombatGearCategory | null {
     : null;
 }
 
+function armourWeight(value: unknown): ArmourWeight | null {
+  return value === 'light' || value === 'medium' || value === 'heavy' ? value : null;
+}
+
+export function isArmourGearCategory(value: unknown): value is (typeof ARMOUR_GEAR_CATEGORIES)[number] {
+  return typeof value === 'string' && (ARMOUR_GEAR_CATEGORIES as readonly string[]).includes(value);
+}
+
+/**
+ * Normalizes the public exchange target. A weight on a non-armour category is
+ * deliberately invalid instead of silently becoming an unrestricted target.
+ */
+export function normalizeFrontierGearTarget(value: unknown): FrontierGearTarget | null {
+  if (typeof value === 'string') {
+    const normalizedCategory = category(value);
+    return normalizedCategory ? { category: normalizedCategory } : null;
+  }
+  if (!isRecord(value)) return null;
+  const normalizedCategory = category(value.category);
+  if (!normalizedCategory) return null;
+  const rawWeight = value.armourWeight;
+  if (rawWeight === undefined || rawWeight === null || rawWeight === 'any' || rawWeight === '') {
+    return { category: normalizedCategory };
+  }
+  const normalizedWeight = armourWeight(rawWeight);
+  if (!normalizedWeight || !isArmourGearCategory(normalizedCategory)) return null;
+  return { category: normalizedCategory, armourWeight: normalizedWeight };
+}
+
 function normalizeItem(value: unknown): ItemInstance | null {
   if (!isRecord(value) || typeof value.instanceId !== 'string' || typeof value.definitionId !== 'string') return null;
   if (!COMBAT_LOOT_DEFINITIONS.some(definition => definition.id === value.definitionId)) return null;
@@ -62,9 +95,11 @@ function normalizeContract(value: unknown): TargetContractState | null {
   if (!isRecord(value)) return null;
   const normalizedCategory = category(value.category);
   if (!normalizedCategory) return null;
+  const normalizedWeight = isArmourGearCategory(normalizedCategory) ? armourWeight(value.armourWeight) : null;
   return {
     id: typeof value.id === 'string' ? value.id : `contract:${normalizedCategory}`,
     category: normalizedCategory,
+    ...(normalizedWeight ? { armourWeight: normalizedWeight } : {}),
     startedAt: finite(value.startedAt),
     successfulMs: Math.min(TARGET_CONTRACT_REQUIRED_MS, finite(value.successfulMs)),
     requiredMs: TARGET_CONTRACT_REQUIRED_MS,
@@ -173,6 +208,7 @@ function randomFor(seed: string): () => number {
 }
 
 export function rollFrontierGear(options: FrontierGearRollOptions): ItemInstance {
+  const rollSeed = options.armourWeight ? `${options.seed}:armour:${options.armourWeight}` : options.seed;
   const definitions = COMBAT_LOOT_DEFINITIONS.filter(definition => definition.kind !== 'food');
   const table = rarityTable(
     `exchange:${options.sourceId}`,
@@ -186,12 +222,13 @@ export function rollFrontierGear(options: FrontierGearRollOptions): ItemInstance
     sourceTier: Math.max(1, Math.ceil(options.itemLevel / 10)),
     playerLevel: Math.max(1, options.itemLevel),
     itemLevel: Math.max(1, options.itemLevel),
-    runId: options.seed,
+    runId: rollSeed,
     itemChance: 1,
     targetSlots: [options.category],
     targetSlotWeight: 1,
+    targetArmourWeight: options.armourWeight,
     now: options.now
-  }, randomFor(options.seed), [table], definitions);
+  }, randomFor(rollSeed), [table], definitions);
   if (!resolution.item) throw new Error(`Frontier gear roll produced no item for ${options.category}.`);
   return resolution.item;
 }
@@ -208,16 +245,19 @@ export function purchaseRequisition(
   exchangeValue: unknown,
   wallet: FrontierWallet,
   cache: LootCacheState,
-  categoryId: CombatGearCategory,
+  targetInput: FrontierGearTargetInput,
   highestClearedStage: number,
   seed: string,
   now: number
 ): FrontierTransactionResult {
   const exchange = normalizeFrontierExchangeState(exchangeValue);
+  const target = normalizeFrontierGearTarget(targetInput);
+  if (!target) return rejected(wallet, cache, exchange, 'Choose a valid gear category and armour weight.');
   const price = requisitionPrice(highestClearedStage);
   if (wallet.gold < price) return rejected(wallet, cache, exchange, 'Not enough Gold.');
   const item = rollFrontierGear({
-    category: categoryId,
+    category: target.category,
+    armourWeight: target.armourWeight,
     itemLevel: Math.max(1, Math.min(30, Math.floor(highestClearedStage) || 1)),
     sourceId: 'frontier-exchange:requisition',
     seed,
@@ -240,17 +280,20 @@ export function startTargetContract(
   exchangeValue: unknown,
   wallet: FrontierWallet,
   cache: LootCacheState,
-  categoryId: CombatGearCategory,
+  targetInput: FrontierGearTargetInput,
   highestClearedStage: number,
   now: number
 ): FrontierTransactionResult {
   const exchange = normalizeFrontierExchangeState(exchangeValue);
+  const target = normalizeFrontierGearTarget(targetInput);
+  if (!target) return rejected(wallet, cache, exchange, 'Choose a valid gear category and armour weight.');
   if (exchange.activeContract || exchange.pendingContractReward) return rejected(wallet, cache, exchange, 'Finish or claim the current contract first.');
   const price = targetContractPrice(highestClearedStage);
   if (wallet.gold < price) return rejected(wallet, cache, exchange, 'Not enough Gold.');
   const contract: TargetContractState = {
-    id: `contract:${now}:${categoryId}`,
-    category: categoryId,
+    id: `contract:${now}:${target.category}${target.armourWeight ? `:${target.armourWeight}` : ''}`,
+    category: target.category,
+    ...(target.armourWeight ? { armourWeight: target.armourWeight } : {}),
     startedAt: now,
     successfulMs: 0,
     requiredMs: TARGET_CONTRACT_REQUIRED_MS,
@@ -284,6 +327,7 @@ export function advanceTargetContract(
   if (progressed < contract.requiredMs) return { ...exchange, activeContract: { ...contract, successfulMs: progressed } };
   const item = rollFrontierGear({
     category: contract.category,
+    armourWeight: contract.armourWeight,
     itemLevel: contract.itemLevel,
     sourceId: 'frontier-exchange:contract',
     seed: `${seed}:${contract.id}`,
