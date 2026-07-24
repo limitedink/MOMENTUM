@@ -1,6 +1,12 @@
 import type { CombatSkillId } from '../combat-progression';
 import { combatEffectConditionMatches, type CombatModifierContext, type CombatTreeEffectDefinition } from '../combat-development';
-import { SOLO_COMBAT_TIMEOUT_SECONDS, SOLO_FRONTIER_BALANCE, STANCE_MODIFIERS, STARTER_ABILITY_TUNING } from './solo-frontier-definitions';
+import {
+  SOLO_COMBAT_TIMEOUT_SECONDS,
+  SOLO_FRONTIER_BALANCE,
+  SOLO_THREAT_PROFILES,
+  STANCE_MODIFIERS,
+  STARTER_ABILITY_TUNING
+} from './solo-frontier-definitions';
 import {
   AURA_IDS,
   DEFENSIVE_ABILITY_IDS,
@@ -14,6 +20,8 @@ import {
   type SoloCombatInput,
   type SoloCombatMetrics,
   type SoloCombatResult,
+  type SoloEnemyDefinition,
+  type SoloEnemyThreat,
   type SoloCombatTermination,
   type TechniqueId,
   type TimedCombatSkillUseEvent,
@@ -230,6 +238,12 @@ function techniqueCooldownMs(technique: TechniqueId): number {
   return STARTER_ABILITY_TUNING[technique].cooldownSeconds * 1_000;
 }
 
+function enemyThreatFor(enemy: SoloEnemyDefinition): SoloEnemyThreat {
+  const threat = enemy.threat;
+  if (!threat || !Array.isArray(threat.attackCycle) || threat.attackCycle.length === 0) return SOLO_THREAT_PROFILES.standard;
+  return threat;
+}
+
 function diagnoseDefeat(
   termination: SoloCombatTermination,
   input: SoloCombatInput,
@@ -253,6 +267,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
   if (!aura && input.aura !== 'none') warnings.push(`Unknown aura "${input.aura}"; no aura used.`);
 
   const derivedStats = deriveSoloPlayerStats(input);
+  const enemyThreat = enemyThreatFor(input.enemy);
   const enemyMaxHitPoints = Math.max(1, finiteNonNegative(input.enemy.hitPoints));
   let playerHitPoints = derivedStats.maxHitPoints;
   let enemyHitPoints = enemyMaxHitPoints;
@@ -285,6 +300,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
   let emergencyAttackSpeedCharges = 0;
   let emergencyAttackSpeedPct = 0;
   let automaticDefensiveSuppressed = false;
+  let enemyAttackIndex = 0;
   interface DotTick { effectId: string; dot: 'bleed' | 'burn'; nextAt: number; tickDamage: number; remaining: number; }
   interface RecoveryTick {
     effectId: string;
@@ -903,7 +919,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
 
   const timeoutMs = SOLO_COMBAT_TIMEOUT_SECONDS * 1_000;
   const playerIntervalMs = Math.max(50, Math.round(derivedStats.attackInterval * 1_000));
-  const enemyIntervalMs = Math.max(50, Math.round(finiteNonNegative(input.enemy.attackInterval) * 1_000));
+  const enemyIntervalMs = Math.max(50, Math.round(finiteNonNegative(input.enemy.attackInterval) * Math.max(0.05, enemyThreat.intervalMultiplier) * 1_000));
   const regenerationPctPerSecond = clamp(statTotal('regenerationPctPerSecond', modifierContext()), 0, 0.01);
   let nextPlayerAt = 0;
   let nextEnemyAt = enemyIntervalMs;
@@ -919,9 +935,15 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
   const enemyAttack = (atMs: number): void => {
     automaticDefensiveSuppressed = false;
     counters.enemyAttempts += 1;
-    const hit = random() < derivedStats.enemyHitChance;
+    const attackStep = enemyThreat.attackCycle[enemyAttackIndex % enemyThreat.attackCycle.length] || SOLO_THREAT_PROFILES.standard.attackCycle[0];
+    enemyAttackIndex += 1;
+    const enemyHitChance = calculateHitChance(
+      finiteNonNegative(input.enemy.accuracy) + (Number.isFinite(Number(attackStep?.accuracyFlat)) ? Number(attackStep?.accuracyFlat) : 0),
+      derivedStats.evasion
+    );
+    const hit = random() < enemyHitChance;
     if (!hit) {
-      emit(atMs, { type: 'attack', actor: 'enemy', action: 'Basic Attack', hit: false, critical: false, damageType: input.enemy.damageType, rawDamage: 0, damage: 0, targetHitPoints: playerHitPoints });
+      emit(atMs, { type: 'attack', actor: 'enemy', action: 'Basic Attack', hit: false, critical: false, damageType: attackStep?.damageType || input.enemy.damageType, rawDamage: 0, damage: 0, targetHitPoints: playerHitPoints });
       emitSkillUse(atMs, 'Evasion', 1);
       emitSkillUse(atMs, 'Reflexes', 0.5);
       afterEnemyMiss = true;
@@ -935,11 +957,18 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       return;
     }
     counters.enemyHits += 1;
-    const rawDamage = finiteNonNegative(input.enemy.damage);
+    const damageMultiplier = Number.isFinite(Number(attackStep?.damageMultiplier)) ? Math.max(0, Number(attackStep?.damageMultiplier)) : 1;
+    const rawDamage = finiteNonNegative(input.enemy.damage) * damageMultiplier;
     const previousHitPoints = playerHitPoints;
     const previousRatio = previousHitPoints / Math.max(1, derivedStats.maxHitPoints);
     const preDamageContext = modifierContext(effectiveTechnique);
-    const mitigation = input.enemy.damageType === 'magical' ? derivedStats.magicalMitigation : derivedStats.armourMitigation;
+    const damageType = attackStep?.damageType || input.enemy.damageType;
+    const penetration = damageType === 'magical'
+      ? clamp(finiteNonNegative(attackStep?.wardPenetrationPct), 0, 0.60)
+      : clamp(finiteNonNegative(attackStep?.armourPenetrationPct), 0, 0.60);
+    const mitigation = damageType === 'magical'
+      ? calculateMagicalMitigation(derivedStats.ward * (1 - penetration), stage)
+      : calculateArmourMitigation(derivedStats.armour * (1 - penetration), stage);
     const postMitigationBeforeSustain = rawDamage > 0 ? Math.max(1, Math.round(rawDamage * (1 - mitigation))) : 0;
     const sustainReduction = clamp(statTotal('damageTakenReductionPct', preDamageContext), 0, 0.15);
     const postMitigation = postMitigationBeforeSustain > 0
@@ -957,7 +986,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     counters.damageTaken += damage;
     const damagedHitPoints = playerHitPoints;
     recordHealthBand(atMs);
-    emit(atMs, { type: 'attack', actor: 'enemy', action: 'Basic Attack', hit: true, critical: false, damageType: input.enemy.damageType, rawDamage, damage, targetHitPoints: damagedHitPoints });
+    emit(atMs, { type: 'attack', actor: 'enemy', action: 'Basic Attack', hit: true, critical: false, damageType, rawDamage, damage, targetHitPoints: damagedHitPoints });
     if (absorbed > 0) emit(atMs, { type: 'barrier', ability: 'Arcane Barrier', granted: 0, absorbed, remaining: barrier });
 
     if (damage > 0) {
@@ -1065,7 +1094,7 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
         });
       }
     }
-    if (input.enemy.damageType === 'physical') {
+    if (damageType === 'physical') {
       for (const armourClass of ['light', 'medium', 'heavy'] as const) {
         if (input.equippedStats.armourPieces.some(piece => piece.armourClass === armourClass && piece.armour > 0)) {
           emitSkillUse(atMs, ARMOUR_SKILLS[armourClass], 1);

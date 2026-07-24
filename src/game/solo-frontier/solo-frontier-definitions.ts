@@ -1,4 +1,13 @@
-import type { SoloCombatStance, SoloEnemyDefinition, SoloFrontierStageDefinition } from './solo-frontier-types';
+import type {
+  DamageType,
+  EnemyAttackTag,
+  SoloCombatStance,
+  SoloEnemyAttackStep,
+  SoloEnemyDefinition,
+  SoloEnemyThreat,
+  SoloFrontierStageDefinition,
+  SoloThreatProfileId
+} from './solo-frontier-types';
 import type { LootSlot } from '../loot';
 
 export const SOLO_FRONTIER_STAGE_COUNT = 30;
@@ -54,6 +63,72 @@ export const STARTER_ABILITY_TUNING = Object.freeze({
 
 const BOSS_NAMES = new Map<number, string>([[10, 'Initiate'], [20, 'Vanguard'], [30, 'Apex']]);
 
+const attackStep = (
+  damageType: DamageType,
+  damageMultiplier: number,
+  accuracyFlat: number,
+  tag: EnemyAttackTag,
+  options: Pick<SoloEnemyAttackStep, 'armourPenetrationPct' | 'wardPenetrationPct'> = {}
+): SoloEnemyAttackStep => Object.freeze({
+  damageType,
+  damageMultiplier,
+  accuracyFlat,
+  tag,
+  ...options
+});
+
+const threat = (
+  profileId: SoloThreatProfileId,
+  name: string,
+  description: string,
+  intervalMultiplier: number,
+  attackCycle: readonly SoloEnemyAttackStep[]
+): SoloEnemyThreat => Object.freeze({
+  profileId,
+  name,
+  description,
+  intervalMultiplier,
+  attackCycle: Object.freeze([...attackCycle])
+});
+
+export const SOLO_THREAT_PROFILES: Readonly<Record<SoloThreatProfileId, SoloEnemyThreat>> = Object.freeze({
+  standard: threat('standard', 'Standard', 'A steady physical attack pattern.', 1, [attackStep('physical', 1, 0, 'standard')]),
+  skirmisher: threat('skirmisher', 'Skirmisher', 'Rapid, accurate physical pressure.', 0.72, [attackStep('physical', 0.70, 10, 'rapid')]),
+  breaker: threat('breaker', 'Breaker', 'Slow, heavy physical strikes that pierce armour.', 1.35, [attackStep('physical', 1.40, -8, 'heavy', { armourPenetrationPct: 0.20 })]),
+  arcanist: threat('arcanist', 'Arcanist', 'Magical pressure that partially penetrates wards.', 1, [attackStep('magical', 1, 2, 'arcane', { wardPenetrationPct: 0.10 })]),
+  spellblade: threat('spellblade', 'Spellblade', 'Alternating physical and magical attacks.', 0.92, [
+    attackStep('physical', 0.90, 2, 'standard'),
+    attackStep('magical', 0.90, 2, 'arcane')
+  ]),
+  initiate: threat('initiate', 'Initiate', 'A boss cycle that alternates light pressure with a heavy armour-breaking blow.', 1, [
+    attackStep('physical', 0.80, 5, 'rapid'),
+    attackStep('physical', 0.80, 5, 'rapid'),
+    attackStep('physical', 1.40, -5, 'heavy', { armourPenetrationPct: 0.10 })
+  ]),
+  vanguard: threat('vanguard', 'Vanguard', 'A mixed boss cycle of physical, magical and heavy pressure.', 0.95, [
+    attackStep('physical', 0.85, 5, 'rapid'),
+    attackStep('magical', 0.85, 2, 'arcane'),
+    attackStep('physical', 1.15, -5, 'heavy', { armourPenetrationPct: 0.15 })
+  ]),
+  apex: threat('apex', 'Apex', 'A four-step boss cycle combining rapid, arcane and penetrating attacks.', 0.95, [
+    attackStep('physical', 0.80, 8, 'rapid'),
+    attackStep('magical', 0.80, 4, 'arcane'),
+    attackStep('physical', 1.10, -5, 'heavy', { armourPenetrationPct: 0.20 }),
+    attackStep('magical', 1.10, 0, 'arcane', { wardPenetrationPct: 0.20 })
+  ])
+});
+
+const SOLO_STAGE_THREAT_IDS: readonly SoloThreatProfileId[] = Object.freeze([
+  'standard', 'standard', 'standard', 'skirmisher', 'breaker', 'standard', 'arcanist', 'spellblade', 'breaker', 'initiate',
+  'skirmisher', 'breaker', 'arcanist', 'spellblade', 'skirmisher', 'standard', 'arcanist', 'breaker', 'spellblade', 'vanguard',
+  'skirmisher', 'breaker', 'arcanist', 'spellblade', 'skirmisher', 'breaker', 'arcanist', 'spellblade', 'breaker', 'apex'
+]);
+
+export function soloThreatForStage(stage: number): SoloEnemyThreat {
+  const profileId = SOLO_STAGE_THREAT_IDS[Math.max(1, Math.floor(stage)) - 1] || 'standard';
+  return SOLO_THREAT_PROFILES[profileId];
+}
+
 const ADVERTISED_TARGET_SLOT_CYCLE: readonly (readonly LootSlot[])[] = Object.freeze([
   ['melee', 'helm'], ['gun', 'chest'], ['ranged', 'gloves'], ['magic', 'pants'],
   ['boots', 'cloak'], ['belt', 'amulet'], ['ring', 'trinket']
@@ -89,6 +164,7 @@ export function createSoloFrontierEnemy(stage: number): SoloEnemyDefinition {
   const tuning = SOLO_FRONTIER_BALANCE.enemy;
   const bossName = BOSS_NAMES.get(stage);
   const boss = bossName !== undefined;
+  const threatProfile = soloThreatForStage(stage);
   return Object.freeze({
     id: boss ? `solo-frontier:${bossName.toLowerCase()}` : `solo-frontier:stage-${stage}`,
     name: bossName ?? `Frontier Challenger ${stage}`,
@@ -100,7 +176,8 @@ export function createSoloFrontierEnemy(stage: number): SoloEnemyDefinition {
     evasion: regular.evasion,
     accuracy: tuning.baseAccuracy + tuning.accuracyPerStage * stage,
     attackInterval: regular.attackInterval,
-    damageType: 'physical'
+    damageType: 'physical',
+    threat: threatProfile
   });
 }
 

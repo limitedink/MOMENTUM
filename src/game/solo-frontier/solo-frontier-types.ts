@@ -9,6 +9,25 @@ export const WEAPON_STYLES = ['light-melee', 'medium-melee', 'heavy-melee', 'gun
 export type WeaponStyle = (typeof WEAPON_STYLES)[number];
 export type DamageType = 'physical' | 'magical';
 export type ArmourClass = 'light' | 'medium' | 'heavy';
+export type EnemyAttackTag = 'standard' | 'rapid' | 'heavy' | 'arcane';
+export type SoloThreatProfileId = 'standard' | 'skirmisher' | 'breaker' | 'arcanist' | 'spellblade' | 'initiate' | 'vanguard' | 'apex';
+
+export interface SoloEnemyAttackStep {
+  damageType: DamageType;
+  damageMultiplier: number;
+  accuracyFlat: number;
+  armourPenetrationPct?: number;
+  wardPenetrationPct?: number;
+  tag: EnemyAttackTag;
+}
+
+export interface SoloEnemyThreat {
+  profileId: SoloThreatProfileId;
+  name: string;
+  description: string;
+  intervalMultiplier: number;
+  attackCycle: readonly SoloEnemyAttackStep[];
+}
 
 export const TECHNIQUE_IDS = ['Power Strike', 'Burst Fire', 'Piercing Shot', 'Arc Bolt'] as const;
 export type TechniqueId = (typeof TECHNIQUE_IDS)[number];
@@ -60,6 +79,8 @@ export interface SoloEnemyDefinition {
   accuracy: number;
   attackInterval: number;
   damageType: DamageType;
+  /** Optional v21.2 threat metadata; omitted custom enemies retain legacy behavior. */
+  threat?: SoloEnemyThreat;
 }
 
 export interface SoloFrontierStageDefinition {
