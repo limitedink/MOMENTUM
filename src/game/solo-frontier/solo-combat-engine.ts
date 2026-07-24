@@ -347,8 +347,10 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
   const evasionStreaks = new Map<string, number>();
   const adaptiveHits = new Map<string, number>();
   let barrierResponseAttackDamagePct = 0;
+  let barrierResponseTechniqueDamagePct = 0;
   let barrierResponseMagicalReductionPct = 0;
   let barrierResponseAttackCharges = 0;
+  let barrierResponseTechniqueCharges = 0;
   let barrierResponseMagicalCharges = 0;
   let barrierResponseReadyTechnique = false;
   let barrierResponseGuaranteeCritical = false;
@@ -855,13 +857,21 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       performMend(atMs);
       return;
     }
-    if (barrier > 0) return;
-    const granted = Math.round(
+    const barrierMaximum = Math.round(
       STARTER_ABILITY_TUNING['Arcane Barrier'].baseBarrier
       * (1 + 0.006 * skill(input, 'Warding'))
       * defenseProfile.barrierStrengthMultiplier
     );
-    barrier = granted;
+    const barrierContext = modifierContext(undefined, { barrierActive: barrier > 0 });
+    const canTopUpBarrier = barrier > 0 && activeEffects('stat', barrierContext).some(effect =>
+      effect.kind === 'stat'
+      && effect.stat === 'barrierCooldownPct'
+      && effect.family === 'warding.barrier.topup'
+    );
+    if (barrier > 0 && (!canTopUpBarrier || barrier / Math.max(1, barrierMaximum) > 0.25)) return;
+    const granted = canTopUpBarrier ? Math.max(0, barrierMaximum - barrier) : barrierMaximum;
+    if (granted <= 0) return;
+    barrier = canTopUpBarrier ? barrier + granted : granted;
     counters.barrierGranted += granted;
     const barrierCooldownReduction = clamp(
       (1 - defenseProfile.defensiveCooldownMultiplier) + (1 - defenseProfile.barrierCooldownMultiplier),
@@ -1028,7 +1038,8 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
         * actionMultiplier
         * dynamicDamageRatio
         * (1 + techniqueDamage + triggerDamage + streakDamage + markDamage + defenseStreakDamage
-          + (useTechnique ? barrierResponseAttackDamagePct : 0))
+          + barrierResponseAttackDamagePct
+          + (useTechnique ? barrierResponseTechniqueDamagePct : 0))
         * extraProjectileScale
         * (critical ? currentCriticalMultiplier : 1);
       const penetration = damageType === 'magical'
@@ -1109,11 +1120,12 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
     if (barrierResponseAttackCharges > 0) barrierResponseAttackCharges -= 1;
     if (barrierResponseAttackCharges <= 0) {
       barrierResponseAttackDamagePct = 0;
-      barrierResponseMagicalReductionPct = 0;
-      barrierResponseMagicalCharges = 0;
       barrierResponseGuaranteeCritical = false;
       barrierResponseGuaranteeHit = false;
     }
+    if (barrierResponseTechniqueCharges > 0 && useTechnique) barrierResponseTechniqueCharges -= 1;
+    if (barrierResponseTechniqueCharges <= 0) barrierResponseTechniqueDamagePct = 0;
+    if (barrierResponseMagicalCharges <= 0) barrierResponseMagicalReductionPct = 0;
     if (hadMendCharges) consumeAfterMendCharges();
   };
 
@@ -1296,14 +1308,25 @@ export function simulateSoloCombat(input: SoloCombatInput): SoloCombatResult {
       });
       const response = defenseFamilyWinners(activeDefenseEffects(breakContext)
         .filter((effect): effect is Extract<DefenseEffect, { defense: 'barrier-response' }> =>
-          effect.defense === 'barrier-response' && effect.trigger === 'break'))
+          effect.defense === 'barrier-response'
+          && effect.trigger === 'break'
+          && (!effect.limit || (effectUses.get(effect.id) || 0) < effect.limit)))
         .sort((left, right) => (right.priority || 0) - (left.priority || 0))[0];
       if (response && atMs >= barrierResponseReadyAt) {
         recordDefenseProc(response.id);
+        if (response.limit) effectUses.set(response.id, (effectUses.get(response.id) || 0) + 1);
         barrierResponseReadyAt = atMs + Math.max(0, response.cooldownSeconds || 0) * 1_000;
         barrierResponseAttackDamagePct = Math.max(barrierResponseAttackDamagePct, response.nextAttackDamagePct || 0);
+        barrierResponseTechniqueDamagePct = Math.max(barrierResponseTechniqueDamagePct, response.nextTechniqueDamagePct || 0);
         barrierResponseMagicalReductionPct = Math.max(barrierResponseMagicalReductionPct, response.nextMagicalReductionPct || 0);
-        barrierResponseAttackCharges = Math.max(barrierResponseAttackCharges, response.nextAttackCount || 1);
+        barrierResponseAttackCharges = Math.max(
+          barrierResponseAttackCharges,
+          response.nextAttackDamagePct ? response.nextAttackCount || 1 : 0
+        );
+        barrierResponseTechniqueCharges = Math.max(
+          barrierResponseTechniqueCharges,
+          response.nextTechniqueDamagePct ? response.nextAttackCount || 1 : 0
+        );
         barrierResponseMagicalCharges = Math.max(
           barrierResponseMagicalCharges,
           response.nextMagicalReductionPct ? response.nextAttackCount || 1 : 0

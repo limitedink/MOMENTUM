@@ -3,13 +3,14 @@ import {
   COMBAT_SKILL_TREES,
   allocateCombatTreeNode,
   createCombatDevelopmentState,
+  resolveArenaDefenseProfile,
   resolveCombatDefenseProfile,
   resolveCombatModifierSnapshot,
   type CombatModifierSnapshot,
   type CombatTreeEffectDefinition
 } from '../src/game/combat-development';
 import { COMBAT_SKILL_IDS, createInitialCombatProgression } from '../src/game/combat-progression';
-import { normalizeSoloFrontierState, type SoloCombatInput } from '../src/game/solo-frontier';
+import { normalizeSoloFrontierState, type SoloCombatEvent, type SoloCombatInput } from '../src/game/solo-frontier';
 import { simulateSoloCombat } from '../src/game/solo-frontier/solo-combat-engine';
 
 function emptySnapshot(effects: readonly CombatTreeEffectDefinition[] = []): CombatModifierSnapshot {
@@ -161,6 +162,103 @@ describe('v21.2 Defense modifier platform', () => {
     expect(result.metrics.defense.barrierBreaks).toBeGreaterThan(0);
     expect(result.metrics.defense.procCounts['barrier-response']).toBeGreaterThan(0);
     expect(result.metrics.sustain.barrierAbsorbed).toBeGreaterThan(0);
+  });
+
+  it('authors Warding magical-pressure, barrier-break and top-up behavior', () => {
+    const progression = createInitialCombatProgression(100);
+    let state = createCombatDevelopmentState();
+    const names = [
+      'Etched Wards', 'Layered Sigils', 'Deep Inscription', 'Grand Aegis',
+      'Broader Aegis', 'Expanded Lattice', 'Reinforced Field',
+      'Reactive Sigil', 'Feedback Pulse'
+    ];
+    const tree = COMBAT_SKILL_TREES.Warding.tree!;
+    for (const name of names) {
+      const node = tree.nodes.find(candidate => candidate.name === name)!;
+      const result = allocateCombatTreeNode(state, progression, 'Warding', node.id);
+      expect(result.accepted, result.reason).toBe(true);
+      state = result.state;
+    }
+    const snapshot = resolveCombatModifierSnapshot(state, progression, {
+      defensiveAbility: 'Arcane Barrier',
+      armourPieceCounts: { light: 0, medium: 0, heavy: 0 }
+    });
+    const result = simulateSoloCombat(defenseInput(snapshot, {
+      defensiveAbility: 'Arcane Barrier',
+      enemy: {
+        ...defenseInput(emptySnapshot()).enemy,
+        damage: 100,
+        attackInterval: 0.25,
+        damageType: 'magical',
+        ward: 100,
+        hitPoints: 10_000
+      }
+    }));
+    const replay = simulateSoloCombat(defenseInput(snapshot, {
+      defensiveAbility: 'Arcane Barrier',
+      enemy: {
+        ...defenseInput(emptySnapshot()).enemy,
+        damage: 100,
+        attackInterval: 0.25,
+        damageType: 'magical',
+        ward: 100,
+        hitPoints: 10_000
+      }
+    }));
+    expect(result.events).toEqual(replay.events);
+    expect(result.metrics.defense.barrierBreaks).toBeGreaterThan(0);
+    expect(result.metrics.defense.procCounts).toEqual(expect.objectContaining({}));
+    expect(result.metrics.defense.wardPrevented).toBeGreaterThan(0);
+
+    let topUpState = createCombatDevelopmentState();
+    for (const name of ['Broader Aegis', 'Quick Seal', 'Recast Pattern', 'Endless Ward']) {
+      const node = tree.nodes.find(candidate => candidate.name === name)!;
+      const allocation = allocateCombatTreeNode(topUpState, progression, 'Warding', node.id);
+      expect(allocation.accepted, allocation.reason).toBe(true);
+      topUpState = allocation.state;
+    }
+    const topUpSnapshot = resolveCombatModifierSnapshot(topUpState, progression, {
+      defensiveAbility: 'Arcane Barrier',
+      armourPieceCounts: { light: 0, medium: 0, heavy: 0 }
+    });
+    const topUpResult = simulateSoloCombat(defenseInput(topUpSnapshot, {
+      defensiveAbility: 'Arcane Barrier',
+      enemy: {
+        ...defenseInput(emptySnapshot()).enemy,
+        damage: 55,
+        attackInterval: 8,
+        damageType: 'physical',
+        hitPoints: 10_000
+      }
+    }));
+    const barrierGrants = topUpResult.events.filter((event): event is Extract<SoloCombatEvent, { type: 'barrier' }> =>
+      event.type === 'barrier' && event.granted > 0);
+    expect(barrierGrants.length).toBeGreaterThanOrEqual(2);
+    expect(barrierGrants[1].granted).toBeLessThan(barrierGrants[0].granted);
+    expect(barrierGrants[1].remaining).toBe(barrierGrants[0].remaining);
+  });
+
+  it('exposes only the representable static Defense subset to Arena', () => {
+    const snapshot = emptySnapshot([
+      { id: 'arena-armour', skillId: 'Heavy Armour Proficiency', kind: 'stat', stat: 'armourPct', value: 0.20, condition: { armourClass: 'heavy', minimumArmourPieces: 6 } },
+      { id: 'arena-ward', skillId: 'Warding', kind: 'stat', stat: 'wardPct', value: 0.20 },
+      { id: 'arena-physical', skillId: 'Heavy Armour Proficiency', kind: 'stat', stat: 'physicalDamageReductionPct', value: 0.05 },
+      { id: 'arena-magical', skillId: 'Warding', kind: 'stat', stat: 'magicalDamageReductionPct', value: 0.05 },
+      { id: 'arena-cooldown', skillId: 'Warding', kind: 'stat', stat: 'defensiveCooldownPct', value: 0.10 },
+      { id: 'arena-barrier', skillId: 'Warding', kind: 'stat', stat: 'barrierStrengthPct', value: 0.20 }
+    ]);
+    expect(resolveArenaDefenseProfile(snapshot, {
+      defensiveAbility: 'Arcane Barrier',
+      armourPieceCounts: { light: 0, medium: 0, heavy: 6 }
+    })).toEqual({
+      armourMultiplierByClass: { light: 1, medium: 1, heavy: 1.2 },
+      wardMultiplier: 1.2,
+      physicalDamageMultiplier: 0.95,
+      magicalDamageMultiplier: 0.95,
+      defensiveCooldownMultiplier: 0.9,
+      barrierStrengthMultiplier: 1.2,
+      barrierCooldownMultiplier: 1
+    });
   });
 
   it('normalizes old v21 debriefs without changing the save version', () => {

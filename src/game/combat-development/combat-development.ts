@@ -38,7 +38,8 @@ import {
   EVASION_SKILL_TREE,
   HEAVY_ARMOUR_SKILL_TREE,
   LIGHT_ARMOUR_SKILL_TREE,
-  MEDIUM_ARMOUR_SKILL_TREE
+  MEDIUM_ARMOUR_SKILL_TREE,
+  WARDING_SKILL_TREE
 } from './defense-tree-definitions';
 import {
   DEFENSE_COMBAT_SKILL_IDS,
@@ -81,7 +82,8 @@ const DEFENSE_TREES = Object.freeze({
   'Light Armour Proficiency': LIGHT_ARMOUR_SKILL_TREE,
   'Medium Armour Proficiency': MEDIUM_ARMOUR_SKILL_TREE,
   'Heavy Armour Proficiency': HEAVY_ARMOUR_SKILL_TREE,
-  Evasion: EVASION_SKILL_TREE
+  Evasion: EVASION_SKILL_TREE,
+  Warding: WARDING_SKILL_TREE
 });
 
 const catalogEntries = COMBAT_SKILL_IDS.map((skillId): [CombatSkillId, CombatSkillTreeCatalogEntry] => {
@@ -558,6 +560,22 @@ export function resolveCombatDefenseProfile(
   });
 }
 
+export function resolveArenaDefenseProfile(
+  snapshot: CombatModifierSnapshot | undefined,
+  context: CombatModifierContext = {}
+): import('./combat-development-types').ArenaDefenseProfile {
+  const soloProfile = resolveCombatDefenseProfile(snapshot, context);
+  return Object.freeze({
+    armourMultiplierByClass: soloProfile.armourMultiplierByClass,
+    wardMultiplier: soloProfile.wardMultiplier,
+    physicalDamageMultiplier: soloProfile.physicalDamageMultiplier,
+    magicalDamageMultiplier: soloProfile.magicalDamageMultiplier,
+    defensiveCooldownMultiplier: soloProfile.defensiveCooldownMultiplier,
+    barrierStrengthMultiplier: soloProfile.barrierStrengthMultiplier,
+    barrierCooldownMultiplier: soloProfile.barrierCooldownMultiplier
+  });
+}
+
 export const MomentumCombatDevelopment = Object.freeze({
   trees: COMBAT_SKILL_TREES,
   effects: COMBAT_TREE_EFFECT_DEFINITIONS,
@@ -572,5 +590,6 @@ export const MomentumCombatDevelopment = Object.freeze({
   resetTree: resetCombatTree,
   resolveModifiers: resolveCombatModifierSnapshot,
   resolveSustainProfile: resolveCombatSustainProfile,
-  resolveDefenseProfile: resolveCombatDefenseProfile
+  resolveDefenseProfile: resolveCombatDefenseProfile,
+  resolveArenaDefenseProfile
 });

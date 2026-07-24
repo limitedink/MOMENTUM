@@ -381,12 +381,14 @@ export type CombatTreeEffectDefinition =
     defense: 'barrier-response';
     trigger: 'break';
     nextAttackDamagePct?: number;
+    nextTechniqueDamagePct?: number;
     nextMagicalReductionPct?: number;
     nextAttackCount?: number;
     readiesTechnique?: boolean;
     guaranteeCritical?: boolean;
     guaranteeHit?: boolean;
     cooldownSeconds?: number;
+    limit?: number;
     family?: string;
     priority?: number;
     condition?: CombatEffectCondition;
@@ -407,6 +409,21 @@ export interface CombatDefenseProfile {
   magicalDamageMultiplier: number;
   armourPenetrationResistance: number;
   wardPenetrationResistance: number;
+  defensiveCooldownMultiplier: number;
+  barrierStrengthMultiplier: number;
+  barrierCooldownMultiplier: number;
+}
+
+/**
+ * The intentionally representable Defense subset for Arena-style static
+ * character projections. Solo-only attack-cycle mechanics stay in the Solo
+ * resolver and are never inferred from this shape.
+ */
+export interface ArenaDefenseProfile {
+  armourMultiplierByClass: Readonly<Record<ArmourClass, number>>;
+  wardMultiplier: number;
+  physicalDamageMultiplier: number;
+  magicalDamageMultiplier: number;
   defensiveCooldownMultiplier: number;
   barrierStrengthMultiplier: number;
   barrierCooldownMultiplier: number;

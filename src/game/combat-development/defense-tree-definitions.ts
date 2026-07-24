@@ -377,6 +377,55 @@ const evasionBranches: readonly [BranchSpec, BranchSpec, BranchSpec] = [
 export const HEAVY_ARMOUR_SKILL_TREE = buildTree('Heavy Armour Proficiency', 'Heavy Armour Proficiency', heavyBranches, 'heavy');
 export const EVASION_SKILL_TREE = buildTree('Evasion', 'Evasion', evasionBranches);
 
+const ARCANE_BARRIER: CombatEffectCondition = { defensiveAbility: 'Arcane Barrier' };
+
+const wardingBranches: readonly [BranchSpec, BranchSpec, BranchSpec] = [
+  {
+    id: 'runework', name: 'Runework', description: 'Turn wardcraft into a disciplined answer to magical pressure.', color: '#a678ff',
+    root: node('Etched Wards', '+10% ward.', stat('wardPct', 0.10)),
+    pathA: [
+      node('Layered Sigils', 'Gain another +10% ward.', stat('wardPct', 0.10)),
+      node('Deep Inscription', 'Gain another +15% ward.', stat('wardPct', 0.15)),
+      node('Grand Aegis', 'Gain another +25% ward and take 5% less magical damage after mitigation.', stat('wardPct', 0.25), stat('magicalDamageReductionPct', 0.05))
+    ],
+    pathB: [
+      node('Counter-Script', '+10% ward-penetration resistance.', stat('wardPenetrationResistancePct', 0.10)),
+      node('Sealed Formula', 'Gain another +20% ward-penetration resistance.', stat('wardPenetrationResistancePct', 0.20)),
+      node('Null Mantle', 'Gain another +20% ward-penetration resistance and take 5% less magical damage after mitigation.', stat('wardPenetrationResistancePct', 0.20), stat('magicalDamageReductionPct', 0.05))
+    ]
+  },
+  {
+    id: 'barrier', name: 'Barrier', description: 'Make Arcane Barrier a renewable layer of preparation.', color: '#55d9ff',
+    root: node('Broader Aegis', '+15% Arcane Barrier strength.', stat('barrierStrengthPct', 0.15, ARCANE_BARRIER)),
+    pathA: [
+      node('Expanded Lattice', 'Gain another +20% Arcane Barrier strength.', stat('barrierStrengthPct', 0.20, ARCANE_BARRIER)),
+      node('Reinforced Field', 'Gain another +25% Arcane Barrier strength.', stat('barrierStrengthPct', 0.25, ARCANE_BARRIER)),
+      node('Impenetrable Dome', 'Gain another +40% Arcane Barrier strength.', stat('barrierStrengthPct', 0.40, ARCANE_BARRIER))
+    ],
+    pathB: [
+      node('Quick Seal', 'Arcane Barrier cooldown is 5% shorter.', stat('barrierCooldownPct', 0.05, ARCANE_BARRIER)),
+      node('Recast Pattern', 'Arcane Barrier cooldown is another 10% shorter.', stat('barrierCooldownPct', 0.10, ARCANE_BARRIER)),
+      node('Endless Ward', 'Arcane Barrier cooldown is another 25% shorter and may top up to full when 25% or less remains.', stat('barrierCooldownPct', 0.25, ARCANE_BARRIER), stat('barrierCooldownPct', 0, ARCANE_BARRIER, 'warding.barrier.topup', 1))
+    ]
+  },
+  {
+    id: 'spellbreak', name: 'Spellbreak', description: 'Turn a broken barrier into a controlled counterattack.', color: '#ff687f',
+    root: node('Reactive Sigil', 'The first Arcane Barrier break each encounter grants the next attack +10% damage.', barrierResponse({ nextAttackDamagePct: 0.10, limit: 1, family: 'warding.spellbreak.damage', priority: 1, condition: ARCANE_BARRIER })),
+    pathA: [
+      node('Feedback Pulse', 'Every Arcane Barrier break grants the next attack +15% damage.', barrierResponse({ nextAttackDamagePct: 0.15, family: 'warding.spellbreak.damage', priority: 2, condition: ARCANE_BARRIER })),
+      node('Arc Reversal', 'The next technique after an Arcane Barrier break deals +20% damage.', barrierResponse({ nextTechniqueDamagePct: 0.20, family: 'warding.spellbreak.damage', priority: 1, condition: ARCANE_BARRIER })),
+      node('Spellbreaker', 'An Arcane Barrier break readies the technique and grants the next attack +30% damage and a guaranteed critical, at most once every six seconds.', barrierResponse({ nextAttackDamagePct: 0.30, readiesTechnique: true, guaranteeCritical: true, cooldownSeconds: 6, family: 'warding.spellbreak.damage', priority: 3, condition: ARCANE_BARRIER }))
+    ],
+    pathB: [
+      node('Last Layer', 'After an Arcane Barrier break, the next magical hit deals 15% less damage.', barrierResponse({ nextMagicalReductionPct: 0.15, nextAttackCount: 1, family: 'warding.spellbreak.reduction', priority: 1, condition: ARCANE_BARRIER })),
+      node('Lingering Screen', 'After an Arcane Barrier break, the next two magical hits deal 20% less damage.', barrierResponse({ nextMagicalReductionPct: 0.20, nextAttackCount: 2, family: 'warding.spellbreak.reduction', priority: 2, condition: ARCANE_BARRIER })),
+      node('Aegis Afterglow', 'After an Arcane Barrier break, the next three magical hits deal 30% less damage.', barrierResponse({ nextMagicalReductionPct: 0.30, nextAttackCount: 3, family: 'warding.spellbreak.reduction', priority: 3, condition: ARCANE_BARRIER }))
+    ]
+  }
+];
+
+export const WARDING_SKILL_TREE = buildTree('Warding', 'Warding', wardingBranches);
+
 export const DEFENSE_TREE_EFFECT_DEFINITIONS: Readonly<Record<string, CombatTreeEffectDefinition>> = Object.freeze(
   Object.fromEntries(effectDefinitions.map(effect => [effect.id, effect]))
 );
